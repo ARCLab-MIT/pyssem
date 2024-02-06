@@ -12,8 +12,10 @@ scene_properties = SceneProperties(datetime.strptime('01/06/2023', "%m/%d/%Y"),
 # Create a Launch Model
 launch = scene_properties.launch_func_constant()
 
+# Post Mission Disposal
+
+
 # Create a list of species for the scene
 species_properties = Species()
 species_properties.add_template_species(["Su", "S", "sns", "N"])
 
-print(species_properties.species[0].amr)

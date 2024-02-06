@@ -5,7 +5,7 @@ class SpeciesProperties:
     def __init__(self, properties_json=None):
         # Set default values
         self.sym_name = None # Name of Species Object
-        self.sym = None
+        self.sym = None # symbolic variables
         self.Cd = None # drag coefficient
         self.mass = None # in kg
         self.mass_lb = 0.00141372  # Lower bound of mass class for object binning (inclusive), 1 cm diameter Al sphere
@@ -76,7 +76,7 @@ class SpeciesProperties:
 class Species:
     """
     This is a collection of SpeciesProperties objects. It is used to store the properties of multiple species in a
-    scene. It is also used to calculate the total mass and number of species in a scene.
+    scene. 
     """
     species = []
 
