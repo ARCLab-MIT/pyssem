@@ -94,9 +94,3 @@ class SceneProperties:
         self.R0 = R0
         self.R02 = R0  # Assuming R02 is meant to be the same as R0 based on MATLAB code
     
-
-
-
-
-        
-
