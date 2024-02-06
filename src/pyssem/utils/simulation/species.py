@@ -4,17 +4,17 @@ from math import pi
 class SpeciesProperties:
     def __init__(self, properties_json=None):
         # Set default values
-        self.sym_name = None
+        self.sym_name = None # Name of Species Object
         self.sym = None
-        self.Cd = None
-        self.mass = None
+        self.Cd = None # drag coefficient
+        self.mass = None # in kg
         self.mass_lb = 0.00141372  # Lower bound of mass class for object binning (inclusive), 1 cm diameter Al sphere
         self.mass_ub = 100000  # Upper bound of mass class for object binning (exclusive, except for top mass bin, which is inclusive)
-        self.radius = None
+        self.radius = None 
         self.A = None  # m^2
         self.amr = None  # m^2/kg
         self.beta = None  # m^2/kg
-        self.B = None
+        self.B = None # 
         self.density_filepath = None  # For drag
 
         # Orbit Properties
@@ -83,24 +83,22 @@ class Species:
     def __init__(self) -> None:
         pass
 
-    @classmethod
     def add_species(self, species_properties: SpeciesProperties) -> None:
         self.species.append(species_properties)
 
-    @classmethod
-    def add_species_from_existing_parameters(self, species_name: ["Su", "S", "sns", "N", "B"] = ["Su", "S", "sns", "N", "B"]):
+    def add_template_species(self, species_names: ["Su", "S", "sns", "N", "B"] = ["Su", "S", "sns", "N", "B"]):
         # Adds a set of species to the simulation based on a predefined list. 
         # if a species name is not in the list, it will not be added. A warning should be thrown. 
         # Su = unslotted satellites, S = slotted satellites, sns = Sns 3U cubesat with no station_keeping, N = debris
 
         # Su - Unslotted Satellites
-        if "Su" in self.species_names:
+        if "Su" in species_names:
             su_properties = SpeciesProperties()  # Assuming you have a SpeciesProperties class
 
             # Default values
             su_properties.sym_name = "Su"
             su_properties.Cd = 2.2
-            su_properties.mass = [260, 473]  # Example values
+            su_properties.mass = [260, 473]
             su_properties.A = [1.6652, 13.5615]
             su_properties.amr = [a/m for a, m in zip(su_properties.A, su_properties.mass)]
             su_properties.beta = [su_properties.Cd * amr for amr in su_properties.amr]
@@ -119,29 +117,19 @@ class Species:
             su_properties.alpha_active = 1e-5
             su_properties.RBflag = 0
 
-            # Orbit Raising (Not implemented)
-
-            # For Derelicts
-
-            # References 
-
-            # For knowing when to recalculate custom launch functions.
-
-            # For looped model
-            
             # Append Species
             self.species.append(su_properties)
        
         # S - Slotted Satellites
-        if "S" in self.species_names:
+        if "S" in species_names:
             s_properties = SpeciesProperties()
 
             # Default values
             s_properties.sym_name = "S"
             s_properties.Cd = 2.2
-            s_properties.mass = [1250, 750, 148]
+            s_properties.mass = [1250] #[1250, 750, 148]
             s_properties.radius = [4, 2, 0.5]
-            s_properties.A = [pi*s_properties.radius**2]
+            s_properties.A = sum([pi*_**2 for _ in s_properties.radius]) # m^2
             s_properties.amr = s_properties.A/s_properties.mass[0] # m^2/kg
             s_properties.beta = s_properties.Cd * s_properties.amr # ballistic coefficient
 
@@ -158,22 +146,12 @@ class Species:
             s_properties.Pm = 0.90 # post mission disposal efficacy
             s_properties.alpha = 1e-5
             s_properties.alpha_active = 1e-5
-
-            # Orbit Raising (Not implemented)
-
-            # For Derelicts
-
-            # References 
-
-            # For knowing when to recalculate custom launch functions.
-
-            # For looped model
-            
+ 
             # Append Species
             self.species.append(s_properties)
             
         # sns - Sns 3U cubesat with no station_keeping
-        if "sns" in self.species_names:
+        if "sns" in species_names:
             sns_properties = SpeciesProperties()
 
             # Default values
@@ -195,16 +173,6 @@ class Species:
             sns_properties.deltat = 3
             sns_properties.Pm = 0
 
-            # Orbit Raising (Not implemented)
-
-            # For Derelicts
-
-            # References 
-
-            # For knowing when to recalculate custom launch functions.
-
-            # For looped model
-            
             # Append Species
             self.species.append(sns_properties)
 
@@ -219,7 +187,7 @@ class Species:
 
         # N - Debris
         # Assuming all spheres of 1 cm, 10cm diameter, 15 kg      
-        if "N" in self.species_names:
+        if "N" in species_names:
             n_properties = SpeciesProperties()
 
             # Default values
@@ -246,16 +214,6 @@ class Species:
             n_properties.alpha = 0
             n_properties.alpha_active = 0
             n_properties.RBflag = 1
-            
-            # Orbit Raising (Not implemented)
 
-            # For Derelicts
-
-            # References 
-
-            # For knowing when to recalculate custom launch functions.
-
-            # For looped model
-         
             # Append Species
             self.species.append(n_properties)

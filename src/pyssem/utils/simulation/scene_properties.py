@@ -1,10 +1,8 @@
 import numpy as np
 from math import pi
 from datetime import datetime
-
-class SceneProperties:
-    """_summary_
-    """
+import random
+from sympy import symbols, Matrix
 
 class SceneProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -79,7 +77,6 @@ class SceneProperties:
         self.mu = 3.986004418e14  # earth's gravitational constant meters^3/s^2
         self.re = 6378.1366  # radius of the earth [km]
 
-
         # MOCAT specific parameters
         R0 = np.linspace(self.min_altitude, self.max_altitude, self.shells + 1)
         self.HMid = R0[:-1] + np.diff(R0) / 2
@@ -93,4 +90,42 @@ class SceneProperties:
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
         self.R0 = R0
         self.R02 = R0  # Assuming R02 is meant to be the same as R0 based on MATLAB code
-    
+
+    def lunch_func_null(self):
+        """
+        Null launch function for species without a launch function.
+        Takes discrete launch function from file. 
+
+        Args:
+            None
+
+        Returns: 
+            numpy.ndarray: Lambdadot, the rate of change in the species in each shell at the specified time due to launch.
+        """
+
+        # Create an array filled with zeros
+        Lambdadot = np.zeros(self.shells, 1)
+
+
+    def launch_func_constant(self):
+        """
+        Adds constant launch rate from species_properties.lambda_constant
+
+        Args:
+            t (float): Time from scenario start in years
+            h (array_like): The set of altitudes of the scenario above ellipsoid in km of shell lower edges.
+            species_properties (dict): A dictionary with properties for the species
+            scen_properties (dict): A dictionary with properties for the scenario
+
+        Returns:
+            numpy.ndarray: The rate of change in the species in each shell at the specified time due to launch.
+                        If only one value is applied, it is assumed to be true for all shells.
+        """
+
+        lambda_constant = [500 * random.random() for i in range(self.shells)]
+
+        # Generate symbolic variables and multiply each by the corresponding lambda_constant value
+        Lambdadot_symbols = symbols('Lambdadot_1:%d' % (self.shells + 1))  # Create n shells symbolic variables
+        Lambdadot = Matrix(self.shells, 1, lambda i, j: Lambdadot_symbols[i] * lambda_constant[i])
+        
+        return Lambdadot
