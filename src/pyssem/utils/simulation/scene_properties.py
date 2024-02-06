@@ -1,14 +1,17 @@
 import numpy as np
 from math import pi
+from datetime import datetime
 
 class SceneProperties:
     """_summary_
     """
 
-    def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, shells, delta=10, integrator = "rk4", 
-                 density_model = "static_exp_dens_func", LC=0.1, v_imp=10) :
-        """Constructor for SceneProperties
-
+class SceneProperties:
+    def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
+                 max_altitude: float, shells: int, delta: float = 10.0, integrator: str = "rk4", 
+                 density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
+        """
+        Constructor for SceneProperties
         Args:
             start_date (datetime): Start date of the simulation
             simulation_duration (int): Years of the simulation to run 
@@ -18,10 +21,33 @@ class SceneProperties:
             shells (int): Number of Altitude Shells 
             delta (float): Ratio of the density of disabling due to lethal debris (collisions)
             integrator (str, optional): Integrator type. Defaults to "rk4".
-            density_model (str, optional): Density Model of Choice. Defaults to "static_exp_dens_func". JB2008 will come later. 
-            LC (float, optional): _description_. Defaults to 0.1.
-            v_imp (float, optional): _description_. Defaults to 10.
+            density_model (str, optional): Density Model of Choice. Defaults to "static_exp_dens_func".
+            LC (float, optional): Minimum size of fragments [m]. Defaults to 0.1.
+            v_imp (float, optional): Impact velocity [km/s]. Defaults to 10.
         """
+        if not isinstance(start_date, datetime):
+            raise TypeError("start_date must be a datetime object")
+        if not isinstance(simulation_duration, int):
+            raise TypeError("simulation_duration must be an integer")
+        if not isinstance(steps, int):
+            raise TypeError("steps must be an integer")
+        if not isinstance(min_altitude, (int, float)):
+            raise TypeError("min_altitude must be a number (int or float)")
+        if not isinstance(max_altitude, (int, float)):
+            raise TypeError("max_altitude must be a number (int or float)")
+        if not isinstance(shells, int):
+            raise TypeError("shells must be an integer")
+        if not isinstance(delta, (int, float)):
+            raise TypeError("delta must be a number (int or float)")
+        if not isinstance(integrator, str):
+            raise TypeError("integrator must be a string")
+        if not isinstance(density_model, str):
+            raise TypeError("density_model must be a string")
+        if not isinstance(LC, (int, float)):
+            raise TypeError("LC must be a number (int or float)")
+        if not isinstance(v_imp, (int, float)):
+            raise TypeError("v_imp must be a number (int or float)")
+
         self.start_date = start_date
         self.simulation_duration = simulation_duration
         self.steps = steps
@@ -48,6 +74,7 @@ class SceneProperties:
 
         # FILL OUT THE INTEGRATOR FIXED STEPS WHEN REQUIRED
             
+        # Parameters
         self.scen_times = np.linspace(0, self.simulation_duration, self.steps) 
         self.mu = 3.986004418e14  # earth's gravitational constant meters^3/s^2
         self.re = 6378.1366  # radius of the earth [km]
