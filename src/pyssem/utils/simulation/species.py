@@ -1,5 +1,8 @@
 import json
 from math import pi
+from utils.pmd.pmd import pmd_func
+from utils.drag.drag import drag_func
+from utils.launch.launch import launch_func
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -63,6 +66,10 @@ class SpeciesProperties:
         self.t_plan_period = 1
         self.prev_prop_results = None
 
+        self.launch_func = None
+        self.pmd_func = pmd_func
+        self.drag_func = None
+
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
             properties_dict = json.loads(properties_json)
@@ -71,7 +78,6 @@ class SpeciesProperties:
                     setattr(self, key, value)
                 else:
                     print(f"Warning: Property {key} not found in SpeciesProperties class.")
-
 
 class Species:
     """
@@ -217,3 +223,5 @@ class Species:
 
             # Append Species
             self.species.append(n_properties)
+
+        return self.species

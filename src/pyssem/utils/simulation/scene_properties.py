@@ -6,7 +6,7 @@ from sympy import symbols, Matrix
 
 class SceneProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, shells: int, delta: float = 10.0, integrator: str = "rk4", 
+                 max_altitude: float, n_shells: int, delta: float = 10.0, integrator: str = "rk4", 
                  density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
         """
         Constructor for SceneProperties
@@ -16,7 +16,7 @@ class SceneProperties:
             steps (int): Number of steps to run in a simulation 
             min_altitude (float): Minimum Altitude shell in km
             max_altitude (float): Maximum Altitude shell in km
-            shells (int): Number of Altitude Shells 
+            n_shells (int): Number of Altitude Shells 
             delta (float): Ratio of the density of disabling due to lethal debris (collisions)
             integrator (str, optional): Integrator type. Defaults to "rk4".
             density_model (str, optional): Density Model of Choice. Defaults to "static_exp_dens_func".
@@ -33,7 +33,7 @@ class SceneProperties:
             raise TypeError("min_altitude must be a number (int or float)")
         if not isinstance(max_altitude, (int, float)):
             raise TypeError("max_altitude must be a number (int or float)")
-        if not isinstance(shells, int):
+        if not isinstance(n_shells, int):
             raise TypeError("shells must be an integer")
         if not isinstance(delta, (int, float)):
             raise TypeError("delta must be a number (int or float)")
@@ -51,7 +51,7 @@ class SceneProperties:
         self.steps = steps
         self.min_altitude = min_altitude
         self.max_altitude = max_altitude
-        self.shells = shells
+        self.n_shells = n_shells
         self.delta = delta
         self.integrator = integrator
         self.density_model = density_model
@@ -78,7 +78,7 @@ class SceneProperties:
         self.re = 6378.1366  # radius of the earth [km]
 
         # MOCAT specific parameters
-        R0 = np.linspace(self.min_altitude, self.max_altitude, self.shells + 1)
+        R0 = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1)
         self.HMid = R0[:-1] + np.diff(R0) / 2
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
         R0 = (self.re + R0) * 1000  # Convert to meters
@@ -89,7 +89,7 @@ class SceneProperties:
         self.Dhu = -self.deltaH * 1000
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
         self.R0 = R0
-        self.R02 = R0  # Assuming R02 is meant to be the same as R0 based on MATLAB code
+        self.R02 = R0 
 
     def lunch_func_null(self):
         """
@@ -104,7 +104,7 @@ class SceneProperties:
         """
 
         # Create an array filled with zeros
-        Lambdadot = np.zeros(self.shells, 1)
+        Lambdadot = np.zeros(self.n_shells, 1)
 
 
     def launch_func_constant(self):
@@ -122,10 +122,10 @@ class SceneProperties:
                         If only one value is applied, it is assumed to be true for all shells.
         """
 
-        lambda_constant = [500 * random.random() for i in range(self.shells)]
+        lambda_constant = [500 * random.random() for i in range(self.n_shells)]
 
         # Generate symbolic variables and multiply each by the corresponding lambda_constant value
-        Lambdadot_symbols = symbols('Lambdadot_1:%d' % (self.shells + 1))  # Create n shells symbolic variables
-        Lambdadot = Matrix(self.shells, 1, lambda i, j: Lambdadot_symbols[i] * lambda_constant[i])
+        Lambdadot_symbols = symbols('Lambdadot_1:%d' % (self.n_shells + 1))  # Create n shells symbolic variables
+        Lambdadot = Matrix(self.n_shells, 1, lambda i, j: Lambdadot_symbols[i] * lambda_constant[i])
         
         return Lambdadot

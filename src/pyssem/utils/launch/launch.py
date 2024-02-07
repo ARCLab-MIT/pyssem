@@ -1,6 +1,6 @@
 import numpy as np
 
-def launch_func_constant(t, h, species_properties, scen_properties):
+def launch_func(t, h, species_properties, scen_properties):
     """
     Adds constant launch rate from species_properties.lambda_constant
 
