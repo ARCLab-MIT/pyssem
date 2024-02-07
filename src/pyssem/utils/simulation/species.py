@@ -6,6 +6,7 @@ from utils.launch.launch import *
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
+        
         # Set default values
         self.sym_name = None # Name of Species Object
         self.sym = None # symbolic variables
@@ -73,8 +74,7 @@ class SpeciesProperties:
 
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
-            properties_dict = json.loads(properties_json)
-            for key, value in properties_dict.items():
+            for key, value in properties_json.items():
                 if hasattr(self, key):
                     setattr(self, key, value)
                 else:
@@ -92,170 +92,8 @@ class Species:
 
     def add_species(self, species_properties: SpeciesProperties) -> None:
         self.species.append(species_properties)
-
-    def add_single_species(self, json_string: json) -> None:
-        """
-        Adds a single species to the simulation based on a JSON string. 
-
-        :param json_string: _description_
-        :type json_string: json
-        :return: _description_
-        :rtype: None
-        """
-        # need to complete
-        pass
-
-    def add_species_from_template(self, species_names: ["Su", "S", "sns", "N", "B"] = ["Su", "S", "sns", "N", "B"]):
-        """
-        Adds a set of species to the simulation based on a predefined list. 
-        if a species name is not in the list, it will not be added. A warning should be thrown. 
-        Su = unslotted satellites, S = slotted satellites, sns = Sns 3U cubesat with no station_keeping, N = debris
-
-        :param species_names: _description_, defaults to ["Su", "S", "sns", "N", "B"]
-        :type species_names: Su&quot;, &quot;S&quot;, &quot;sns&quot;, &quot;N&quot;, &quot;B&quot;], optional
-        :return: _description_
-        :rtype: List of SpeciesProperties
-        """
-        
-        # Su - Unslotted Satellites
-        if "Su" in species_names:
-            su_properties = SpeciesProperties()  # Assuming you have a SpeciesProperties class
-
-            # Default values
-            su_properties.sym_name = "Su"
-            su_properties.Cd = 2.2
-            su_properties.mass = [260, 473]
-            su_properties.A = [1.6652, 13.5615]
-            su_properties.amr = [a/m for a, m in zip(su_properties.A, su_properties.mass)]
-            su_properties.beta = [su_properties.Cd * amr for amr in su_properties.amr]
-
-            # Orbit Properties
-            su_properties.slotting_effectiveness = 1.0
-
-            # Capabilities
-            su_properties.drag_effected = False
-            su_properties.active = True
-            su_properties.maneuverable = True
-            su_properties.trackable = True
-            su_properties.deltat = [8, 8]
-            su_properties.Pm = 0.65
-            su_properties.alpha = 1e-5
-            su_properties.alpha_active = 1e-5
-            su_properties.RBflag = 0
-
-            # Functions
-            su_properties.launch_func = launch_func_constant
-            su_properties.pmd_func = pmd_func_sat
-            su_properties.drag_func = drag_func_exp
-
-            # Append Species
-            self.species.append(su_properties)
-       
-        # S - Slotted Satellites
-        if "S" in species_names:
-            s_properties = SpeciesProperties()
-
-            # Default values
-            s_properties.sym_name = "S"
-            s_properties.Cd = 2.2
-            s_properties.mass = [1250] #[1250, 750, 148]
-            s_properties.radius = [4, 2, 0.5]
-            s_properties.A = sum([pi*_**2 for _ in s_properties.radius]) # m^2
-            s_properties.amr = s_properties.A/s_properties.mass[0] # m^2/kg
-            s_properties.beta = s_properties.Cd * s_properties.amr # ballistic coefficient
-
-            # Orbit Properties
-            s_properties.slotted = True
-            s_properties.slotting_effectiveness = 1.0
-
-            # Capabilities
-            s_properties.drag_effected = False
-            s_properties.active = True
-            s_properties.maneuverable = True
-            s_properties.trackable = True
-            s_properties.deltat = [8] # lifetime in years
-            s_properties.Pm = 0.90 # post mission disposal efficacy
-            s_properties.alpha = 1e-5
-            s_properties.alpha_active = 1e-5
-            
-            # Functions
-            s_properties.launch_func = launch_func_constant
-            s_properties.pmd_func = pmd_func_sat
-            s_properties.drag_func = drag_func_exp
-
-            # Append Species
-            self.species.append(s_properties)
-            
-        # sns - Sns 3U cubesat with no station_keeping
-        if "sns" in species_names:
-            sns_properties = SpeciesProperties()
-
-            # Default values
-            sns_properties.sym_name = "sns"
-            sns_properties.Cd = 2.2
-            sns_properties.mass = 6
-            sns_properties.radius = 0.105550206
-            sns_properties.A = 0.035 # m^2
-            sns_properties.amr = sns_properties.A/sns_properties.mass # m^2/kg
-            sns_properties.beta = sns_properties.Cd * sns_properties.amr # ballistic coefficient
-
-            # Orbit Properties
-            sns_properties.slotted = False
-
-            # Capabilities
-            sns_properties.drag_effected = True
-            sns_properties.active = True
-            sns_properties.maneuverable = False
-            sns_properties.deltat = 3
-            sns_properties.Pm = 0
-
-            # Functions
-            sns_properties.launch_func = launch_func_constant
-            sns_properties.pmd_func = pmd_func_sat
-            sns_properties.drag_func = drag_func_exp
-
-            # Append Species
-            self.species.append(sns_properties)
-
-        # N - Debris
-        # Assuming all spheres of 1 cm, 10cm diameter, 15 kg      
-        if "N" in species_names:
-            n_properties = SpeciesProperties()
-
-            # Default values
-            n_properties.sym_name = "N"
-            n_properties.Cd = 2.2
-            n_properties.mass = 15
-            n_properties.radius = 0.05
-            n_properties.A = pi*n_properties.radius**2
-            n_properties.amr = n_properties.A/n_properties.mass
-            n_properties.beta = n_properties.Cd * n_properties.amr
-
-            # Orbit Properties
-            n_properties.slotted = False
-            n_properties.slotting_effectiveness = 1 
-
-            # Capabilities
-            n_properties.drag_effected = True
-            n_properties.active = False
-            n_properties.maneuverable = False
-            n_properties.deltat = None
-            n_properties.Pm = 0
-            n_properties.alpha = 0
-            n_properties.alpha_active = 0
-            n_properties.RBflag = 1
-
-            # Functions
-            n_properties.launch_func = launch_func_null
-            n_properties.pmd_func = pmd_func_derelict
-            n_properties.drag_func = drag_func_exp
-
-            # Append Species
-            self.species.append(n_properties)
-
-        return self.species
     
-    def multi_property_species(launch_func, pmd_func, drag_func, scen_properties, species):
+    def add_multi_property_species(self, species_properties):
         """
         This is a more flexible way to add species to the simulation, unlike the templated files.
 
@@ -269,67 +107,86 @@ class Species:
         :return: _description_
         :rtype: _type_
         """
-
         trackable_radius_threshold = 0.05  # m
 
-        if len(species.mass) == 1:
+        if len(species_properties['mass']) == 1:
             raise ValueError("Multi-property species must have multiple masses.")
         
-        if species.sym_name.contains("_"):
+        if "_" in species_properties['sym_name']:
             raise ValueError("Species names cannot contain underscores.")
-        
+
         species_list = []
-        num_species = len(species.mass)
+        num_species = len(species_properties['mass'])
 
-        # If the species has been specified with muliple massess, this will go through making a 
-        # of the class with a different mass for each species.
         for i in range(num_species):
-            # Create a new species
-            new_species = SpeciesProperties()
+            species_props_copy = species_properties.copy()
+            species_props_copy['mass'] = species_properties['mass'][i] if isinstance(species_properties['mass'], list) else species_properties['mass']
+            species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{i}"
 
-            # Set the properties
-            new_species.sym_name = species.sym_name + f"_{i}"
-            new_species.Cd = species.Cd
-            new_species.mass = species.mass[i]
-            new_species.radius = species.radius[i]
-            new_species.A = species.A[i]
-            new_species.amr = species.amr[i]
-            new_species.beta = species.beta[i]
-            new_species.density_filepath = species.density_filepath
-            new_species.slotted = species.slotted
-            new_species.slotting_effectiveness = species.slotting_effectiveness
-            new_species.disposal_altitude = species.disposal_altitude
-            new_species.drag_effected = species.drag_effected
-            new_species.active = species.active
-            new_species.maneuverable = species.maneuverable
-            new_species.trackable = species.trackable
-            new_species.deltat = species.deltat
-            new_species.Pm = species.Pm
-            new_species.alpha = species.alpha
-            new_species.alpha_active = species.alpha_active
-            new_species.RBflag = species.RBflag
-            new_species.orbit_raising = species.orbit_raising
-            new_species.insert_altitude = species.insert_altitude
-            new_species.onstation_altitude = species.onstation_altitude
-            new_species.epsilon = species.epsilon
-            new_species.e_mean = species.e_mean
-            new_species.lambda_multiplier = species.lambda_multiplier
-            new_species.lambda_funs = species.lambda_funs
-            new_species.lambda_constant = species.lambda_constant
-            new_species.lambda_python_args = species.lambda_python_args
-            new_species.pmd_linked_species = species.pmd_linked_species
-            new_species.pmd_linked_multiplier = species.pmd_linked_multiplier
-            new_species.eq_idxs = species.eq_idxs
-            new_species.last_calc_x = species.last_calc_x
-            new_species.last_calc_t = species.last_calc_t
-            new_species.last_lambda_dot = species.last_lambda_dot
-            new_species.saved_model_path = species.saved_model_path
-            new_species.t_plan_max = species.t_plan_max
-            new_species.t_plan_period = species.t_plan_period
-            new_species.prev_prop_results = species.prev_prop_results
-            new_species.launch_func = launch_func
-            new_species.pmd_func = pmd_func
-            new_species.drag_func = drag_func
+            for field in species_properties:
+                if field == "sym_name":
+                    continue
+
+                field_value = species_properties[field]
+                if isinstance(field_value, list):
+                    if len(field_value) == num_species:
+                        species_props_copy[field] = field_value[i]
+                    elif len(field_value) == 1:
+                        species_props_copy[field] = field_value[0]
+                    else:
+                        raise ValueError(f"The field '{field}' list length does not match the number of species and is not a single-element list.")
+                else:
+                    species_props_copy[field] = field_value
+
+            # Handle derived properties
+            if 'radius' in species_props_copy and 'A' not in species_props_copy:
+                species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
+            if 'A' in species_props_copy and 'amr' not in species_props_copy:
+                species_props_copy['amr'] = species_props_copy['A'] / species_props_copy['mass']
+            if 'Cd' in species_props_copy and 'amr' in species_props_copy and 'beta' not in species_props_copy:
+                species_props_copy['beta'] = species_props_copy['Cd'] * species_props_copy['amr']
+            if 'radius' in species_props_copy and 'trackable' not in species_props_copy:
+                species_props_copy['trackable'] = species_props_copy['radius'] >= trackable_radius_threshold
+
+        # Create the species instance and append it to the species list
+        species_instance = SpeciesProperties(species_props_copy)
+        species_list.append(species_instance)
+
+        # Sort the species list by mass and set upper and lower bounds for mass bins
+        # Remember now an object not a json, so we need to use the class properties
+        species_list.sort(key=lambda x: x.mass)
+        for i, species in enumerate(species_list):
+            if i == 0:
+                species.mass_ub = 0.5 * (species.mass + species_list[i + 1].mass)
+            elif i == len(self.species_list) - 1:
+                species.mass_lb = 0.5 * (species_list[i - 1].mass + species.mass)
+            else:
+                species.mass_ub = 0.5 * (species.mass + self.species_list[i + 1].mass)
+                species.mass_lb = 0.5 * (species_list[i - 1].mass + species.mass)
+
+        # Add to global species list
+        print(f'Splitting species {species_properties.sym_name} into {num_species} species with masses {species_properties.mass}.')
+        self.species.extend(species_list)
+        
+    def add_species_from_json(self, species_json: json) -> None:
+        """
+        Adds a set of species to the simulation based on a predefined list. 
+        if a species name is not in the list, it will not be added. A warning should be thrown. 
+
+        :param json_string: _description_
+        :type json_string: json
+        :return: _description_
+        :rtype: None
+        """
+        # loop through the json and pass create and instance of species properties for each species
+        for species_name, properties in species_json.items():
+            # Multiple masses means it needs to be copied and passed correctly
+            if len(properties['mass']) > 1:
+                multiple_species = self.add_multi_property_species(properties)
+                self.species.extend(multiple_species)
+            else:
+                temp = SpeciesProperties(properties)
+                self.species.append(temp)
 
 
-
+        return self.species

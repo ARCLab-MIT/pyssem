@@ -3,7 +3,7 @@ from utils.simulation.species import Species
 from datetime import datetime
 import json
 
-def main(species: json):
+def main(species_json):
     # Create a scenaaio properties object, this is the high level simulation parameters
     scenario_properties = ScenarioProperties(
                     start_date=datetime.strptime('01/06/2023', "%m/%d/%Y"), 
@@ -13,12 +13,9 @@ def main(species: json):
 
     # Create a list of species for the scene
     species_properties = Species()
-    species = species_properties.add_species_from_template(["Su", "S", "sns", "N"])
-    species = species_properties.multi_property_species(
-        {
 
-        }
-    )
+    # Import the species from a JSON file - this will be defined by the user
+    species = species_properties.add_species_from_json(species_json)
 
     # Split the species into either debris or active satellites, based from the 'active' property
     active_species = [s for s in species if s.active]
@@ -31,8 +28,7 @@ def main(species: json):
     scenario_properties.add_species_set(species)
 
 if __name__ == "__main__":
-    # import the species.json file
+    # import the template species.json file
     with open('src\pyssem\species.json') as f:
         species_template = json.load(f)
-    print(species_template)
     main(species_template)
