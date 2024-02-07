@@ -4,12 +4,12 @@ from datetime import datetime
 import random
 from sympy import symbols, Matrix
 
-class SceneProperties:
+class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, delta: float = 10.0, integrator: str = "rk4", 
                  density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
         """
-        Constructor for SceneProperties
+        Constructor for ScenarioProperties
         Args:
             start_date (datetime): Start date of the simulation
             simulation_duration (int): Years of the simulation to run 
@@ -89,43 +89,16 @@ class SceneProperties:
         self.Dhu = -self.deltaH * 1000
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
         self.R0 = R0
-        self.R02 = R0 
+        self.R02 = R0
 
-    def lunch_func_null(self):
+        # An empty list for the species
+        self.species = [] 
+    
+    def add_species_set(self, species_list: list):
         """
-        Null launch function for species without a launch function.
-        Takes discrete launch function from file. 
+        Adds a list of species to the overall scenario properties. 
 
-        Args:
-            None
-
-        Returns: 
-            numpy.ndarray: Lambdadot, the rate of change in the species in each shell at the specified time due to launch.
+        :param species_list: List of species to add to the scenario
+        :type species_list: list
         """
-
-        # Create an array filled with zeros
-        Lambdadot = np.zeros(self.n_shells, 1)
-
-
-    def launch_func_constant(self):
-        """
-        Adds constant launch rate from species_properties.lambda_constant
-
-        Args:
-            t (float): Time from scenario start in years
-            h (array_like): The set of altitudes of the scenario above ellipsoid in km of shell lower edges.
-            species_properties (dict): A dictionary with properties for the species
-            scen_properties (dict): A dictionary with properties for the scenario
-
-        Returns:
-            numpy.ndarray: The rate of change in the species in each shell at the specified time due to launch.
-                        If only one value is applied, it is assumed to be true for all shells.
-        """
-
-        lambda_constant = [500 * random.random() for i in range(self.n_shells)]
-
-        # Generate symbolic variables and multiply each by the corresponding lambda_constant value
-        Lambdadot_symbols = symbols('Lambdadot_1:%d' % (self.n_shells + 1))  # Create n shells symbolic variables
-        Lambdadot = Matrix(self.n_shells, 1, lambda i, j: Lambdadot_symbols[i] * lambda_constant[i])
-        
-        return Lambdadot
+        self.species = species_list

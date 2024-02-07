@@ -74,7 +74,7 @@ def drag_func_exp(t, species, scen_properties):
     Args:
         t (float): Time from scenario start in years
         species (Species): A Species Object with properties for the species
-        scen_properties (SceneProperties): A SceneProperties Object with properties for the scenario
+        scen_properties (ScenProperties): A ScenarioProperties Object with properties for the scenario
 
     Returns:
         numpy.ndarray: The rate of change in the species in each shell at the specified time due to drag.

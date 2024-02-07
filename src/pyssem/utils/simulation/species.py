@@ -93,11 +93,18 @@ class Species:
     def add_species(self, species_properties: SpeciesProperties) -> None:
         self.species.append(species_properties)
 
-    def add_template_species(self, species_names: ["Su", "S", "sns", "N", "B"] = ["Su", "S", "sns", "N", "B"]):
-        # Adds a set of species to the simulation based on a predefined list. 
-        # if a species name is not in the list, it will not be added. A warning should be thrown. 
-        # Su = unslotted satellites, S = slotted satellites, sns = Sns 3U cubesat with no station_keeping, N = debris
+    def add_species_from_template(self, species_names: ["Su", "S", "sns", "N", "B"] = ["Su", "S", "sns", "N", "B"]):
+        """
+        Adds a set of species to the simulation based on a predefined list. 
+        if a species name is not in the list, it will not be added. A warning should be thrown. 
+        Su = unslotted satellites, S = slotted satellites, sns = Sns 3U cubesat with no station_keeping, N = debris
 
+        :param species_names: _description_, defaults to ["Su", "S", "sns", "N", "B"]
+        :type species_names: Su&quot;, &quot;S&quot;, &quot;sns&quot;, &quot;N&quot;, &quot;B&quot;], optional
+        :return: _description_
+        :rtype: List of SpeciesProperties
+        """
+        
         # Su - Unslotted Satellites
         if "Su" in species_names:
             su_properties = SpeciesProperties()  # Assuming you have a SpeciesProperties class
