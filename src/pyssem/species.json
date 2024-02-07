@@ -1,0 +1,64 @@
+{
+    "Su": {
+        "sym_name": "Su",
+        "Cd": 2.2,
+        "mass": [260, 473],
+        "A": [1.6652, 13.5615],
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": [8, 8],
+        "Pm": 0.65,
+        "alpha": 1e-5,
+        "alpha_active": 1e-5,
+        "RBflag": 0
+    },
+    "S": {
+        "sym_name": "S",
+        "Cd": 2.2,
+        "mass": [1250],
+        "radius": [4],
+        "slotted": true,
+        "slotting_effectiveness": 1.0,
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": [8],
+        "Pm": 0.90
+    },
+    "sns": {
+        "sym_name": "sns",
+        "Cd": 2.2,
+        "mass": 6,
+        "radius": 0.105550206,
+        "A": 0.035,
+        "drag_effected": true,
+        "active": true,
+        "maneuverable": false,
+        "deltat": 3,
+        "Pm": 0
+    },
+    "N": {
+        "sym_name": "N",
+        "Cd": 2.2,
+        "mass": 15,
+        "radius": 0.05,
+        "drag_effected": true,
+        "active": false,
+        "maneuverable": false,
+        "RBflag": 1
+    },
+    "B": {
+        "sym_name": "B",
+        "Cd": 2.2,
+        "mass": [100, 200],
+        "radius": [1, 1.2],
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": [5, 6],
+        "Pm": 0.75,
+        "alpha": 1e-4,
+        "alpha_active": 1e-4
+    }
+}

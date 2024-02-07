@@ -93,6 +93,18 @@ class Species:
     def add_species(self, species_properties: SpeciesProperties) -> None:
         self.species.append(species_properties)
 
+    def add_single_species(self, json_string: json) -> None:
+        """
+        Adds a single species to the simulation based on a JSON string. 
+
+        :param json_string: _description_
+        :type json_string: json
+        :return: _description_
+        :rtype: None
+        """
+        # need to complete
+        pass
+
     def add_species_from_template(self, species_names: ["Su", "S", "sns", "N", "B"] = ["Su", "S", "sns", "N", "B"]):
         """
         Adds a set of species to the simulation based on a predefined list. 
@@ -205,15 +217,6 @@ class Species:
             # Append Species
             self.species.append(sns_properties)
 
-
-            # NEED TO FORK THIS CODE TO PYTHON
-            # Sns_species = species(@launch_func_null, @pmd_func_sat, my_drag_func, species_properties, scen_properties);
-
-            # for i = 1:length(Sns_species) 
-            #     Sns_masses(i) = Sns_species(i).species_properties.mass; 
-            #     Sns_radii(i) = Sns_species(i).species_properties.radius;
-            # end
-
         # N - Debris
         # Assuming all spheres of 1 cm, 10cm diameter, 15 kg      
         if "N" in species_names:
@@ -224,8 +227,6 @@ class Species:
             n_properties.Cd = 2.2
             n_properties.mass = 15
             n_properties.radius = 0.05
-            # species_properties.mass =   [0.00141372    0.5670    S_masses Su_masses Sns_masses]; 
-            # species_properties.radius = [0.01          0.1321    S_radii  Su_radii  Sns_radii]; % m
             n_properties.A = pi*n_properties.radius**2
             n_properties.amr = n_properties.A/n_properties.mass
             n_properties.beta = n_properties.Cd * n_properties.amr
@@ -253,3 +254,82 @@ class Species:
             self.species.append(n_properties)
 
         return self.species
+    
+    def multi_property_species(launch_func, pmd_func, drag_func, scen_properties, species):
+        """
+        This is a more flexible way to add species to the simulation, unlike the templated files.
+
+        This class an input structure to create a multi_property_species class with the species_list propeorty
+        with a set of species with different properties. 
+
+        If multiple masses are provided, buy other values are provided as single values, then radiu, A, area to mass ratio, 
+        and beta will be scaled based on spherical assumption. Trackabiolity will be set based on scaled radius relative
+        to the trackable threshold.
+
+        :return: _description_
+        :rtype: _type_
+        """
+
+        trackable_radius_threshold = 0.05  # m
+
+        if len(species.mass) == 1:
+            raise ValueError("Multi-property species must have multiple masses.")
+        
+        if species.sym_name.contains("_"):
+            raise ValueError("Species names cannot contain underscores.")
+        
+        species_list = []
+        num_species = len(species.mass)
+
+        # If the species has been specified with muliple massess, this will go through making a 
+        # of the class with a different mass for each species.
+        for i in range(num_species):
+            # Create a new species
+            new_species = SpeciesProperties()
+
+            # Set the properties
+            new_species.sym_name = species.sym_name + f"_{i}"
+            new_species.Cd = species.Cd
+            new_species.mass = species.mass[i]
+            new_species.radius = species.radius[i]
+            new_species.A = species.A[i]
+            new_species.amr = species.amr[i]
+            new_species.beta = species.beta[i]
+            new_species.density_filepath = species.density_filepath
+            new_species.slotted = species.slotted
+            new_species.slotting_effectiveness = species.slotting_effectiveness
+            new_species.disposal_altitude = species.disposal_altitude
+            new_species.drag_effected = species.drag_effected
+            new_species.active = species.active
+            new_species.maneuverable = species.maneuverable
+            new_species.trackable = species.trackable
+            new_species.deltat = species.deltat
+            new_species.Pm = species.Pm
+            new_species.alpha = species.alpha
+            new_species.alpha_active = species.alpha_active
+            new_species.RBflag = species.RBflag
+            new_species.orbit_raising = species.orbit_raising
+            new_species.insert_altitude = species.insert_altitude
+            new_species.onstation_altitude = species.onstation_altitude
+            new_species.epsilon = species.epsilon
+            new_species.e_mean = species.e_mean
+            new_species.lambda_multiplier = species.lambda_multiplier
+            new_species.lambda_funs = species.lambda_funs
+            new_species.lambda_constant = species.lambda_constant
+            new_species.lambda_python_args = species.lambda_python_args
+            new_species.pmd_linked_species = species.pmd_linked_species
+            new_species.pmd_linked_multiplier = species.pmd_linked_multiplier
+            new_species.eq_idxs = species.eq_idxs
+            new_species.last_calc_x = species.last_calc_x
+            new_species.last_calc_t = species.last_calc_t
+            new_species.last_lambda_dot = species.last_lambda_dot
+            new_species.saved_model_path = species.saved_model_path
+            new_species.t_plan_max = species.t_plan_max
+            new_species.t_plan_period = species.t_plan_period
+            new_species.prev_prop_results = species.prev_prop_results
+            new_species.launch_func = launch_func
+            new_species.pmd_func = pmd_func
+            new_species.drag_func = drag_func
+
+
+
