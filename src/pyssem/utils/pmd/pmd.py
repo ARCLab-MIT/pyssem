@@ -69,3 +69,54 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
         # Failed PMD contribution for each linked species
         for k in range(scen_properties.n_shells):
             Cpmddot[k, i] = (1 - Pm) / deltat * species.sym[k]
+
+def pair_actives_to_debris(scen_properties, active_species, debris_species):
+    """
+    Pairs all active species to debris species for PMD modeling.
+
+    Args:
+        scen_properties (dict): Properties for the scenario.
+        active_species (list): List of active species objects.
+        debris_species (list): List of debris species objects.
+    """
+    # Collect active species and their names
+    linked_spec_list = []
+    linked_spec_names = []
+    for cur_species in active_species:
+        if cur_species.species_properties['active']:
+            linked_spec_list.append(cur_species)
+            linked_spec_names.append(cur_species.species_properties['sym_name'])
+
+    print("Pairing the following active species to debris classes for PMD modeling...")
+    print(linked_spec_names)
+
+    # Assign matching debris increase for a species due to failed PMD
+    for active_spec in linked_spec_list:
+        found_mass_match_debris = False
+        spec_mass = active_spec.species_properties['mass']
+
+        for deb_spec in debris_species:
+            if spec_mass == deb_spec.species_properties['mass']:
+                # Assume pmd_func_derelict is a function or method to be set for the debris species
+                deb_spec.pmd_func = pmd_func_derelict  # You need to define this function
+                if 'pmd_linked_species' not in deb_spec.species_properties:
+                    deb_spec.species_properties['pmd_linked_species'] = []
+                deb_spec.species_properties['pmd_linked_species'].append(active_spec)
+                print(f"Matched species {active_spec.species_properties['sym_name']} to debris species {deb_spec.species_properties['sym_name']}.")
+                found_mass_match_debris = True
+
+        if not found_mass_match_debris:
+            print(f"No matching mass debris species found for species {active_spec.species_properties['sym_name']} with mass {spec_mass}.")
+
+    # Display information about linked active species for each debris species
+    for deb_spec in debris_species:
+        linked_spec_names = [spec.species_properties['sym_name'] for spec in deb_spec.species_properties.get('pmd_linked_species', [])]
+        print(f"    Name: {deb_spec.species_properties['sym_name']}")
+        print(f"    pmd_linked_species: {linked_spec_names}")
+        # Additional processing for disposal_altitude and pmd_linked_multiplier can be added here
+
+# Example usage of find_alt_bin, assuming altitude bins are predefined in scen_properties
+def find_alt_bin(disposal_altitude, scen_properties):
+    # This is a placeholder function; you need to define the logic based on your altitude bins
+    pass
+

@@ -49,7 +49,7 @@ class SpeciesProperties:
         self.lambda_python_args = None
 
         # For Derelicts
-        self.pmd_linked_species = None
+        self.pmd_linked_species = []
         self.pmd_linked_multiplier = None  # Used when multiple shells dispose to one orbit.
 
         # References
