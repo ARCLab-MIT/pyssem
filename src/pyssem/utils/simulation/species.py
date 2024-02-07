@@ -1,8 +1,8 @@
 import json
 from math import pi
-from utils.pmd.pmd import pmd_func
-from utils.drag.drag import drag_func
-from utils.launch.launch import launch_func
+from utils.pmd.pmd import *
+from utils.drag.drag import *
+from utils.launch.launch import *
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -66,8 +66,9 @@ class SpeciesProperties:
         self.t_plan_period = 1
         self.prev_prop_results = None
 
+        # Functions
         self.launch_func = None
-        self.pmd_func = pmd_func
+        self.pmd_func = None
         self.drag_func = None
 
         # If a JSON string is provided, parse it and update the properties
@@ -123,6 +124,11 @@ class Species:
             su_properties.alpha_active = 1e-5
             su_properties.RBflag = 0
 
+            # Functions
+            su_properties.launch_func = launch_func_constant
+            su_properties.pmd_func = pmd_func_sat
+            su_properties.drag_func = drag_func_exp
+
             # Append Species
             self.species.append(su_properties)
        
@@ -152,7 +158,12 @@ class Species:
             s_properties.Pm = 0.90 # post mission disposal efficacy
             s_properties.alpha = 1e-5
             s_properties.alpha_active = 1e-5
- 
+            
+            # Functions
+            s_properties.launch_func = launch_func_constant
+            s_properties.pmd_func = pmd_func_sat
+            s_properties.drag_func = drag_func_exp
+
             # Append Species
             self.species.append(s_properties)
             
@@ -178,6 +189,11 @@ class Species:
             sns_properties.maneuverable = False
             sns_properties.deltat = 3
             sns_properties.Pm = 0
+
+            # Functions
+            sns_properties.launch_func = launch_func_constant
+            sns_properties.pmd_func = pmd_func_sat
+            sns_properties.drag_func = drag_func_exp
 
             # Append Species
             self.species.append(sns_properties)
@@ -220,6 +236,11 @@ class Species:
             n_properties.alpha = 0
             n_properties.alpha_active = 0
             n_properties.RBflag = 1
+
+            # Functions
+            n_properties.launch_func = launch_func_null
+            n_properties.pmd_func = pmd_func_derelict
+            n_properties.drag_func = drag_func_exp
 
             # Append Species
             self.species.append(n_properties)

@@ -64,20 +64,23 @@ def densityexp(h):
     return p
 
 
-def drag_func(t, species, scene_properties):
+def drag_func_exp(t, species, scen_properties):
     """
     Drag function for the species
+
+    Currently this is only for exponential atmospheric density model. I think it would be best
+    to make this flexible for all models which are defined by the user.
 
     Args:
         t (float): Time from scenario start in years
         species (Species): A Species Object with properties for the species
-        scene_properties (SceneProperties): A SceneProperties Object with properties for the scenario
+        scen_properties (SceneProperties): A SceneProperties Object with properties for the scenario
 
     Returns:
         numpy.ndarray: The rate of change in the species in each shell at the specified time due to drag.
                        If only one value is applied, it is assumed to be true for all shells.
     """
-    Fdot = zeros(scene_properties.n_shells, 1)
+    Fdot = zeros(scen_properties.n_shells, 1)
 
     if species.drag_effected:
         # Calculate the Shell's altitde and Atmopsheric Density
@@ -85,29 +88,29 @@ def drag_func(t, species, scene_properties):
         rho = densityexp(h) # Currently only exponential
 
         # Calculate the drag force 
-        for k in range(scene_properties.n_shell):
+        for k in range(scen_properties.n_shell):
             
             # Check the shell is not the top shell
-            if k < scene_properties.n_shell:
+            if k < scen_properties.n_shell:
                 n0 = species.sym(k+1)
-                h = scene_properties.sym(k+1)
+                h = scen_properties.sym(k+1)
                 rho_k1 = rho(k+1)
 
                 # Calculate Drag Flux (Relative Velocity)
-                rvel_upper = -rho_k1 * species.beta * sqrt(scene_properties.mu * scene_properties.RO(k+1)) * (24 * 3600* 365.25)
+                rvel_upper = -rho_k1 * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k+1)) * (24 * 3600* 365.25)
             
             # Otherwise assume that no flux is coming down from the highest shell
             else:
                 n0 = 0
-                h = scene_properties.R02(k+1)
+                h = scen_properties.R02(k+1)
                 rho_k1 = rho(k+1)
 
                 # Calculate Drag Flux
-                rvel_upper = -rho_k1 * species.beta * sqrt(scene_properties.mu * scene_properties.RO(k+1)) * (24 * 3600* 365.25)
+                rvel_upper = -rho_k1 * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k+1)) * (24 * 3600* 365.25)
         
         # Take the current shell and then calculate...
         rho_current_shell_k = rho(k)
-        rvel_current = -rho_current_shell_k * species.beta * sqrt(scene_properties.mu * scene_properties.RO(k)) * (24 * 3600* 365.25)
-        #Fdot(k, 1) = +n0*rvel_upper/scene_properties.Dhu + rvel_current/scene_properties.Dhl * species.sym(k)
+        rvel_current = -rho_current_shell_k * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k)) * (24 * 3600* 365.25)
+        #Fdot(k, 1) = +n0*rvel_upper/scen_properties.Dhu + rvel_current/scen_properties.Dhl * species.sym(k)
 
 
