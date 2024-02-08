@@ -115,7 +115,7 @@ class Species:
         if "_" in species_properties['sym_name']:
             raise ValueError("Species names cannot contain underscores.")
 
-        species_list = []
+        multi_species_list = []
         num_species = len(species_properties['mass'])
 
         for i in range(num_species):
@@ -148,25 +148,26 @@ class Species:
             if 'radius' in species_props_copy and 'trackable' not in species_props_copy:
                 species_props_copy['trackable'] = species_props_copy['radius'] >= trackable_radius_threshold
 
-        # Create the species instance and append it to the species list
-        species_instance = SpeciesProperties(species_props_copy)
-        species_list.append(species_instance)
+            # Create the species instance and append it to the species list
+            species_instance = SpeciesProperties(species_props_copy)
+            multi_species_list.append(species_instance)
 
-        # Sort the species list by mass and set upper and lower bounds for mass bins
-        # Remember now an object not a json, so we need to use the class properties
-        species_list.sort(key=lambda x: x.mass)
-        for i, species in enumerate(species_list):
-            if i == 0:
-                species.mass_ub = 0.5 * (species.mass + species_list[i + 1].mass)
-            elif i == len(self.species_list) - 1:
-                species.mass_lb = 0.5 * (species_list[i - 1].mass + species.mass)
-            else:
-                species.mass_ub = 0.5 * (species.mass + self.species_list[i + 1].mass)
-                species.mass_lb = 0.5 * (species_list[i - 1].mass + species.mass)
+        
+        # # Sort the species list by mass and set upper and lower bounds for mass bins
+        # # Remember now an object not a json, so we need to use the class properties
+        multi_species_list.sort(key=lambda x: x.mass)
+
+        # I am not entirely sure what this does... Removing for now
+        # for i, species in enumerate(multi_species_list):
+        #     if i == len(self.species) - 1:
+        #         species.mass_lb = 0.5 * (multi_species_list[i - 1].mass + species.mass)
+        #     else:
+        #         species.mass_ub = 0.5 * (species.mass + multi_species_list[i + 1].mass)
+        #         species.mass_lb = 0.5 * (multi_species_list[i - 1].mass + species.mass)
 
         # Add to global species list
-        print(f'Splitting species {species_properties.sym_name} into {num_species} species with masses {species_properties.mass}.')
-        self.species.extend(species_list)
+        print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
+        return multi_species_list
         
     def add_species_from_json(self, species_json: json) -> None:
         """
@@ -181,12 +182,11 @@ class Species:
         # loop through the json and pass create and instance of species properties for each species
         for species_name, properties in species_json.items():
             # Multiple masses means it needs to be copied and passed correctly
-            if len(properties['mass']) > 1:
+            if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
                 multiple_species = self.add_multi_property_species(properties)
                 self.species.extend(multiple_species)
             else:
                 temp = SpeciesProperties(properties)
                 self.species.append(temp)
-
 
         return self.species
