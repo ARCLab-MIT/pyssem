@@ -157,15 +157,7 @@ class Species:
         
         # # Sort the species list by mass and set upper and lower bounds for mass bins
         # # Remember now an object not a json, so we need to use the class properties
-        multi_species_list.sort(key=lambda x: x.mass)
-
-        # I am not entirely sure what this does... Removing for now
-        # for i, species in enumerate(multi_species_list):
-        #     if i == len(self.species) - 1:
-        #         species.mass_lb = 0.5 * (multi_species_list[i - 1].mass + species.mass)
-        #     else:
-        #         species.mass_ub = 0.5 * (species.mass + multi_species_list[i + 1].mass)
-        #         species.mass_lb = 0.5 * (multi_species_list[i - 1].mass + species.mass)
+        multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
 
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")

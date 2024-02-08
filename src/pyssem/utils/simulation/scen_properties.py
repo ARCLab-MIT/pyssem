@@ -115,18 +115,12 @@ class ScenarioProperties:
         """
 
         # Collect active species and their names
-        linked_spec_list = []
-        linked_spec_names = []
-        for cur_species in active_species:
-            if cur_species.active:
-                linked_spec_list.append(cur_species)
-                linked_spec_names.append(cur_species.sym_name)
-
+        linked_spec_names = [item.sym_name for item in active_species]
         print("Pairing the following active species to debris classes for PMD modeling...")
         print(linked_spec_names)
 
          # Assign matching debris increase for a species due to failed PMD
-        for active_spec in linked_spec_list:
+        for active_spec in active_species:
             found_mass_match_debris = False
             spec_mass = active_spec.mass
 
