@@ -4,6 +4,7 @@
         "Cd": 2.2,
         "mass": [260, 473],
         "A": [1.6652, 13.5615],
+        "radius": [0.728045069, 2.077681285],
         "active": true,
         "maneuverable": true,
         "trackable": true,

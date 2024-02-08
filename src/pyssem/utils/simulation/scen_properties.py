@@ -113,7 +113,6 @@ class ScenarioProperties:
             active_species (list): List of active species objects.
             debris_species (list): List of debris species objects.
         """
-
         # Collect active species and their names
         linked_spec_names = [item.sym_name for item in active_species]
         print("Pairing the following active species to debris classes for PMD modeling...")

@@ -154,7 +154,6 @@ class Species:
             species_instance = SpeciesProperties(species_props_copy)
             multi_species_list.append(species_instance)
 
-        
         # # Sort the species list by mass and set upper and lower bounds for mass bins
         # # Remember now an object not a json, so we need to use the class properties
         multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
@@ -174,13 +173,47 @@ class Species:
         :rtype: None
         """
         # loop through the json and pass create and instance of species properties for each species
+        for species_name, properties in species_json.items():         
+            # This will add pass the Json Species to the SpeciesProperties class. 
+            # If the mass is a list, then we need to create multiple species with the same properties
+            if properties['active'] == True:
+                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
+                    multiple_species = self.add_multi_property_species(properties)
+                    self.species.extend(multiple_species)
+                else:
+                    self.species.append(SpeciesProperties(properties))
+
+        # Finally, all species that have been created will be added to the debris list for PMD pairing.
         for species_name, properties in species_json.items():
-            # Multiple masses means it needs to be copied and passed correctly
-            if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                multiple_species = self.add_multi_property_species(properties)
-                self.species.extend(multiple_species)
-            else:
-                temp = SpeciesProperties(properties)
-                self.species.append(temp)
+            # This will add all of the other species with multiple masses to the debris list for PMD Pairing. 
+            if properties['active'] == False:
+                
+                # Loop through the current set of species and get the mass and radius and add it to the debris list
+                active_masses = []
+                active_radii = []
+
+                for species in self.species:
+                    if species.active:
+                        active_masses.append(species.mass)
+                        active_radii.append(species.radius)
+
+                # Get the raw json of the debris species
+                debris_species = properties
+                if isinstance(properties['mass'], list):
+                    debris_species['mass'].extend(active_masses)
+                    debris_species['radius'].extend(active_radii)
+                else:
+                    debris_species['mass'] = [debris_species['mass']] # convert to list if not one
+                    debris_species['mass'].extend(active_masses)
+
+                    debris_species['radius'] = [debris_species['radius']] # convert to list if not one
+                    debris_species['radius'].extend(active_radii)
+             
+                debris_species_object = self.add_multi_property_species(debris_species)
+                self.species.extend(debris_species_object)
+                
+                
+
+
 
         return self.species
