@@ -121,7 +121,7 @@ class Species:
         for i in range(num_species):
             species_props_copy = species_properties.copy()
             species_props_copy['mass'] = species_properties['mass'][i] if isinstance(species_properties['mass'], list) else species_properties['mass']
-            species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{i}"
+            species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{species_properties['mass'][i]}kg"
 
             for field in species_properties:
                 if field == "sym_name":
