@@ -141,6 +141,8 @@ class Species:
             # Handle derived properties
             if 'radius' in species_props_copy and 'A' not in species_props_copy:
                 species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
+            if species_props_copy['A'] == "Calculated based on radius":
+                species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
             if 'A' in species_props_copy and 'amr' not in species_props_copy:
                 species_props_copy['amr'] = species_props_copy['A'] / species_props_copy['mass']
             if 'Cd' in species_props_copy and 'amr' in species_props_copy and 'beta' not in species_props_copy:

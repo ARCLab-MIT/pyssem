@@ -21,7 +21,7 @@
     "S": {
         "sym_name": "S",
         "Cd": 2.2,
-        "mass": [1250],
+        "mass": [1250, 750, 143],
         "radius": [4, 2, 0.5],
         "A": "Calculated based on radius",
         "active": true,
