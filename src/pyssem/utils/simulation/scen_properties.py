@@ -7,7 +7,7 @@ from utils.pmd.pmd import pmd_func_derelict
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, delta: float = 10.0, integrator: str = "rk4", 
+                 max_altitude: float, n_shells: int, launch_function: str, delta: float = 10.0, integrator: str = "rk4", 
                  density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
         """
         Constructor for ScenarioProperties
@@ -36,6 +36,8 @@ class ScenarioProperties:
             raise TypeError("max_altitude must be a number (int or float)")
         if not isinstance(n_shells, int):
             raise TypeError("shells must be an integer")
+        if not isinstance(launch_function, str):
+            raise TypeError("launch_function must be a string")
         if not isinstance(delta, (int, float)):
             raise TypeError("delta must be a number (int or float)")
         if not isinstance(integrator, str):
@@ -53,6 +55,7 @@ class ScenarioProperties:
         self.min_altitude = min_altitude
         self.max_altitude = max_altitude
         self.n_shells = n_shells
+        self.launch_function = launch_function
         self.delta = delta
         self.integrator = integrator
         self.density_model = density_model
@@ -104,38 +107,6 @@ class ScenarioProperties:
         """
         self.species = species_list
 
-    def pair_actives_to_debris(scen_properties, active_species, debris_species):
-        """
-        Pairs all active species to debris species for PMD modeling.
-
-        Args:
-            scen_properties (dict): Properties for the scenario.
-            active_species (list): List of active species objects.
-            debris_species (list): List of debris species objects.
-        """
-        # Collect active species and their names
-        linked_spec_names = [item.sym_name for item in active_species]
-        print("Pairing the following active species to debris classes for PMD modeling...")
-        print(linked_spec_names)
-
-         # Assign matching debris increase for a species due to failed PMD
-        for active_spec in active_species:
-            found_mass_match_debris = False
-            spec_mass = active_spec.mass
-
-            for deb_spec in debris_species:
-                if spec_mass == deb_spec.mass:
-                    deb_spec.pmd_func = pmd_func_derelict
-                    deb_spec.pmd_linked_species = []                
-                    deb_spec.pmd_linked_species.append(active_spec)
-                    print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
-                    found_mass_match_debris = True
-
-            if not found_mass_match_debris:
-                print(f"No matching mass debris species found for species {active_spec.sym_name} with mass {spec_mass}.")
-
-        # Display information about linked active species for each debris species
-        for deb_spec in debris_species:
-            linked_spec_names = [spec.sym_name for spec in deb_spec.pmd_linked_species if not None]
-            print(f"    Name: {deb_spec.sym_name}")
-            print(f"    pmd_linked_species: {linked_spec_names}")
+    def get_species(self):
+        return self.species
+        

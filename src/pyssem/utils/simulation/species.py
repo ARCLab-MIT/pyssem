@@ -211,9 +211,61 @@ class Species:
              
                 debris_species_object = self.add_multi_property_species(debris_species)
                 self.species.extend(debris_species_object)
-                
-                
-
-
 
         return self.species
+    
+    def apply_launch_rates(self, n_shells: int):
+        """
+        This will loop through each of the species, if launch rate is constant, it will create a launch array. 
+        This should be edited in the future to be more dynamic for the user. 
+
+        """
+        for species in self.species:
+            if species.launch_func == "launch_func_constant":
+                species.lambda_constant = [500 * np.random.rand() for _ in range(n_shells)]
+                # Direct copy from MATLAB
+                #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
+
+    def create_symbolic_variables(self, n_shells: int):
+        """
+        This will create the symbolic variables for each of the species. 
+        """
+        for species in self.species:
+            species.sym = symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)])
+
+    
+    def pair_actives_to_debris(scen_properties, active_species, debris_species):
+        """
+        Pairs all active species to debris species for PMD modeling.
+
+        Args:
+            scen_properties (dict): Properties for the scenario.
+            active_species (list): List of active species objects.
+            debris_species (list): List of debris species objects.
+        """
+        # Collect active species and their names
+        linked_spec_names = [item.sym_name for item in active_species]
+        print("Pairing the following active species to debris classes for PMD modeling...")
+        print(linked_spec_names)
+
+        # Assign matching debris increase for a species due to failed PMD
+        for active_spec in active_species:
+            found_mass_match_debris = False
+            spec_mass = active_spec.mass
+
+            for deb_spec in debris_species:
+                if spec_mass == deb_spec.mass:
+                    deb_spec.pmd_func = pmd_func_derelict
+                    deb_spec.pmd_linked_species = []                
+                    deb_spec.pmd_linked_species.append(active_spec)
+                    print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
+                    found_mass_match_debris = True
+
+            if not found_mass_match_debris:
+                print(f"No matching mass debris species found for species {active_spec.sym_name} with mass {spec_mass}.")
+
+        # Display information about linked active species for each debris species
+        for deb_spec in debris_species:
+            linked_spec_names = [spec.sym_name for spec in deb_spec.pmd_linked_species if not None]
+            print(f"    Name: {deb_spec.sym_name}")
+            print(f"    pmd_linked_species: {linked_spec_names}")

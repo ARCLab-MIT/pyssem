@@ -50,26 +50,3 @@ def launch_func_constant(t, h, species_properties, scen_properties):
     Lambdadot_list = [Lambdadot[i] for i in range(scen_properties.n_shells)]
 
     return Lambdadot_list
-
-    # def launch_func_constant(self):
-    #     """
-    #     Adds constant launch rate from species_properties.lambda_constant
-
-    #     Args:
-    #         t (float): Time from scenario start in years
-    #         h (array_like): The set of altitudes of the scenario above ellipsoid in km of shell lower edges.
-    #         species_properties (dict): A dictionary with properties for the species
-    #         scen_properties (dict): A dictionary with properties for the scenario
-
-    #     Returns:
-    #         numpy.ndarray: The rate of change in the species in each shell at the specified time due to launch.
-    #                     If only one value is applied, it is assumed to be true for all shells.
-    #     """
-
-    #     lambda_constant = [500 * random.random() for i in range(self.n_shells)]
-
-    #     # Generate symbolic variables and multiply each by the corresponding lambda_constant value
-    #     Lambdadot_symbols = symbols('Lambdadot_1:%d' % (self.n_shells + 1))  # Create n shells symbolic variables
-    #     Lambdadot = Matrix(self.n_shells, 1, lambda i, j: Lambdadot_symbols[i] * lambda_constant[i])
-        
-    #     return Lambdadot
