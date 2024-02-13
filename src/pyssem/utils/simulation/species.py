@@ -155,7 +155,6 @@ class Species:
             multi_species_list.append(species_instance)
 
         # # Sort the species list by mass and set upper and lower bounds for mass bins
-        # # Remember now an object not a json, so we need to use the class properties
         multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
 
         # Add to global species list
@@ -234,12 +233,11 @@ class Species:
             species.sym = symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)])
 
     
-    def pair_actives_to_debris(scen_properties, active_species, debris_species):
+    def pair_actives_to_debris(self, active_species, debris_species):
         """
         Pairs all active species to debris species for PMD modeling.
 
         Args:
-            scen_properties (dict): Properties for the scenario.
             active_species (list): List of active species objects.
             debris_species (list): List of debris species objects.
         """
@@ -269,3 +267,10 @@ class Species:
             linked_spec_names = [spec.sym_name for spec in deb_spec.pmd_linked_species if not None]
             print(f"    Name: {deb_spec.sym_name}")
             print(f"    pmd_linked_species: {linked_spec_names}")
+
+        # Update the species list 
+        self.species = []
+        self.species.extend(active_species)
+        self.species.extend(debris_species)
+        
+        
