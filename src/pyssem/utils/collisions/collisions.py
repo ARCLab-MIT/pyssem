@@ -121,7 +121,38 @@ def calculate_amsms_not_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
-def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1):
+def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1): # eventually add stochastic ability
+    """
+    Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
+    Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
+    diameters of the fragments.
+
+    :param m1: Mass of Object 1 [kg]
+    :type m1: int or float
+    :param m2: Mass of Object 2 [kg]
+    :type m2:  int or float
+    :param r1: Radius of Object 1 [m]
+    :type r1: int or float
+    :param r2: Radius of Object 2 [m]
+    :type r2: int or float
+    :param dv: Collision velocity [km/s]
+    :type dv: int or float
+    :param binC: bin center for mass binning
+    :type binC: int or float
+    :param binE: bin edges for mass binning
+    :type binE: int or float
+    :param binW: bin widths for mass binning
+    :type binW: int or float
+    :param LBdiam:  Lower bound of Characteristic Length
+    :type LBdiam: int or float
+    :param RBflag: for area to mass ratio (func_Am.m), 1: RB; 0: not RB (default) (optional, defaults to 0)
+    :type RBflag: int, optional
+    :param sto: _stochastic flag (default: 1) (optional) (0 for deterministic, not implemented yet) 
+    :type sto: int, optional
+    :raises ValueError: _description_
+    :return: _description_
+    :rtype: _type_
+    """
     # Super sampling ratio
     SS = 10
 
@@ -186,11 +217,34 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
 
     # Calculate the mass of objects
     A = 0.556945 * dss ** 2.0047077
-    Am = 1
+    Am = func_Am(dss, objclass) # use Am conversion of the larger object
     m = A/Am
 
+    # Binnig via histcounts
+    nums, _ = np.histogram(m, bins=binEd)
+    nums = nums / SS # Correct for super sampling
+
+    # Define binOut based on the option chosen for bin setup
+    binOut = []
+    if binC is not None and binE is None and binW is None:  # Option 1: bin center given; output = edges
+        binOut = binEd
+    elif binE is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
+        binOut = binE[:-1] + np.diff(binE) / 2
+
+    return nums, isCatastrophic, binOut
 
 def create_collision_pairs(scen_properties):
+    """
+    Function takes a scen_properties object with a list of species and the same species organised in species_cells into 
+    archetypical categories. It calculate and creates a set of species_pair objects which is stored at the scen_properties
+    object and used to compile collision equations during the model building process.
+
+    The model is aware of trackability, maneuverability and slotting. Object fragmentation counts are based on the NASA 
+    Standard Breakup model. 
+
+    :param scen_properties: ScenarioProperties object
+    :type scen_properties: ScenarioProperties
+    """
     
     # Get the binomial coefficient of the species
     # This returns all possible combinations of the species
@@ -225,8 +279,9 @@ def create_collision_pairs(scen_properties):
     binE = np.unique(binE)
 
     for i, (s1, s2) in enumerate(species_pairs):
-        # Get names
-        n1, n2 = s1.sym_name, s2.sym_name
+        # Get names and radii
+        m1, m2 = s1.sym_name, s2.sym_name
+        r1, r2 = s1.radius, s2.radius
 
         gammas = -np.ones((scen_properties.n_shells, 2), dtype='object')  # SymPy symbols can be used as dtype=object
 
@@ -258,7 +313,7 @@ def create_collision_pairs(scen_properties):
 
         for dv_index in range(len(scen_properties.v_imp2)):
             dv = scen_properties.v_imp2[dv_index]
-            [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag, sto)
+            [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBgiven, RBflag)
 
 
 
