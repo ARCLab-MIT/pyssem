@@ -156,25 +156,27 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     # Super sampling ratio
     SS = 10
 
-    # Define and validate the bin edges
-    if binC is not None and binE is None and binW is None:
-        # Bin centers are given, but not edges or widths
-        LBm = binC[0] - (binC[1] - binC[0]) / 2
-        UBm = binC[-1] + (binC[-1] - binC[-2]) / 2
-        binEd = np.concatenate(([LBm], (binC[:-1] + binC[1:]) / 2, [UBm]))
-    
-    # bin width is given, but gaps exist
-    elif binC is not None and binE is not None and binE is None:
+    if len(binC) > 0 and len(binE) == 0 and len(binW) == 0:  # Option 1: bin center given
+        LBm = binC[0] - (binC[1] - binC[0]) / 2  # Extrapolate for lowest edge
+        UBm = binC[-1] + (binC[-1] - binC[-2]) / 2  # For highest edge
+        binEd = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
+        
+    elif len(binC) > 0 and len(binW) > 0 and len(binE) == 0:  # Option 2: bin width given; bin gaps exist
         binEd1 = binC - binW / 2
         binEd2 = binC + binW / 2
-        binEd = np.concatenate(([binEd1[0]], binEd2))
-    
-    # bin edges are given
-    elif binE is not None and binC is None and binW is None:
+        binEd = np.sort(np.concatenate((binEd1, binEd2)))  # Combine and sort edges
+        
+        # Check for overlapping bin edges
+        if any(np.diff(binC) < binW):
+            errinds = np.where(np.diff(binC) < binW)[0]
+            raise ValueError(f"Overlapping bin edges between bin centered at {binC[errinds[0]]:.1f} and {binC[errinds[0] + 1]:.1f}")
+            
+    elif len(binE) > 0 and len(binC) == 0 and len(binW) == 0:  # Option 3: bin edges given
         binEd = np.sort(binE)
-
+        
     else:
-        raise ValueError('Wrong setup for bins given')
+        raise ValueError(f"Wrong setup for bins given (binC empty: {len(binC) == 0}; binE empty: {len(binE) == 0}; binW empty: {len(binW) == 0})")
+
 
     LB = LBdiam
     objclass = 5 if RBflag == 0 else 0
@@ -289,32 +291,41 @@ def create_collision_pairs(scen_properties):
 
         if s1.maneuverable and s2.maneuverable:
             # Both species are maneuverable
-            gammas[:, 1] = gammas[:, 1] * s1.alpha_active * s2.alpha_active
+            gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
             if s1.slotted and s2.slotted:
                 # Both species are slotted
-                gammas[:, 1] = gammas[:, 1] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+                gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
         
         elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
             if s1.trackable and s2.maneuverable:
-                gammas[:, 1] = gammas[:, 1] * s2.alpha
+                gammas[:, 0] = gammas[:, 0] * s2.alpha
             elif s2.trackable and s1.maneuverable:
-                gammas[:, 1] = gammas[:, 1] * s1.alpha
+                gammas[:, 0] = gammas[:, 0] * s1.alpha
 
         # The gamma burden is symmetric lost to both colliding species
-        gammas[:, 2] = gammas[:, 1]            
+        gammas[:, 1] = gammas[:, 0]            
     
         # Find the debris generation for each debris class from S1-S2 collision
         RBflag = max(s1.RBflag, s2.RBflag)
 
         # Initialise empty array. Rows = altitudes with different dv values
         # Cols = debris species in order of debris species list
-        frags_made = np.zeros(len(scen_properties.v_imp2, len(debris_species)))
-        is_catastrophic = np.zeros(1, len(debris_species))
+        
+        frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
+        is_catastrophic = np.zeros((1, len(debris_species)))
 
         for dv_index in range(len(scen_properties.v_imp2)):
             dv = scen_properties.v_imp2[dv_index]
             [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBgiven, RBflag)
 
+        # Populate gammas and source sinks for the debris species
+        for i, j in enumerate(debris_species):
+            gammas[:, 1+i] = gammas[:, 1] * frags_made[:, i] * n_f[i]  
+            source_sinks[1+i] = j
+
+        # Create the species pair object
+        source_sinks
+        # species_pairs_classes.append(SpeciesPair(s1, s2, gammas, source_sinks, is_catastrophic))
 
 
 
