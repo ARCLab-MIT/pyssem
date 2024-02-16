@@ -20,6 +20,7 @@ def main(species_json):
     species_list.add_species_from_json(species_json)
 
     # Apply Launch Rates and create symbolic variables
+    # launch function should be constant over time, rather than a function of altitude=
     species_list.apply_launch_rates(scenario_properties.n_shells)
     species_list.create_symbolic_variables(scenario_properties.n_shells)
 

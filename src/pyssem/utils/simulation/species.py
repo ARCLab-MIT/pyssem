@@ -157,6 +157,9 @@ class Species:
         # # Sort the species list by mass and set upper and lower bounds for mass bins
         multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
 
+        # Each species has a mass, the code will need to understand what the lower and upper bounds are for each species.
+        # you need to able to define the upper and lower bounds for the average of that sub-species 
+
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
         return multi_species_list
@@ -221,7 +224,11 @@ class Species:
         """
         for species in self.species:
             if species.launch_func == "launch_func_constant":
-                species.lambda_constant = [500 * np.random.rand() for _ in range(n_shells)]
+                # probably should remove for the constant launch_rate 
+                # they should provide a scalar or a vector, this would have to be called if you want a time varying function for the ODE
+                # if you provide something that is non-constant, then a user should have to provide a vector 
+                # time not alt
+                species.lambda_constant = [20 for _ in range(n_shells)]
                 # Direct copy from MATLAB
                 #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
 

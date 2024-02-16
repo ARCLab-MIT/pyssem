@@ -222,7 +222,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     Am = func_Am(dss, objclass) # use Am conversion of the larger object
     m = A/Am
 
-    # Binnig via histcounts
+    # Binning via histcounts
     nums, _ = np.histogram(m, bins=binEd)
     nums = nums / SS # Correct for super sampling
 
@@ -285,7 +285,8 @@ def create_collision_pairs(scen_properties):
         m1, m2 = s1.sym_name, s2.sym_name
         r1, r2 = s1.radius, s2.radius
 
-        gammas = -np.ones((scen_properties.n_shells, 2), dtype='object')  # SymPy symbols can be used as dtype=object
+
+        gammas = -np.ones((scen_properties.n_shells, 2), dtype='object') 
 
         source_sinks = [s1, s2]
 
@@ -303,6 +304,7 @@ def create_collision_pairs(scen_properties):
                 gammas[:, 0] = gammas[:, 0] * s1.alpha
 
         # The gamma burden is symmetric lost to both colliding species
+        # the losses are the same for both species
         gammas[:, 1] = gammas[:, 0]            
     
         # Find the debris generation for each debris class from S1-S2 collision
@@ -326,7 +328,7 @@ def create_collision_pairs(scen_properties):
 
         # Create the species pair object
         source_sinks
-        species_pairs_classes.append(SpeciesPair(s1, s2, gammas, source_sinks, is_catastrophic))
+        #species_pairs_classes.append(SpeciesPair(s1, s2, gammas, source_sinks, is_catastrophic))
 
 
 

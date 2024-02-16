@@ -93,7 +93,7 @@ class ScenarioProperties:
         self.Dhl = self.deltaH * 1000
         self.Dhu = -self.deltaH * 1000
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
-        self.R0 = R0
+        self.R0 = R0 # gives you the shells <- gives you the top or bottom of shells -> is this needed in python?
         self.R02 = R0
 
         # An empty list for the species
