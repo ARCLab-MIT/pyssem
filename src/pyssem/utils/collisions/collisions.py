@@ -157,21 +157,21 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     SS = 10
 
     if len(binC) > 0 and len(binE) == 0 and len(binW) == 0:  # Option 1: bin center given
-        LBm = binC[0] - (binC[1] - binC[0]) / 2  # Extrapolate for lowest edge
-        UBm = binC[-1] + (binC[-1] - binC[-2]) / 2  # For highest edge
+        LBm = binC[0] - (binC[1] - binC[0]) / 2  
+        UBm = binC[-1] + (binC[-1] - binC[-2]) / 2 
         binEd = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
         
-    elif len(binC) > 0 and len(binW) > 0 and len(binE) == 0:  # Option 2: bin width given; bin gaps exist
+    elif len(binC) > 0 and len(binW) > 0 and len(binE) == 0: 
         binEd1 = binC - binW / 2
         binEd2 = binC + binW / 2
-        binEd = np.sort(np.concatenate((binEd1, binEd2)))  # Combine and sort edges
+        binEd = np.sort(np.concatenate((binEd1, binEd2)))
         
         # Check for overlapping bin edges
         if any(np.diff(binC) < binW):
             errinds = np.where(np.diff(binC) < binW)[0]
             raise ValueError(f"Overlapping bin edges between bin centered at {binC[errinds[0]]:.1f} and {binC[errinds[0] + 1]:.1f}")
             
-    elif len(binE) > 0 and len(binC) == 0 and len(binW) == 0:  # Option 3: bin edges given
+    elif len(binE) > 0 and len(binC) == 0 and len(binW) == 0:
         binEd = np.sort(binE)
         
     else:
@@ -315,6 +315,7 @@ def create_collision_pairs(scen_properties):
         is_catastrophic = np.zeros((1, len(debris_species)))
 
         for dv_index in range(len(scen_properties.v_imp2)):
+            # calculate collsiion velocity
             dv = scen_properties.v_imp2[dv_index]
             [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBgiven, RBflag)
 
@@ -325,7 +326,7 @@ def create_collision_pairs(scen_properties):
 
         # Create the species pair object
         source_sinks
-        # species_pairs_classes.append(SpeciesPair(s1, s2, gammas, source_sinks, is_catastrophic))
+        species_pairs_classes.append(SpeciesPair(s1, s2, gammas, source_sinks, is_catastrophic))
 
 
 
