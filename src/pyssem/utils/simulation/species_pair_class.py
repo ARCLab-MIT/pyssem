@@ -1,5 +1,5 @@
 import numpy as np
-import sympy as sp
+from sympy import symbols, zeros
 
 class SpeciesPairClass:
     def __init__(self, species1, species2, gammas, source_sinks, scen_properties):
@@ -94,24 +94,34 @@ class SpeciesPairClass:
             np.ndarray: An array of symbolic equations for the collision probability modifiers in gamma
             and the species in source_sinks.
         """
-        eqs = np.zeros((scen_properties.n_shells, len(scen_properties.species)), dtype=object)  # Holds symbolic equations
-        n_f_symbols = sp.symbols(f'n_f:{scen_properties.n_shells}')  # A tuple of symbols for each shell
+        eqs = zeros(scen_properties.n_shells, len(scen_properties.species))
 
-        for i, gamma in enumerate(gammas.T):
+        # Define symbols for each shell
+        n_f_symbols = symbols(f'n_f:{scen_properties.n_shells}')
+
+        for i, gamma in enumerate(gammas.transpose()):
             eq_index = next((index for index, spec in enumerate(scen_properties.species) if spec.sym_name == source_sinks[i].sym_name), None)
             if eq_index is None:
                 raise ValueError(f"Equation index not found for {source_sinks[i].sym_name}")
 
-            # Assume self.phi, self.species1.sym, and self.species2.sym are properly defined symbolic expressions
+            # Calculate the equation assuming self.phi, self.species1.sym, and self.species2.sym are SymPy expressions
             eq = gamma * self.phi * self.species1.sym * self.species2.sym
 
-            # Convert to a sympy matrix
-            eq = sp.Matrix(eq)
-
-            # If self.nf is a collection that matches the structure of n_f_symbols, perform substitution accordingly
+            # Perform substitution for each n_f symbol with its corresponding value in self.nf
             for n_f, value in zip(n_f_symbols, self.nf):
                 eq = eq.subs(n_f, value)
 
-            eqs[:, eq_index] += eq  # Update the equations array
+            # Since SymPy matrices are immutable, use row_insert and col_insert for updating 'eqs'
+            # First, construct a column matrix for the updated equations
+            updated_col = eqs.col(eq_index) + eq
+
+            # Insert the updated column back into 'eqs'
+            if eq_index > 0:
+                eqs = eqs[:, :eq_index].row_join(updated_col)
+            else:
+                eqs = updated_col
+
+            if eq_index < eqs.cols - 1:
+                eqs = eqs.row_join(eqs[:, eq_index + 1:])
 
         return eqs

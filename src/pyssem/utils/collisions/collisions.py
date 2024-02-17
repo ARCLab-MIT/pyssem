@@ -290,62 +290,106 @@ def create_collision_pairs(scen_properties):
 
     binE = np.unique(binE)
 
+    # for i, (s1, s2) in enumerate(species_pairs):
+    #     # Get names and radii
+    #     m1, m2 = s1.mass, s2.mass
+    #     r1, r2 = s1.radius, s2.radius
+
+    #     # gammas = -np.ones((scen_properties.n_shells, 2), dtype='object') 
+    #     gammas = -np.ones((scen_properties.n_shells, 2 + len(debris_species)), dtype='object')
+
+    #     source_sinks = [s1, s2]
+
+    #     if s1.maneuverable and s2.maneuverable:
+    #         # Both species are maneuverable
+    #         gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
+    #         if s1.slotted and s2.slotted:
+    #             # Both species are slotted
+    #             gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+        
+    #     elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
+    #         if s1.trackable and s2.maneuverable:
+    #             gammas[:, 0] = gammas[:, 0] * s2.alpha
+    #         elif s2.trackable and s1.maneuverable:
+    #             gammas[:, 0] = gammas[:, 0] * s1.alpha
+
+    #     # The gamma burden is symmetric lost to both colliding species
+    #     # the losses are the same for both species, so apply the first column to the second
+    #     gammas[:, 1] = gammas[:, 0]            
+    
+    #     # Find the debris generation for each debris class from S1-S2 collision
+    #     RBflag = max(s1.RBflag, s2.RBflag)
+
+    #     # Initialise empty array. 
+    #     # Rows = altitudes with different dv values
+    #     # Cols = debris species in order of debris species list
+    #     frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
+
+    #     # Dont need to check whether its catastrophic or not, as the function does this internally
+    #     # is_catastrophic = np.zeros(len(scen_properties.v_imp2))
+
+    #     for dv_index, dv in enumerate(scen_properties.v_imp2):
+    #         # For each shell (with an impact velocity) calculate the number of fragments made
+    #         frags_made[dv_index, :], _ = evolve_bins(
+    #             m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+        
+    #     # Populate gammas and source sinks for the debris species
+    #     for i, j in enumerate(debris_species):
+    #         gammas[:, 2+i] = gammas[:, 1] * frags_made[:, i] * n_f[i]
+    #         if 2+i < len(source_sinks):
+    #             source_sinks[2+i] = j
+    #         else:
+    #             source_sinks.append(j)
+
+    #     # Create the species pair object
+    #     source_sinks
+    #     species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
     for i, (s1, s2) in enumerate(species_pairs):
-        # Get names and radii
         m1, m2 = s1.mass, s2.mass
         r1, r2 = s1.radius, s2.radius
 
-        # gammas = -np.ones((scen_properties.n_shells, 2), dtype='object') 
-        gammas = -np.ones((scen_properties.n_shells, 2 + len(debris_species)), dtype='object')
+        # Initialize 'gammas' as a SymPy Matrix filled with -1
+        gammas = Matrix(scen_properties.n_shells, 2 + len(debris_species), lambda i, j: -1)
 
         source_sinks = [s1, s2]
 
-        if s1.maneuverable and s2.maneuverable:
-            # Both species are maneuverable
-            gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
-            if s1.slotted and s2.slotted:
-                # Both species are slotted
-                gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
-        
-        elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
-            if s1.trackable and s2.maneuverable:
-                gammas[:, 0] = gammas[:, 0] * s2.alpha
-            elif s2.trackable and s1.maneuverable:
-                gammas[:, 0] = gammas[:, 0] * s1.alpha
+        # Example of modifying 'gammas' using SymPy methods
+        for row in range(scen_properties.n_shells):
+            multiplier = 1  # Default multiplier
+            if s1.maneuverable and s2.maneuverable:
+                multiplier *= s1.alpha_active * s2.alpha_active
+                if s1.slotted and s2.slotted:
+                    multiplier *= min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+            elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
+                if s1.trackable and s2.maneuverable:
+                    multiplier *= s2.alpha
+                elif s2.trackable and s1.maneuverable:
+                    multiplier *= s1.alpha
 
-        # The gamma burden is symmetric lost to both colliding species
-        # the losses are the same for both species, so apply the first column to the second
-        gammas[:, 1] = gammas[:, 0]            
-    
-        # Find the debris generation for each debris class from S1-S2 collision
+            # Update 'gammas' rows with the computed multiplier
+            gammas[row, 0] *= multiplier
+            gammas[row, 1] = gammas[row, 0]  # Copy the first column to the second
+
         RBflag = max(s1.RBflag, s2.RBflag)
-
-        # Initialise empty array. 
-        # Rows = altitudes with different dv values
-        # Cols = debris species in order of debris species list
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
 
-        # Dont need to check whether its catastrophic or not, as the function does this internally
-        # is_catastrophic = np.zeros(len(scen_properties.v_imp2))
-
         for dv_index, dv in enumerate(scen_properties.v_imp2):
-            # For each shell (with an impact velocity) calculate the number of fragments made
-            frags_made[dv_index, :], _ = evolve_bins(
-                m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
-        
-        # Populate gammas and source sinks for the debris species
-        for i, j in enumerate(debris_species):
-            gammas[:, 2+i] = gammas[:, 1] * frags_made[:, i] * n_f[i]
-            if 2+i < len(source_sinks):
-                source_sinks[2+i] = j
-            else:
-                source_sinks.append(j)
+            frags_made[dv_index, :], _ = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
 
-        # Create the species pair object
-        source_sinks
+        # Populate 'gammas' and 'source_sinks' for the debris species
+        for i, species in enumerate(debris_species):
+            # Convert relevant 'frags_made' slice to a SymPy matrix for operations
+            frags_made_sym = Matrix(frags_made[:, i])
+            gammas[:, 2+i] = gammas[:, 1].multiply_elementwise(frags_made_sym * n_f[i])
+
+            if 2+i < len(source_sinks):
+                source_sinks[2+i] = species
+            else:
+                source_sinks.append(species)
+
         species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
 
-    
+        
 
 
 
