@@ -156,11 +156,13 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     # Super sampling ratio
     SS = 10
 
-    if len(binC) > 0 and len(binE) == 0 and len(binW) == 0:  # Option 1: bin center given
+    # Bin Center is given
+    if len(binC) > 0 and len(binE) == 0 and len(binW) == 0: 
         LBm = binC[0] - (binC[1] - binC[0]) / 2  
         UBm = binC[-1] + (binC[-1] - binC[-2]) / 2 
         binEd = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
-        
+    
+    # Bin Edges are given
     elif len(binC) > 0 and len(binW) > 0 and len(binE) == 0: 
         binEd1 = binC - binW / 2
         binEd2 = binC + binW / 2
@@ -170,7 +172,8 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
         if any(np.diff(binC) < binW):
             errinds = np.where(np.diff(binC) < binW)[0]
             raise ValueError(f"Overlapping bin edges between bin centered at {binC[errinds[0]]:.1f} and {binC[errinds[0] + 1]:.1f}")
-            
+
+    # Bin Widths are given     
     elif len(binE) > 0 and len(binC) == 0 and len(binW) == 0:
         binEd = np.sort(binE)
         
@@ -210,7 +213,9 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
     nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  # Cumulative distribution
     ndd = np.maximum(0, -np.diff(nddcdf))
-    d_pdf = np.repeat(dd_means, np.floor(ndd) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))))
+    # Make sure int
+    repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
+    d_pdf = np.repeat(dd_means, repeat_counts)
 
     try:
         dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
@@ -278,13 +283,14 @@ def create_collision_pairs(scen_properties):
         binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
         binW[index] = debris.mass_ub - debris.mass_lb
 
+    print(binC, binE, binW)
+
     binE = np.unique(binE)
 
     for i, (s1, s2) in enumerate(species_pairs):
         # Get names and radii
-        m1, m2 = s1.sym_name, s2.sym_name
+        m1, m2 = s1.mass, s2.mass
         r1, r2 = s1.radius, s2.radius
-
 
         gammas = -np.ones((scen_properties.n_shells, 2), dtype='object') 
 
@@ -304,7 +310,7 @@ def create_collision_pairs(scen_properties):
                 gammas[:, 0] = gammas[:, 0] * s1.alpha
 
         # The gamma burden is symmetric lost to both colliding species
-        # the losses are the same for both species
+        # the losses are the same for both species, so apply the first column to the second
         gammas[:, 1] = gammas[:, 0]            
     
         # Find the debris generation for each debris class from S1-S2 collision
@@ -319,7 +325,8 @@ def create_collision_pairs(scen_properties):
         for dv_index in range(len(scen_properties.v_imp2)):
             # calculate collsiion velocity
             dv = scen_properties.v_imp2[dv_index]
-            [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBgiven, RBflag)
+            # [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, [binC], binE, binW, LBgiven, RBflag)
+            [frags_made[dv_index, :], is_catastrophic[dv_index], _] = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
 
         # Populate gammas and source sinks for the debris species
         for i, j in enumerate(debris_species):

@@ -157,8 +157,17 @@ class Species:
         # # Sort the species list by mass and set upper and lower bounds for mass bins
         multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
 
-        # Each species has a mass, the code will need to understand what the lower and upper bounds are for each species.
-        # you need to able to define the upper and lower bounds for the average of that sub-species 
+        # Update the mass_lb and mass_ub for each species
+        # This will be based on the mass of the species and the mass of the species before and after it in the list
+        for i in range(len(multi_species_list)):
+            if i == 0:  # First element (lowest mass)
+                multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
+            elif i == len(multi_species_list) - 1:  # Last element (highest mass)
+                multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
+            else:  # Elements in between
+                multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
+                multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
+
 
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
@@ -174,7 +183,7 @@ class Species:
         :return: _description_
         :rtype: None
         """
-        # loop through the json and pass create and instance of species properties for each species
+        # Loop through the json and pass create and instance of species properties for each species
         for species_name, properties in species_json.items():         
             # This will add pass the Json Species to the SpeciesProperties class. 
             # If the mass is a list, then we need to create multiple species with the same properties

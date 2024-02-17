@@ -34,9 +34,9 @@ def main(species_json):
     # Add the final species to the scenario properties to be used in the simulation
     scenario_properties.add_species_set(species_list.species)
 
-    # for s in species_list.species:
-    #     if s.sym_name == 'S_148kg':
-    #         print(s)
+    for s in species_list.species:
+        if s.sym_name == 'S_148kg':
+            print(s)
 
     # Create collision pairs al
     species_pairs = create_collision_pairs(scenario_properties)
