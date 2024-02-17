@@ -1,6 +1,7 @@
 from itertools import combinations
 from sympy import symbols
 import numpy as np
+from utils.simulation.species_pair_class import SpeciesPairClass
 #from tqdm import tqdm
 
 import numpy as np
@@ -335,7 +336,7 @@ def create_collision_pairs(scen_properties):
 
         # Create the species pair object
         source_sinks
-        #species_pairs_classes.append(SpeciesPair(s1, s2, gammas, source_sinks, is_catastrophic))
+        species_pairs_classes.append(Sp(s1, s2, gammas, source_sinks, is_catastrophic))
 
 
 
