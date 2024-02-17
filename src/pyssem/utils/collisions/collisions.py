@@ -1,5 +1,5 @@
 from itertools import combinations
-from sympy import symbols
+from sympy import symbols, Matrix
 import numpy as np
 from utils.simulation.species_pair_class import SpeciesPairClass
 #from tqdm import tqdm
@@ -239,7 +239,9 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     elif binE is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
         binOut = binE[:-1] + np.diff(binE) / 2
 
-    return nums, isCatastrophic, binOut
+    print(nums, isCatastrophic, binOut)
+    # return nums, isCatastrophic, binOut
+    return nums, binOut
 
 def create_collision_pairs(scen_properties):
     """
@@ -293,7 +295,8 @@ def create_collision_pairs(scen_properties):
         m1, m2 = s1.mass, s2.mass
         r1, r2 = s1.radius, s2.radius
 
-        gammas = -np.ones((scen_properties.n_shells, 2), dtype='object') 
+        # gammas = -np.ones((scen_properties.n_shells, 2), dtype='object') 
+        gammas = -np.ones((scen_properties.n_shells, 2 + len(debris_species)), dtype='object')
 
         source_sinks = [s1, s2]
 
@@ -317,30 +320,31 @@ def create_collision_pairs(scen_properties):
         # Find the debris generation for each debris class from S1-S2 collision
         RBflag = max(s1.RBflag, s2.RBflag)
 
-        # Initialise empty array. Rows = altitudes with different dv values
+        # Initialise empty array. 
+        # Rows = altitudes with different dv values
         # Cols = debris species in order of debris species list
-        
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-        is_catastrophic = np.zeros((1, len(debris_species)))
 
-        for dv_index in range(len(scen_properties.v_imp2)):
-            # calculate collsiion velocity
-            dv = scen_properties.v_imp2[dv_index]
-            # [frags_made[dv_index, :], is_catastrophic[dv_index]] = evolve_bins(m1, m2, r1, r2, dv, [binC], binE, binW, LBgiven, RBflag)
-            [frags_made[dv_index, :], is_catastrophic[dv_index], _] = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+        # Dont need to check whether its catastrophic or not, as the function does this internally
+        # is_catastrophic = np.zeros(len(scen_properties.v_imp2))
 
+        for dv_index, dv in enumerate(scen_properties.v_imp2):
+            # For each shell (with an impact velocity) calculate the number of fragments made
+            frags_made[dv_index, :], _ = evolve_bins(
+                m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+        
         # Populate gammas and source sinks for the debris species
         for i, j in enumerate(debris_species):
-            gammas[:, 1+i] = gammas[:, 1] * frags_made[:, i] * n_f[i]  
-            source_sinks[1+i] = j
+            gammas[:, 2+i] = gammas[:, 1] * frags_made[:, i] * n_f[i]
+            if 2+i < len(source_sinks):
+                source_sinks[2+i] = j
+            else:
+                source_sinks.append(j)
 
         # Create the species pair object
         source_sinks
-        species_pairs_classes.append(Sp(s1, s2, gammas, source_sinks, is_catastrophic))
+        species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
 
-
-
-    
     
 
 
