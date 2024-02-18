@@ -349,7 +349,7 @@ def create_collision_pairs(scen_properties):
         r1, r2 = s1.radius, s2.radius
 
         # Initialize 'gammas' as a SymPy Matrix filled with -1
-        gammas = Matrix(scen_properties.n_shells, 2 + len(debris_species), lambda i, j: -1)
+        gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
 
         source_sinks = [s1, s2]
 
@@ -376,11 +376,19 @@ def create_collision_pairs(scen_properties):
         for dv_index, dv in enumerate(scen_properties.v_imp2):
             frags_made[dv_index, :], _ = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
 
-        # Populate 'gammas' and 'source_sinks' for the debris species
         for i, species in enumerate(debris_species):
-            # Convert relevant 'frags_made' slice to a SymPy matrix for operations
-            frags_made_sym = Matrix(frags_made[:, i])
-            gammas[:, 2+i] = gammas[:, 1].multiply_elementwise(frags_made_sym * n_f[i])
+            # # Get the column of the frags made matrix, remember, indexing starts at 0
+            # frags_made_sym = Matrix(frags_made[:, i])
+            # # Gammas already have two columns, so start at 2 (3+0).
+            # # Then multiply them by the frags made and n_f
+            # gammas[:, 2+i] = gammas[:, 1].multiply_elementwise(frags_made_sym * n_f[i])
+
+            frags_made_sym = Matrix(frags_made[:, i])  # Convert array slice to Matrix
+            new_column = gammas[:, 1].multiply_elementwise(frags_made_sym)
+            new_column = new_column.reshape(gammas.rows, 1)  # Ensure it's a column vector
+
+            # Use col_insert to add the new column. Insert at index 2+i
+            gammas = gammas.col_insert(2+i, new_column)
 
             if 2+i < len(source_sinks):
                 source_sinks[2+i] = species
