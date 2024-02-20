@@ -1,5 +1,5 @@
 import json
-from math import pi
+from sympy import Matrix
 from utils.pmd.pmd import *
 from utils.drag.drag import *
 from utils.launch.launch import *
@@ -246,7 +246,7 @@ class Species:
         This will create the symbolic variables for each of the species. 
         """
         for species in self.species:
-            species.sym = symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)])
+            species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
 
     
     def pair_actives_to_debris(self, active_species, debris_species):

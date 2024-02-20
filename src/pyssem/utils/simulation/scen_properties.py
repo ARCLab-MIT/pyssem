@@ -1,8 +1,6 @@
 import numpy as np
 from math import pi
 from datetime import datetime
-import random
-from sympy import symbols, Matrix
 from utils.pmd.pmd import pmd_func_derelict
 from utils.collisions.collisions import create_collision_pairs
 

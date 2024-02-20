@@ -1,5 +1,4 @@
-import numpy as np
-from sympy import symbols, zeros
+from sympy import symbols, Matrix, pi, S, Expr
 
 class SpeciesPairClass:
     def __init__(self, species1, species2, gammas, source_sinks, scen_properties):
@@ -34,25 +33,53 @@ class SpeciesPairClass:
                       species2.radius * meter_to_km) ** 2
 
         # Scaling based on v_imp, shell volume, and object radii
-        self.phi = np.pi * scen_properties.v_imp2 / (scen_properties.v * meter_to_km**3) * self.sigma * 86400 * 365.25
+        self.phi = pi * scen_properties.v_imp2 / (scen_properties.V * meter_to_km**3) * self.sigma * S(86400) * S(365.25)
 
         # Check if collision is catastrophic
         self.catastrophic = self.is_catastrophic(species1.mass, species2.mass, scen_properties.v_imp2)
 
+        # Fragment generation equations
         M1 = species1.mass
         M2 = species2.mass
         LC = scen_properties.LC
-        n_f_catastrophic = lambda M1, M2: 0.1 * LC**(-1.71) * (M1 + M2)**0.75 * np.ones_like(scen_properties.v_imp2)
-        n_f_damaging = lambda M1, M2: 0.1 * LC**(-1.71) * (np.minimum(M1, M2) * scen_properties.v_imp2**2)**0.75
+        n_f_catastrophic = S(0.1) * LC**(-S(1.71)) * (M1 + M2)**(S(0.75)) * Matrix.ones(scen_properties.v_imp2.shape[0], 1)
+        n_f_damaging = S(0.1) * LC**(-S(1.71)) * (min(M1, M2) * scen_properties.v_imp2**2)**(S(0.75))
 
         if self.catastrophic:
-            self.nf = n_f_catastrophic(M1, M2)
+            self.nf = n_f_catastrophic.transpose()
         else:
-            self.nf = n_f_damaging(M1, M2)
+            self.nf = n_f_damaging.transpose()
 
         self.gammas = gammas
         self.source_sinks = source_sinks
-        self.eqs = self.calculate_equations(gammas, source_sinks, scen_properties)
+        self.eqs = Matrix(scen_properties.n_shells, len(scen_properties.species), lambda i, j: 0)
+
+        if isinstance(self.phi, (int, float, Expr)):
+            phi_matrix = Matrix([self.phi] * len(gamma))
+        else:
+            phi_matrix = Matrix(self.phi)  # Assuming self.phi is already a list or a column vector
+
+        # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 
+        # derelicsts, etc.) We increment the eqs matrix with the gamma * phi * species1 * species2.
+        for i in range(gammas.shape[1]):
+            gamma = gammas[:, i]
+            eq_index = None
+            for idx, spec in enumerate(scen_properties.species):
+                if spec.sym_name == source_sinks[i].sym_name:
+                    eq_index = idx
+                    break
+
+            if eq_index is None:
+                raise ValueError(f"Equation index not found for {source_sinks[i].sym_name}")
+
+            n_f = symbols(f'n_f:{scen_properties.n_shells}')
+
+            eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+
+            for j, val in enumerate(self.nf):
+                eq = eq.subs(n_f[j], val)
+
+            self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
 
     def is_catastrophic(self, mass1, mass2, vels):
         """
@@ -84,17 +111,18 @@ class SpeciesPairClass:
         and the species in source_sinks.
 
         Args:
-            gammas (np.ndarray): The collision probability modifiers for each species in source_sinks.
+            gammas (sympy array): The collision probability modifiers for each species in source_sinks.
             A scalar or a N x M matrix, where N is the number of altitude bins and M is the number of species
             with population addition/subtractoins where this collision types occur. 
             source_sinks (list): A list of species that are either sources or sinks in the collision
             scen_properties (ScenarioProperties): The scenario properties object
         
         Returns:
-            np.ndarray: An array of symbolic equations for the collision probability modifiers in gamma
+            sympy array: An array of symbolic equations for the collision probability modifiers in gamma
             and the species in source_sinks.
         """
-        eqs = zeros(scen_properties.n_shells, len(scen_properties.species))
+        # eqs = zeros(scen_properties.n_shells, len(scen_properties.species))
+        eqs = Matrix(scen_properties.n_shells, len(scen_properties.species), lambda i, j: 0)
 
         # Define symbols for each shell
         n_f_symbols = symbols(f'n_f:{scen_properties.n_shells}')
@@ -111,17 +139,21 @@ class SpeciesPairClass:
             for n_f, value in zip(n_f_symbols, self.nf):
                 eq = eq.subs(n_f, value)
 
-            # Since SymPy matrices are immutable, use row_insert and col_insert for updating 'eqs'
-            # First, construct a column matrix for the updated equations
-            updated_col = eqs.col(eq_index) + eq
+            # # Since SymPy matrices are immutable, use row_insert and col_insert for updating 'eqs'
+            # # First, construct a column matrix for the updated equations
+            # updated_col = eqs.col(eq_index) + eq
 
-            # Insert the updated column back into 'eqs'
-            if eq_index > 0:
-                eqs = eqs[:, :eq_index].row_join(updated_col)
-            else:
-                eqs = updated_col
+            # # Insert the updated column back into 'eqs'
+            # if eq_index > 0:
+            #     eqs = eqs[:, :eq_index].row_join(updated_col)
+            # else:
+            #     eqs = updated_col
 
-            if eq_index < eqs.cols - 1:
-                eqs = eqs.row_join(eqs[:, eq_index + 1:])
+            # if eq_index < eqs.cols - 1:
+            #     eqs = eqs.row_join(eqs[:, eq_index + 1:])
+                
+            # Update 'eqs' directly since SymPy Matrices are mutable
+            for j in range(eqs.rows):
+                eqs[j, eq_index] += eq[j]
 
         return eqs

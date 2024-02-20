@@ -286,20 +286,19 @@ def create_collision_pairs(scen_properties):
         binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
         binW[index] = debris.mass_ub - debris.mass_lb
 
-    print(binC, binE, binW)
-
     binE = np.unique(binE)
     
     for i, (s1, s2) in enumerate(species_pairs):
         m1, m2 = s1.mass, s2.mass
         r1, r2 = s1.radius, s2.radius
 
-        # Initialize 'gammas' as a SymPy Matrix filled with -1
+        # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
         gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
 
+        # Create a list of source sinks, first two are the active species
         source_sinks = [s1, s2]
 
-        # Example of modifying 'gammas' using SymPy methods
+        # Calculate gamma based on the species properties
         for row in range(scen_properties.n_shells):
             multiplier = 1  # Default multiplier
             if s1.maneuverable and s2.maneuverable:
@@ -316,7 +315,16 @@ def create_collision_pairs(scen_properties):
             gammas[row, 0] *= multiplier
             gammas[row, 1] = gammas[row, 0]  # Copy the first column to the second
 
-        RBflag = max(s1.RBflag, s2.RBflag)
+        # Rocket Body Flag - 1: RB; 0: not RB
+        # Will be 0 if both are None typ
+        if s1.RBflag is None and s2.RBflag is None:
+            RBflag = 0
+        elif s1.RBflag is None:
+            RBflag = s2.RBflag
+        elif s2.RBflag is None:
+            RBflag = s1.RBflag
+        else:
+            RBflag = max(s1.RBflag, s2.RBflag)
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
 
         for dv_index, dv in enumerate(scen_properties.v_imp2):
