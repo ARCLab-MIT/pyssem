@@ -139,20 +139,6 @@ class SpeciesPairClass:
             for n_f, value in zip(n_f_symbols, self.nf):
                 eq = eq.subs(n_f, value)
 
-            # # Since SymPy matrices are immutable, use row_insert and col_insert for updating 'eqs'
-            # # First, construct a column matrix for the updated equations
-            # updated_col = eqs.col(eq_index) + eq
-
-            # # Insert the updated column back into 'eqs'
-            # if eq_index > 0:
-            #     eqs = eqs[:, :eq_index].row_join(updated_col)
-            # else:
-            #     eqs = updated_col
-
-            # if eq_index < eqs.cols - 1:
-            #     eqs = eqs.row_join(eqs[:, eq_index + 1:])
-                
-            # Update 'eqs' directly since SymPy Matrices are mutable
             for j in range(eqs.rows):
                 eqs[j, eq_index] += eq[j]
 

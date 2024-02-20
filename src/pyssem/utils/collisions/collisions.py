@@ -2,7 +2,7 @@ from itertools import combinations
 from sympy import symbols, Matrix
 import numpy as np
 from utils.simulation.species_pair_class import SpeciesPairClass
-#from tqdm import tqdm
+from tqdm import tqdm
 
 import numpy as np
 
@@ -200,12 +200,13 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
         M = m1 + m2
         isCatastrophic = 1
 
-    # what is this code doing?
+    
     num = (0.1 * M ** 0.75 * LB ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
     numSS = SS * num
 
     if numSS == 0:  # check if 0 (e.g., if LB = r1)
-        return np.zeros(len(binEd) - 1), isCatastrophic, []
+        #return np.zeros(len(binEd) - 1), isCatastrophic, []
+        return np.zeros(len(binEd) - 1)
     
     # Create PDF of power law distribution, then sample 'num' selections
     # Only up to 1m, then randomly sample larger objects as quoted above
@@ -239,9 +240,8 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     elif binE is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
         binOut = binE[:-1] + np.diff(binE) / 2
 
-    print(nums, isCatastrophic, binOut)
     # return nums, isCatastrophic, binOut
-    return nums, binOut
+    return nums
 
 def create_collision_pairs(scen_properties):
     """
@@ -288,7 +288,7 @@ def create_collision_pairs(scen_properties):
 
     binE = np.unique(binE)
     
-    for i, (s1, s2) in enumerate(species_pairs):
+    for i, (s1, s2) in tqdm(enumerate(species_pairs), total=len(species_pairs), desc="Creating collision pairs"):
         m1, m2 = s1.mass, s2.mass
         r1, r2 = s1.radius, s2.radius
 
@@ -325,10 +325,11 @@ def create_collision_pairs(scen_properties):
             RBflag = s1.RBflag
         else:
             RBflag = max(s1.RBflag, s2.RBflag)
+        
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-
         for dv_index, dv in enumerate(scen_properties.v_imp2):
-            frags_made[dv_index, :], _ = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+            temp = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+            frags_made[dv_index, :] = temp
 
         for i, species in enumerate(debris_species):
             # # Get the column of the frags made matrix, remember, indexing starts at 0
