@@ -87,7 +87,7 @@ class ScenarioProperties:
         R0 = (self.re + R0) * 1000  # Convert to meters
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
         self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
-        self.v = self.v_imp2 * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
+        self.v_imp2 * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
         self.Dhl = self.deltaH * 1000
         self.Dhu = -self.deltaH * 1000
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change

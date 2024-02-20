@@ -39,7 +39,9 @@ def main(species_json):
             print(s)
 
     # Create collision pairs al
-    species_pairs = create_collision_pairs(scenario_properties)
+    species_pairs_classes = create_collision_pairs(scenario_properties)
+
+    return
     
     # # Then add these generated species to the scenario properties
     # scenario_properties.add_species_set(species)
