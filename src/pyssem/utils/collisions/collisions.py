@@ -316,7 +316,7 @@ def create_collision_pairs(scen_properties):
             gammas[row, 1] = gammas[row, 0]  # Copy the first column to the second
 
         # Rocket Body Flag - 1: RB; 0: not RB
-        # Will be 0 if both are None typ
+        # Will be 0 if both are None type
         if s1.RBflag is None and s2.RBflag is None:
             RBflag = 0
         elif s1.RBflag is None:
