@@ -38,7 +38,7 @@ def main(species_json):
         if s.sym_name == 'S_148kg':
             print(s)
 
-    # Create collision pairs al
+    # Create collision pairs
     species_pairs_classes = create_collision_pairs(scenario_properties)
 
     return
