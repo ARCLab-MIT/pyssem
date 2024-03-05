@@ -39,7 +39,8 @@ def main(species_json):
             print(s)
 
     # Create collision pairs
-    species_pairs_classes = create_collision_pairs(scenario_properties)
+    scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+
 
     return
     

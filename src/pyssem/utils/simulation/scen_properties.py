@@ -95,7 +95,8 @@ class ScenarioProperties:
         self.R02 = R0
 
         # An empty list for the species
-        self.species = [] 
+        self.species = []
+        self.collision_pairs = [] 
     
     def add_species_set(self, species_list: list):
         """
@@ -105,6 +106,15 @@ class ScenarioProperties:
         :type species_list: list
         """
         self.species = species_list
+
+    def add_collision_pairs(self, collision_pairs: list):
+        """
+        Adds a list of collision pairs to the overall scenario properties. 
+
+        :param collision_pairs: List of collision pairs to add to the scenario
+        :type collision_pairs: list
+        """
+        self.collision_pairs = collision_pairs
 
     def get_species(self):
         return self.species
