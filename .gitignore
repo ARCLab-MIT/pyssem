@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 
 # Large Launch Files
-src\pyssem\utils\launch\data
+src/pyssem/utils/launch/data/
