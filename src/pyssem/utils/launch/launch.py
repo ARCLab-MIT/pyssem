@@ -1,4 +1,5 @@
 from sympy import zeros, Matrix, symbols
+import pandas as pd
 
 def launch_func_null(t, h, species_properties, scen_properties):
     """
@@ -50,3 +51,15 @@ def launch_func_constant(t, h, species_properties, scen_properties):
     Lambdadot_list = [Lambdadot[i] for i in range(scen_properties.n_shells)]
 
     return Lambdadot_list
+
+def ADEPT_Traffic_model(scen_properties, filepath):
+    """_summary_
+
+    :param scen_properties: _description_
+    :type scen_properties: _type_
+    :param filepath: _description_
+    :type filepath: _type_
+    """
+    T = pd.read_csv(filepath)
+    T['epoch_start_datime'] = T['epoch_start']
+

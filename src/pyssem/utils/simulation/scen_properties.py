@@ -3,6 +3,7 @@ from math import pi
 from datetime import datetime
 from utils.pmd.pmd import pmd_func_derelict
 from utils.collisions.collisions import create_collision_pairs
+from utils.launch.launch import ADEPT_Traffic_model
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -118,4 +119,11 @@ class ScenarioProperties:
 
     def get_species(self):
         return self.species
+    
+    def initial_pop_and_launch(self):
+        """
+        Generate the initial population and the launch rates. 
+        """
+
+
     
