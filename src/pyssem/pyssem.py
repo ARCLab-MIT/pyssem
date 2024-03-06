@@ -11,7 +11,7 @@ def main(species_json):
                     simulation_duration=1000, steps=100, min_altitude=500, 
                     max_altitude=1500, n_shells=10, launch_function="Constant", 
                     delta=10, integrator = "rk4", density_model = "static_exp_dens_func", 
-                    LC=0.1, v_imp=10, species=species_json)
+                    LC=0.1, v_imp=10)
 
     # Create a list of species for the scene
     species_list = Species()

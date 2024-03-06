@@ -8,8 +8,7 @@ import json
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, launch_function: str, species: json, 
-                 delta: float = 10.0, integrator: str = "rk4", 
+                 max_altitude: float, n_shells: int, launch_function: str, delta: float = 10.0, integrator: str = "rk4", 
                  density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
         """
         Constructor for ScenarioProperties
@@ -100,17 +99,34 @@ class ScenarioProperties:
         # An empty list for the species
         self.species = []
         self.species_types = []
-        self.species_cells = list(species.keys()) #struct with S, D, N, Su, B arrays or whatever species types exist
+        self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
         
         self.collision_pairs = [] 
     
     def add_species_set(self, species_list: list):
         """
         Adds a list of species to the overall scenario properties. 
+        It will update the species_cell dictionary with the species types as the keys and the species as the values.
 
         :param species_list: List of species to add to the scenario
         :type species_list: list
         """
+        for species in species_list:
+            # If _ does not exist in the species name, match it straight to the key 
+            if "_" not in species.sym_name:
+                #self.species_cells[species.name] = species
+                name = species.sym_name
+            else: 
+                # If _ does exist, the key is the before _
+                name = species.sym_name.split("_")[0]
+
+            # If the key does not exist, create a new list with the species
+            if name not in self.species_cells:
+                self.species_cells[name] = [species]
+            else:
+                # If the key does exist, append the species to the list
+                self.species_cells[name].append(species)
+    
         self.species = species_list
 
     def add_collision_pairs(self, collision_pairs: list):
