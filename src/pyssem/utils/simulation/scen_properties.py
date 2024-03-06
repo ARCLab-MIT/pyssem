@@ -3,7 +3,7 @@ from math import pi
 from datetime import datetime
 from utils.pmd.pmd import pmd_func_derelict
 from utils.collisions.collisions import create_collision_pairs
-from utils.launch.launch import ADEPT_Traffic_model
+from utils.launch.launch import ADEPT_traffic_model
 import json
 
 class ScenarioProperties:
@@ -147,7 +147,12 @@ class ScenarioProperties:
         Generate the initial population and the launch rates. 
         """
         filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        ADEPT_Traffic_model(self, filepath)
+        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+
+        # save as csv
+        np.savetxt('x0.csv', x0, delimiter=',')
+        np.savetxt('FLM_steps.csv', FLM_steps, delimiter=',')
+        return
 
 
     

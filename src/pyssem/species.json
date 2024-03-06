@@ -38,7 +38,7 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "sns": {
+    "Sns": {
         "sym_name": "sns",
         "Cd": 2.2,
         "mass": 6,
