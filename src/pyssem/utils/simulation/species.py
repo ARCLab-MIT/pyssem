@@ -243,22 +243,24 @@ class Species:
         This should be edited in the future to be more dynamic for the user. 
 
         """
-        for species in self.species:
-            if species.launch_func == "launch_func_constant":
-                # probably should remove for the constant launch_rate 
-                # they should provide a scalar or a vector, this would have to be called if you want a time varying function for the ODE
-                # if you provide something that is non-constant, then a user should have to provide a vector 
-                # time not alt
-                species.lambda_constant = [20 for _ in range(n_shells)]
-                # Direct copy from MATLAB
-                #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.launch_func == "launch_func_constant":
+                    # probably should remove for the constant launch_rate 
+                    # they should provide a scalar or a vector, this would have to be called if you want a time varying function for the ODE
+                    # if you provide something that is non-constant, then a user should have to provide a vector 
+                    # time not alt
+                    species.lambda_constant = [20 for _ in range(n_shells)]
+                    # Direct copy from MATLAB
+                    #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
 
     def create_symbolic_variables(self, n_shells: int):
         """
         This will create the symbolic variables for each of the species. 
         """
-        for species in self.species:
-            species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
+        for species_group in self.species.values():
+            for species in species_group:
+                species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
 
     
     def pair_actives_to_debris(self, active_species, debris_species):
@@ -298,7 +300,7 @@ class Species:
 
         # Find the species in self.species and update the pmd_linked_species property
         for deb_spec in debris_species:
-            for spec in self.species:
+            for spec in self.species['active']:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
         

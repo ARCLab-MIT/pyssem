@@ -24,22 +24,14 @@ def main(species_json):
     species_list.apply_launch_rates(scenario_properties.n_shells)
     species_list.create_symbolic_variables(scenario_properties.n_shells)
 
-    # Split the species into either debris or active satellites, based from the 'active' property
-    active_species = [s for s in species_list.species if s.active]
-    debris_species = [s for s in species_list.species if not s.active and s.RBflag != 1] # RBflag is the rocket body species
-
     # Pair the active species to the debris species for PMD modeling
-    species_list.pair_actives_to_debris(active_species, debris_species)
+    species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['debris'])
 
     # Add the final species to the scenario properties to be used in the simulation
     scenario_properties.add_species_set(species_list.species)
 
-    for s in species_list.species:
-        if s.sym_name == 'S_148kg':
-            print(s)
-
     # Create collision pairs
-    #scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+    scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
 
     scenario_properties.initial_pop_and_launch()
 

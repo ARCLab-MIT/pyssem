@@ -111,21 +111,22 @@ class ScenarioProperties:
         :param species_list: List of species to add to the scenario
         :type species_list: list
         """
-        for species in species_list:
-            # If _ does not exist in the species name, match it straight to the key 
-            if "_" not in species.sym_name:
-                #self.species_cells[species.name] = species
-                name = species.sym_name
-            else: 
-                # If _ does exist, the key is the before _
-                name = species.sym_name.split("_")[0]
+        for species_group in species_list.values():
+            for species in species_group:
+                # If _ does not exist in the species name, match it straight to the key 
+                if "_" not in species.sym_name:
+                    #self.species_cells[species.name] = species
+                    name = species.sym_name
+                else: 
+                    # If _ does exist, the key is the before _
+                    name = species.sym_name.split("_")[0]
 
-            # If the key does not exist, create a new list with the species
-            if name not in self.species_cells:
-                self.species_cells[name] = [species]
-            else:
-                # If the key does exist, append the species to the list
-                self.species_cells[name].append(species)
+                # If the key does not exist, create a new list with the species
+                if name not in self.species_cells:
+                    self.species_cells[name] = [species]
+                else:
+                    # If the key does exist, append the species to the list
+                    self.species_cells[name].append(species)
     
         self.species = species_list
 

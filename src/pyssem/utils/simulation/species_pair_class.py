@@ -21,7 +21,10 @@ class SpeciesPairClass:
         """
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")
-        
+
+        # As species is a dictionary, it needs to be flatted first        
+        all_species = [species for category in scen_properties.species.values() for species in category]
+
         self.name = f"species_pair({species1.sym_name}, {species2.sym_name})"
         self.species1 = species1
         self.species2 = species2
@@ -52,7 +55,7 @@ class SpeciesPairClass:
 
         self.gammas = gammas
         self.source_sinks = source_sinks
-        self.eqs = Matrix(scen_properties.n_shells, len(scen_properties.species), lambda i, j: 0)
+        self.eqs = Matrix(scen_properties.n_shells, len(all_species), lambda i, j: 0)
 
         if isinstance(self.phi, (int, float, Expr)):
             phi_matrix = Matrix([self.phi] * len(gamma))
@@ -64,7 +67,7 @@ class SpeciesPairClass:
         for i in range(gammas.shape[1]):
             gamma = gammas[:, i]
             eq_index = None
-            for idx, spec in enumerate(scen_properties.species):
+            for idx, spec in enumerate(all_species):
                 if spec.sym_name == source_sinks[i].sym_name:
                     eq_index = idx
                     break
