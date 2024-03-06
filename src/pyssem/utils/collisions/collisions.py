@@ -326,6 +326,7 @@ def create_collision_pairs(scen_properties):
         else:
             RBflag = max(s1.RBflag, s2.RBflag)
         
+        # A matrix of the fragments made, columns are the orbital shells, rows are the debris species
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
         for dv_index, dv in enumerate(scen_properties.v_imp2):
             temp = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
