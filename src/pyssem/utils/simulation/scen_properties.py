@@ -4,10 +4,12 @@ from datetime import datetime
 from utils.pmd.pmd import pmd_func_derelict
 from utils.collisions.collisions import create_collision_pairs
 from utils.launch.launch import ADEPT_Traffic_model
+import json
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, launch_function: str, delta: float = 10.0, integrator: str = "rk4", 
+                 max_altitude: float, n_shells: int, launch_function: str, species: json, 
+                 delta: float = 10.0, integrator: str = "rk4", 
                  density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
         """
         Constructor for ScenarioProperties
@@ -97,6 +99,9 @@ class ScenarioProperties:
 
         # An empty list for the species
         self.species = []
+        self.species_types = []
+        self.species_cells = list(species.keys()) #struct with S, D, N, Su, B arrays or whatever species types exist
+        
         self.collision_pairs = [] 
     
     def add_species_set(self, species_list: list):
@@ -124,6 +129,8 @@ class ScenarioProperties:
         """
         Generate the initial population and the launch rates. 
         """
+        filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        ADEPT_Traffic_model(self, filepath)
 
 
     
