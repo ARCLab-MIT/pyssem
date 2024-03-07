@@ -137,8 +137,10 @@ def ADEPT_traffic_model(scen_properties, file_path):
     
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
-    #x0_pivot = x0.pivot_table(values='weight', index='alt_bin', columns='species', aggfunc='sum', fill_value=0)
-    
+
+    # Aiming for a matrix, with the species as columns and the number of orbital shells as rows based on alt_bin
+    x0_summary = x0.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
     # Future Launch Model
     flm_steps = pd.DataFrame()
     time_steps = [scen_properties.start_date + timedelta(days=365.25) * i for i in range(scen_properties.simulation_duration + 1)]
@@ -146,11 +148,18 @@ def ADEPT_traffic_model(scen_properties, file_path):
     for start, end in zip(time_steps[:-1], time_steps[1:]):
         flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
         print(f"Step: {start} - {end}, Objects: {flm_step.shape[0]}")
-        #flm_step_pivot = flm_step.pivot_table(values='weight', index='alt_bin', columns='species', aggfunc='sum', fill_value=0)
-        # append to the dataframe
-        flm_steps = pd.concat([flm_steps, flm_step])
+        flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+        # all objects aren't always in shells, so you need to these back in. 
+        flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
+
+        flm_summary.reset_index(inplace=True)
+        flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+
+        flm_summary['epoch_start_date'] = start # Add the start date to the table for reference
+        flm_steps = pd.concat([flm_steps, flm_summary])
     
-    return x0, flm_steps
+    return x0_summary, flm_steps
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """

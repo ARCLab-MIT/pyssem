@@ -151,7 +151,7 @@ class ScenarioProperties:
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # save as csv
-        x0.to_csv('x0.csv', sep=',', index=False, header=True)
-        FLM_steps.to_csv('FLM_steps.csv', sep=',', index=False, header=True)
+        x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
+        FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
         return

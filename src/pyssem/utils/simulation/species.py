@@ -303,7 +303,4 @@ class Species:
             for spec in self.species['active']:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
-        
-
-        
-        # test 
+    
