@@ -8,8 +8,8 @@ def main(species_json):
     # Create a scenaaio properties object, this is the high level simulation parameters
     scenario_properties = ScenarioProperties(
                     start_date=datetime.strptime('01/06/2023', "%m/%d/%Y"), 
-                    simulation_duration=100, steps=100, min_altitude=500, 
-                    max_altitude=1500, n_shells=10, launch_function="Constant", 
+                    simulation_duration=100, steps=100, min_altitude=400, 
+                    max_altitude=2000, n_shells=15, launch_function="Constant", 
                     delta=10, integrator = "rk4", density_model = "static_exp_dens_func", 
                     LC=0.1, v_imp=10)
 

@@ -18,7 +18,6 @@ def find_alt_bin(altitude, scen_properties):
     shell_index = shell_indices[0] + 1 if shell_indices.size > 0 else np.nan
     return shell_index
 
-
 def launch_func_null(t, h, species_properties, scen_properties):
     """
     No launch function for species without a launch function.
@@ -86,6 +85,20 @@ def julian_to_datetime(julian_date):
         return None
 
 def ADEPT_traffic_model(scen_properties, file_path):
+    """
+    From an initial population and future model csv, this function will create for the starting population, 
+    then one for each time step in the future model.
+
+    The output matrices will be in the form of a matrix, with the species as columns and the number of orbital shells as rows based on alt_bin.
+    e.g. if you have 5 species and 10 shells, the matrix will be 10x5.
+
+    :param scen_properties: Scneario properties
+    :type scen_properties: ScenarioProperties
+    :param file_path: Local File Path of CSV
+    :type file_path: str
+    :return: The initial population and future launch model
+    :rtype:  pandas.DataFrame, pandas.DataFrame
+    """
     # Read the CSV file into a DataFrame
     T = pd.read_csv(file_path)
     
