@@ -70,62 +70,6 @@ def launch_func_constant(t, h, species_properties, scen_properties):
 
     return Lambdadot_list
 
-# def ADEPT_Traffic_model(scen_properties, filepath):
-#     """_summary_
-
-#     :param scen_properties: _description_
-#     :type scen_properties: _type_
-#     :param filepath: _description_
-#     :type filepath: _type_
-#     """
-#     T = pd.read_csv(filepath)
-#     T['epoch_start_datime'] = T['epoch_start']
-
-#     # Define object classes if 'object_class' is not already defined
-#     if 'object_class' not in T.columns:
-#         T = define_object_class(T)
-#         T['object_class'] = 'UNKNOWN'
-
-#     # Calculate Altitude
-#     T['apogee'] = T['sma'] * (1 + T['ecc'])
-#     T['perigee'] = T['sma'] * (1 - T['ecc'])
-#     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
-    
-#     # Map species types using a dictionary
-#     species_dict = {
-#         "Non-station-keeping Satellite": "sns",
-#         "Rocket Body": "B",
-#         "Station-keeping Satellite": "Su",
-#         "Coordinated Satellite": "S",
-#         "Debris": "N",
-#         "Candidate Satellite": "C"
-#     }
-
-#     T['species_class'] = T['obj_class'].map(species_dict)
-
-#     # Define T_new
-#     T_new = pd.DataFrame(columns=T.columns)
-
-#     for obj_class in T['obj_class'].unique():
-#         species_class = species_dict[obj_class]       
-#         print(f"{obj_class}, {species_class}")
-
-#         # Check that the species cell exists
-#         try:
-#             species_cell = scen_properties.species_cells[species_class]
-#         except KeyError:
-#             print(f"Species cell not found for {species_class}.")
-#             continue
-
-#         # Create a boolean mask for rows belonging to the current obj_class
-#         mask = T['obj_class'] == obj_class
-#         # Directly modify the 'species' column of the original DataFrame 'T' for rows that match the mask
-#         T.loc[mask, 'species'] = T.loc[mask, 'mass'].apply(find_mass_bin, args=(scen_properties, species_cell))
-
-#         T_new = pd.concat([T_new, T[mask]])
-
-#     return
-
 def julian_to_datetime(julian_date):
     # Julian Date for Unix epoch (1970-01-01)
     JULIAN_EPOCH = 2440587.5
@@ -174,12 +118,16 @@ def ADEPT_traffic_model(scen_properties, file_path):
     for obj_class in T['obj_class'].unique():
         species_class = species_dict.get(obj_class)
         if species_class in scen_properties.species_cells:
-            species_cell = scen_properties.species_cells[species_class]
-            
-            T_obj_class = T[T['obj_class'] == obj_class].copy()
-            T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cell))
-            
-            T_new = pd.concat([T_new, T_obj_class])
+            # If len is 1, just take the sym name of the species
+            if len(scen_properties.species_cells[species_class]) == 1:
+                T_obj_class = T[T['obj_class'] == obj_class].copy()
+                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                T_new = pd.concat([T_new, T_obj_class])
+            else:
+                species_cells = scen_properties.species_cells[species_class]
+                T_obj_class = T[T['obj_class'] == obj_class].copy()
+                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                T_new = pd.concat([T_new, T_obj_class])
     
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
@@ -189,19 +137,20 @@ def ADEPT_traffic_model(scen_properties, file_path):
     
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
-    x0_pivot = x0.pivot_table(values='weight', index='alt_bin', columns='species', aggfunc='sum', fill_value=0)
+    #x0_pivot = x0.pivot_table(values='weight', index='alt_bin', columns='species', aggfunc='sum', fill_value=0)
     
     # Future Launch Model
-    flm_steps = []
+    flm_steps = pd.DataFrame()
     time_steps = [scen_properties.start_date + timedelta(days=365.25) * i for i in range(scen_properties.simulation_duration + 1)]
     
     for start, end in zip(time_steps[:-1], time_steps[1:]):
         flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
         print(f"Step: {start} - {end}, Objects: {flm_step.shape[0]}")
-        flm_step_pivot = flm_step.pivot_table(values='weight', index='alt_bin', columns='species', aggfunc='sum', fill_value=0)
-        flm_steps.append(flm_step_pivot)
+        #flm_step_pivot = flm_step.pivot_table(values='weight', index='alt_bin', columns='species', aggfunc='sum', fill_value=0)
+        # append to the dataframe
+        flm_steps = pd.concat([flm_steps, flm_step])
     
-    return x0_pivot, flm_steps
+    return x0, flm_steps
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """
@@ -222,19 +171,31 @@ def find_mass_bin(mass, scen_properties, species_cell):
         return None
 
 def find_alt_bin(altitude, scen_properties):
-    # Convert altitude ranges to numpy arrays for vectorized operations
-    lower = np.array(scen_properties.R02[:-1])
-    upper = np.array(scen_properties.R02[1:])
+    """
+    Given an altidude and the generic pySSEM properties, it will calculate the index from the R02 array
+
+    :param altitude: Altitude of an object
+    :type altitude: int
+    :param scen_properties: The scenario properties object
+    :type scen_properties: ScenarioProperties
+    :return: Orbital Shell Array Index or None if out of range
+    :rtype: int
+    """
+    shell_altitudes = scen_properties.R0_km
+
+    # The case for an object where it is below the lowest altitude
+    if altitude < shell_altitudes[0]:
+        return
     
-    # Create a boolean array where True indicates altitude is within the shell bounds
-    shell_logic = (lower < altitude) & (altitude <= upper)
+    # The case for an object where it is above the highest altitude
+    if altitude >= shell_altitudes[-1]:
+        return 
+
+    for i in range(len(shell_altitudes) - 1):  # -1 to prevent index out of range
+        if shell_altitudes[i] <= altitude < shell_altitudes[i + 1]:
+            return i  
+        
     
-    # Find the index (or indices) where shell_logic is True
-    shell_indices = np.where(shell_logic)[0]
-    
-    # Return the first index if found, otherwise return NaN
-    shell_index = shell_indices[0] + 1 if shell_indices.size > 0 else np.nan
-    return shell_index
 
 def define_object_class(T):
     """

@@ -5,6 +5,7 @@ from utils.pmd.pmd import pmd_func_derelict
 from utils.collisions.collisions import create_collision_pairs
 from utils.launch.launch import ADEPT_traffic_model
 import json
+import pandas as pd
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -83,18 +84,18 @@ class ScenarioProperties:
         self.re = 6378.1366  # radius of the earth [km]
 
         # MOCAT specific parameters
-        R0 = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1)
-        self.HMid = R0[:-1] + np.diff(R0) / 2
+        R0 = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1) # Altitude of the shells [km]
+        self.R0_km = R0  # Lower bound of altitude of the shells [km]
+        self.HMid = R0[:-1] + np.diff(R0) / 2 # Midpoint of the shells [km]
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
-        R0 = (self.re + R0) * 1000  # Convert to meters
+        R0 = (self.re + R0) * 1000  # Convert to meters and the radius of the earth
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
         self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
         self.v_imp2 * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
-        self.Dhl = self.deltaH * 1000
-        self.Dhu = -self.deltaH * 1000
+        self.Dhl = self.deltaH * 1000 # thickness of the shell [m]
+        self.Dhu = -self.deltaH * 1000 # thickness of the shell [m]
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
         self.R0 = R0 # gives you the shells <- gives you the top or bottom of shells -> is this needed in python?
-        self.R02 = R0
 
         # An empty list for the species
         self.species = []
@@ -150,9 +151,7 @@ class ScenarioProperties:
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # save as csv
-        np.savetxt('x0.csv', x0, delimiter=',')
-        np.savetxt('FLM_steps.csv', FLM_steps, delimiter=',')
+        x0.to_csv('x0.csv', sep=',', index=False, header=True)
+        FLM_steps.to_csv('FLM_steps.csv', sep=',', index=False, header=True)
+
         return
-
-
-    
