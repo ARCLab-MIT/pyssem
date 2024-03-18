@@ -143,6 +143,13 @@ class ScenarioProperties:
     def get_species(self):
         return self.species
     
+    def future_launch_model(self, FLM_steps):
+        """
+        Uses the Future launch model created by ADEPT_TRAFFIC_MODEL and makes a new launch function
+        for each species based on the retunred future launch model. 
+        """
+        return
+    
     def initial_pop_and_launch(self):
         """
         Generate the initial population and the launch rates. 
@@ -154,4 +161,7 @@ class ScenarioProperties:
         x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
         FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
+        future_launch_model(FLM_steps)
+
         return
+    
