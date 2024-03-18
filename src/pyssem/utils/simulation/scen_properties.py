@@ -6,6 +6,8 @@ from utils.collisions.collisions import create_collision_pairs
 from utils.launch.launch import ADEPT_traffic_model
 import json
 import pandas as pd
+from scipy.interpolate import interp1d
+
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -144,11 +146,46 @@ class ScenarioProperties:
         return self.species
     
     def future_launch_model(self, FLM_steps):
-        """
-        Uses the Future launch model created by ADEPT_TRAFFIC_MODEL and makes a new launch function
-        for each species based on the retunred future launch model. 
-        """
-        return
+        # Check for consistent time step
+        scen_times = np.array(self.scen_times)
+        if len(np.unique(np.round(np.diff(scen_times), 5))) == 1:
+            time_step = np.unique(np.round(np.diff(scen_times), 5))[0]
+        else:
+            raise ValueError("FLM to Launch Function is not set up for variable time step runs.")
+
+        for species_group in self.species.values():
+            for species in species_group:
+                # Extract the species columns, with altitude and time
+                if species.sym_name in FLM_steps.columns:
+                    temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+                else:
+                    continue
+
+                species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
+
+                # divide all the values by the time step to get the rate per year
+                species_FLM = species_FLM / time_step
+
+                # Convert spec_FLM to interpolating functions (lambdadot) for each shell
+                species.lambda_funs = []
+                for shell in range(self.n_shells):
+                    x = scen_times
+                    v = species_FLM.loc[shell, :].values / time_step  # Adjust shell index accordingly
+                    lambdadot = interp1d(x, v, fill_value="extrapolate")
+                    species.lambda_funs.append(lambdadot)
+
+                # Optionally, assign or update the launch function here if needed
+                species.launch_func = self.launch_func_lambda_fun
+
+
+    def launch_func_lambda_fun(t, h, species_properties, scen_properties):
+        # Find the index for the given altitude
+        h_ind = scen_properties['HMid'].index(h)
+        print(species_properties['sym_name'])
+
+        # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
+        Lambdadot = species_properties['lambda_funs'][h_ind](t)
+        return Lambdadot
     
     def initial_pop_and_launch(self):
         """
@@ -161,7 +198,7 @@ class ScenarioProperties:
         x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
         FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
-        future_launch_model(FLM_steps)
+        self.future_launch_model(FLM_steps)
 
         return
     
