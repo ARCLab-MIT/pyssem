@@ -172,6 +172,7 @@ class ScenarioProperties:
                     continue
 
                 species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
+                print(species_FLM.head())
 
                 # divide all the values by the time step to get the rate per year
                 species_FLM = species_FLM / time_step
@@ -247,9 +248,9 @@ def launch_func_lambda_fun(t, h, species_properties, scen_properties):
     :rtype: SciPy interp1d function
     """
     # Find the index for the given altitude
-    h_ind = scen_properties.HMid.index(h)
+    h_inds = np.where(scen_properties.HMid == h)[0]
     print(species_properties.sym_name)
 
     # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
-    Lambdadot = species_properties.lambda_funs[h_ind](t)
+    Lambdadot = species_properties.lambda_funs[h_inds](t)
     return Lambdadot
