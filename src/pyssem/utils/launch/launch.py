@@ -156,7 +156,11 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Future Launch Model
     flm_steps = pd.DataFrame()
-    time_steps = [scen_properties.start_date + timedelta(days=365.25) * i for i in range(scen_properties.simulation_duration + 1)]
+
+    time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
+
+    time_steps = [scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
+                for i in range(scen_properties.steps + 1)]    
     
     for start, end in zip(time_steps[:-1], time_steps[1:]):
         flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]

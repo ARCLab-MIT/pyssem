@@ -7,6 +7,7 @@ from utils.launch.launch import ADEPT_traffic_model
 import json
 import pandas as pd
 from scipy.interpolate import interp1d
+import sympy as sp
 
 
 class ScenarioProperties:
@@ -105,6 +106,15 @@ class ScenarioProperties:
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
         
         self.collision_pairs = [] 
+
+        # Parameters for simulation
+        self.full_Cdot_PMD = []
+        self.full_lambda = []
+        self.full_coll = []
+        self.drag_term_upper = None
+        self.drag_term_cur = None
+        
+
     
     def add_species_set(self, species_list: list):
         """
@@ -167,6 +177,7 @@ class ScenarioProperties:
                 species_FLM = species_FLM / time_step
 
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
+                # Remeber indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
                 for shell in range(self.n_shells):
                     x = scen_times
@@ -175,18 +186,8 @@ class ScenarioProperties:
                     species.lambda_funs.append(lambdadot)
 
                 # Optionally, assign or update the launch function here if needed
-                species.launch_func = self.launch_func_lambda_fun
-
-
-    def launch_func_lambda_fun(t, h, species_properties, scen_properties):
-        # Find the index for the given altitude
-        h_ind = scen_properties['HMid'].index(h)
-        print(species_properties['sym_name'])
-
-        # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
-        Lambdadot = species_properties['lambda_funs'][h_ind](t)
-        return Lambdadot
-    
+                species.launch_func = launch_func_lambda_fun
+   
     def initial_pop_and_launch(self):
         """
         Generate the initial population and the launch rates. 
@@ -199,6 +200,56 @@ class ScenarioProperties:
         FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
         self.future_launch_model(FLM_steps)
-
         return
     
+    ## Simulation Part
+
+
+    def build_model(self):
+
+        t = sp.symbols('t')
+
+        species_list = []
+        for species_group in self.species.values():
+            for species in species_group:
+                species_list.append(species)
+    
+        self.full_Cdot_PMD = sp.zeros(self.n_shells, len(species_list))
+        self.full_lambda = [None] * len(species_list)
+        self.full_coll = sp.zeros(self.n_shells, len(species_list)) 
+
+        for i, species in enumerate(species_list):
+            lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+            self.full_lambda[i] = lambda_expr
+
+            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
+            self.full_Cdot_PMD[:, i] = Cdot_PMD
+
+        equations = self.full_Cdot_PMD + self.full_coll
+
+        # convert equations to a function for speed
+        xdot_eqs_func = sp.lambdify(t, equations, "numpy")
+
+        return
+
+def launch_func_lambda_fun(t, h, species_properties, scen_properties):
+    """_summary_
+
+    :param t: The time from the scenario start in years
+    :type t: int
+    :param h: The altitude above the ellipsoid in km of shell lower edge
+    :type h: int
+    :param species_properties: Species properties
+    :type species_properties: Species
+    :param scen_properties: Scenario properties
+    :type scen_properties: ScenarioProperties
+    :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
+    :rtype: SciPy interp1d function
+    """
+    # Find the index for the given altitude
+    h_ind = scen_properties.HMid.index(h)
+    print(species_properties.sym_name)
+
+    # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
+    Lambdadot = species_properties.lambda_funs[h_ind](t)
+    return Lambdadot
