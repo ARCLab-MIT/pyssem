@@ -85,7 +85,7 @@ class Species:
     This is a collection of SpeciesProperties objects. It is used to store the properties of multiple species in a
     scene. 
     """
-    species = []
+    species = {'active': [], 'debris': [], 'rocket_body': []}
 
     def __init__(self) -> None:
         pass
@@ -175,54 +175,66 @@ class Species:
         
     def add_species_from_json(self, species_json: json) -> None:
         """
-        Adds a set of species to the simulation based on a predefined list. 
-        if a species name is not in the list, it will not be added. A warning should be thrown. 
+        Creates a dictionary of the species properties from a json file.
+        It will create a dictionary of 'active' 'debris' and 'rocket_body' species.
 
         :param json_string: _description_
         :type json_string: json
         :return: _description_
         :rtype: None
         """
+
         # Loop through the json and pass create and instance of species properties for each species
         for species_name, properties in species_json.items():         
             # This will add pass the Json Species to the SpeciesProperties class. 
             # If the mass is a list, then we need to create multiple species with the same properties
+            species_object = None
+
+            # Active
             if properties['active'] == True:
                 if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
                     multiple_species = self.add_multi_property_species(properties)
-                    self.species.extend(multiple_species)
+                    self.species['active'].extend(multiple_species)
                 else:
-                    self.species.append(SpeciesProperties(properties))
+                    species_object = SpeciesProperties(properties)
+                    self.species['active'].append(species_object)
 
-        # Finally, all species that have been created will be added to the debris list for PMD pairing.
+            # Debris and Rocket Body
+            rb_flag = properties.get('RBflag', 0)  # Defaults to 0 if 'RBflag' is not found
+            if rb_flag == 1:
+                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
+                    multiple_species = self.add_multi_property_species(properties)
+                    self.species['rocket_body'].extend(multiple_species)
+                else:
+                    species_object = SpeciesProperties(properties)
+                    self.species['rocket_body'].append(species_object)
+
+
+        # The debris species (N) will need to be created for the active species. 
+        # Therefore you have to re-loop after the active satellites have been created.
+        active_masses = [i.mass for i in self.species['active']]
+        active_radii = [i.radius for i in self.species['active']]
+
         for species_name, properties in species_json.items():
-            # This will add all of the other species with multiple masses to the debris list for PMD Pairing. 
             if properties['active'] == False:
-                
-                # Loop through the current set of species and get the mass and radius and add it to the debris list
-                active_masses = []
-                active_radii = []
+                if properties['RBflag'] == 0:
+                    debris_species = properties
+                    if isinstance(debris_species['mass'], list) and len(debris_species['mass']) > 1:
+                        debris_species['mass'].extend(active_masses)
+                        debris_species['radius'].extend(active_radii)
+                    else: # Just take the one value
+                        debris_species['mass'].append(active_masses[0])
+                        debris_species['radius'].append(active_radii[0])
 
-                for species in self.species:
-                    if species.active:
-                        active_masses.append(species.mass)
-                        active_radii.append(species.radius)
+                    # Create species objects for non-active species
+                    if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
+                        multiple_species = self.add_multi_property_species(properties)
+                        self.species['debris'].extend(multiple_species)
+                    else:
+                        species_object = SpeciesProperties(properties)
+                        self.species['debris'].append(species_object)
 
-                # Get the raw json of the debris species
-                debris_species = properties
-                if isinstance(properties['mass'], list):
-                    debris_species['mass'].extend(active_masses)
-                    debris_species['radius'].extend(active_radii)
-                else:
-                    debris_species['mass'] = [debris_species['mass']] # convert to list if not one
-                    debris_species['mass'].extend(active_masses)
-
-                    debris_species['radius'] = [debris_species['radius']] # convert to list if not one
-                    debris_species['radius'].extend(active_radii)
-             
-                debris_species_object = self.add_multi_property_species(debris_species)
-                self.species.extend(debris_species_object)
-
+        print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
         return self.species
     
     def apply_launch_rates(self, n_shells: int):
@@ -231,22 +243,24 @@ class Species:
         This should be edited in the future to be more dynamic for the user. 
 
         """
-        for species in self.species:
-            if species.launch_func == "launch_func_constant":
-                # probably should remove for the constant launch_rate 
-                # they should provide a scalar or a vector, this would have to be called if you want a time varying function for the ODE
-                # if you provide something that is non-constant, then a user should have to provide a vector 
-                # time not alt
-                species.lambda_constant = [20 for _ in range(n_shells)]
-                # Direct copy from MATLAB
-                #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.launch_func == "launch_func_constant":
+                    # probably should remove for the constant launch_rate 
+                    # they should provide a scalar or a vector, this would have to be called if you want a time varying function for the ODE
+                    # if you provide something that is non-constant, then a user should have to provide a vector 
+                    # time not alt
+                    species.lambda_constant = [20 for _ in range(n_shells)]
+                    # Direct copy from MATLAB
+                    #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
 
     def create_symbolic_variables(self, n_shells: int):
         """
         This will create the symbolic variables for each of the species. 
         """
-        for species in self.species:
-            species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
+        for species_group in self.species.values():
+            for species in species_group:
+                species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
 
     
     def pair_actives_to_debris(self, active_species, debris_species):
@@ -284,9 +298,9 @@ class Species:
             print(f"    Name: {deb_spec.sym_name}")
             print(f"    pmd_linked_species: {linked_spec_names}")
 
-        # Update the species list 
-        self.species = []
-        self.species.extend(active_species)
-        self.species.extend(debris_species)
-        
-        
+        # Find the species in self.species and update the pmd_linked_species property
+        for deb_spec in debris_species:
+            for spec in self.species['active']:
+                if spec.sym_name == deb_spec.sym_name:
+                    spec.pmd_linked_species = deb_spec.pmd_linked_species
+    

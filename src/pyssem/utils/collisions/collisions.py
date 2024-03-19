@@ -185,7 +185,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     LB = LBdiam
     objclass = 5 if RBflag == 0 else 0
 
-    # Ensure that m1 > m2
+    # Ensure that m1 > m2, if not swap
     if m1 < m2:
         m1, m2 = m2, m1
         r1, r2 = r2, r1
@@ -210,7 +210,6 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     
     # Create PDF of power law distribution, then sample 'num' selections
     # Only up to 1m, then randomly sample larger objects as quoted above
-
     dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
     dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
     nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  # Cumulative distribution
@@ -223,6 +222,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
         dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
     except ValueError:
         dss = 0
+        return np.zeros(len(binEd) - 1)
 
     # Calculate the mass of objects
     A = 0.556945 * dss ** 2.0047077
@@ -258,7 +258,7 @@ def create_collision_pairs(scen_properties):
     
     # Get the binomial coefficient of the species
     # This returns all possible combinations of the species
-    species = scen_properties.species
+    species =  [species for species_group in scen_properties.species.values() for species in species_group]
     species_cross_pairs = list(combinations(species, 2))
     species_self_pairs = [(s, s) for s in species]
 
@@ -268,7 +268,7 @@ def create_collision_pairs(scen_properties):
     n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
 
     # Debris species
-    debris_species = [s for s in scen_properties.species if not s.active and s.RBflag != 1]
+    debris_species = scen_properties.species['debris']
 
     # not sure what this code does 
     # if nargin < 2
@@ -326,6 +326,7 @@ def create_collision_pairs(scen_properties):
         else:
             RBflag = max(s1.RBflag, s2.RBflag)
         
+        # A matrix of the fragments made, columns are the orbital shells, rows are the debris species
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
         for dv_index, dv in enumerate(scen_properties.v_imp2):
             temp = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
