@@ -8,6 +8,7 @@ import json
 import pandas as pd
 from scipy.interpolate import interp1d
 import sympy as sp
+import matplotlib.pyplot as plt
 
 
 class ScenarioProperties:
@@ -172,7 +173,6 @@ class ScenarioProperties:
                     continue
 
                 species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
-                print(species_FLM.head())
 
                 # divide all the values by the time step to get the rate per year
                 species_FLM = species_FLM / time_step
@@ -182,12 +182,34 @@ class ScenarioProperties:
                 species.lambda_funs = []
                 for shell in range(self.n_shells):
                     x = scen_times
-                    v = species_FLM.loc[shell, :].values / time_step  # Adjust shell index accordingly
-                    lambdadot = interp1d(x, v, fill_value="extrapolate")
+                    y = species_FLM.loc[shell, :].values / time_step  # Adjust shell index accordingly
+                    lambdadot = interp1d(x, y, fill_value="extrapolate")
                     species.lambda_funs.append(lambdadot)
 
                 # Optionally, assign or update the launch function here if needed
                 species.launch_func = launch_func_lambda_fun
+
+        #plot one species lambda function as an example
+        x = np.linspace(self.scen_times[0], self.scen_times[-1], num=1000)  # 1000 points from start to end
+
+        plt.figure(figsize=(10, 6))
+        # for i, fun in enumerate(self.species['active'][0].lambda_funs):
+        #     y = fun(x)  # Evaluate the i-th function at each point in x
+        #     plt.plot(x, y, label=f'Shell {i+1}')  # Adjust label as needed
+        y = self.species['active'][0].lambda_funs[10](x)
+        plt.plot(x, y, label='Shell 31')  # Adjust label as needed
+
+        plt.xlim(0,20)
+        plt.ylim(0, 2500)
+        plt.title('Launch Rate Over Time')
+        plt.xlabel('Time (years)')
+        plt.ylabel('Launches Per Year')
+        plt.legend()
+        plt.grid(True)
+
+        # Save plot as PNG
+        plt.savefig('all_launch_rates_plot_shell_22.png')
+         
    
     def initial_pop_and_launch(self):
         """
@@ -220,12 +242,18 @@ class ScenarioProperties:
         self.full_coll = sp.zeros(self.n_shells, len(species_list)) 
 
         for i, species in enumerate(species_list):
+            # Launch function will have been previously defined, but always takes the same arguments
             lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
             self.full_lambda[i] = lambda_expr
 
+            # Post mission Disposal
             Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
             self.full_Cdot_PMD[:, i] = Cdot_PMD
 
+            # Collisions
+
+            # Drag
+                        
         equations = self.full_Cdot_PMD + self.full_coll
 
         # convert equations to a function for speed
