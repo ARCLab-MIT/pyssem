@@ -15,7 +15,7 @@ class SpeciesPairClass:
             species2 (Species): The second species in the collision
             gammas (np.ndarray): The collision probability modifiers for each species in source_sinks.
             A scalar or a N x M matrix, where N is the number of altitude bins and M is the number of species
-            with population addition/subtractoins where this collision types occur. 
+            with population addition/subtractions where this collision types occur. 
             source_sinks (list): A list of species that are either sources or sinks in the collision
             scen_properties (ScenarioProperties): The scenario properties object
         """
