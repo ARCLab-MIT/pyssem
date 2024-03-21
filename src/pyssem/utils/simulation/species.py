@@ -79,6 +79,7 @@ class SpeciesProperties:
                     setattr(self, key, value)
                 else:
                     print(f"Warning: Property {key} not found in SpeciesProperties class.")
+                    # Post mission disposal functions
 
 class Species:
     """
@@ -233,28 +234,54 @@ class Species:
                     else:
                         species_object = SpeciesProperties(properties)
                         self.species['debris'].append(species_object)
-            
-            # Post mission disposal functions
-            # Find the function that matches the string
-            if properties['pmd_func'] == "pmd_func_sat":
-                species_object.pmd_func = pmd_func_sat
-            elif properties['pmd_func'] == "pmd_func_derelict":
-                species_object.pmd_func = pmd_func_derelict
-            else:
-                species_object.pmd_func = pmd_func_none
-
-            # Drag functions
-            if properties['drag_func'] == "drag_func_exp":
-                species_object.drag_func = drag_func_exp
-            else:
-                species_object.drag_func = drag_func_none
-
-
-                        
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
+        
+        # Pass any required functions
+        #self.convert_params_to_functions()
         return self.species
     
+    def convert_params_to_functions(self):
+        """
+        Pass functions that are in string format to actual functions.
+        """
+        # convert_params_to_functions = {
+        #     "pmd_func": {
+        #         "pmd_func_derelict": pmd_func_derelict, 
+        #         "pmd_func_sat": pmd_func_sat,
+        #         "pmd_func_none": pmd_func_none
+        #     },
+        #     "drag_func": {
+        #         "drag_func_none": drag_func_none,
+        #         "drag_func_exp" : drag_func_exp
+        #     }
+        # }
+
+        # for species_group in self.species.values():
+        #     for species in species_group:
+        #         for key, value in species.__dict__.items():
+        #             if key in convert_params_to_functions and value in convert_params_to_functions[key]:
+        #                 setattr(species, key, convert_params_to_functions[key][value])
+
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.pmd_func == "pmd_func_derelict":
+                    species.pmd_func = pmd_func_derelict
+                elif species.pmd_func == "pmd_func_sat":
+                    species.pmd_func = pmd_func_sat
+                else:
+                    species.pmd_func = pmd_func_none
+
+                if species.drag_func == "drag_func_none":
+                    species.drag_func = drag_func_none
+                else:                 
+                    species.drag_func = drag_func_exp
+
+                species.launch_func = launch_func_lambda_fun    
+
+        return
+        
+
     def apply_launch_rates(self, n_shells: int):
         """
         This will loop through each of the species, if launch rate is constant, it will create a launch array. 

@@ -9,7 +9,8 @@ import pandas as pd
 from scipy.interpolate import interp1d
 import sympy as sp
 import matplotlib.pyplot as plt
-
+from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
+from utils.drag.drag import drag_func_none, drag_func_exp
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -166,9 +167,11 @@ class ScenarioProperties:
 
         for species_group in self.species.values():
             for species in species_group:
+
                 # Extract the species columns, with altitude and time
                 if species.sym_name in FLM_steps.columns:
                     temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+
                 else:
                     continue
 
@@ -186,30 +189,7 @@ class ScenarioProperties:
                     lambdadot = interp1d(x, y, fill_value="extrapolate")
                     species.lambda_funs.append(lambdadot)
 
-                # Optionally, assign or update the launch function here if needed
-                species.launch_func = launch_func_lambda_fun
-
-        #plot one species lambda function as an example
-        x = np.linspace(self.scen_times[0], self.scen_times[-1], num=1000)  # 1000 points from start to end
-
-        plt.figure(figsize=(10, 6))
-        # for i, fun in enumerate(self.species['active'][0].lambda_funs):
-        #     y = fun(x)  # Evaluate the i-th function at each point in x
-        #     plt.plot(x, y, label=f'Shell {i+1}')  # Adjust label as needed
-        y = self.species['active'][0].lambda_funs[10](x)
-        plt.plot(x, y, label='Shell 31')  # Adjust label as needed
-
-        plt.xlim(0,20)
-        plt.ylim(0, 2500)
-        plt.title('Launch Rate Over Time')
-        plt.xlabel('Time (years)')
-        plt.ylabel('Launches Per Year')
-        plt.legend()
-        plt.grid(True)
-
-        # Save plot as PNG
-        plt.savefig('all_launch_rates_plot_shell_22.png')
-         
+                
    
     def initial_pop_and_launch(self):
         """
@@ -260,26 +240,3 @@ class ScenarioProperties:
         xdot_eqs_func = sp.lambdify(t, equations, "numpy")
 
         return
-
-def launch_func_lambda_fun(t, h, species_properties, scen_properties):
-    """
-    This function will returnt the lambda function for a required species. 
-
-    :param t: The time from the scenario start in years
-    :type t: int
-    :param h: The altitude above the ellipsoid in km of shell lower edge
-    :type h: int
-    :param species_properties: Species properties
-    :type species_properties: Species
-    :param scen_properties: Scenario properties
-    :type scen_properties: ScenarioProperties
-    :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
-    :rtype: SciPy interp1d function
-    """
-    # # Find the index for the given altitude
-    # h_inds = np.where(scen_properties.HMid == h)
-    # print(species_properties.sym_name)
-
-    # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
-    Lambdadot = species_properties.lambda_funs
-    return Lambdadot
