@@ -233,6 +233,24 @@ class Species:
                     else:
                         species_object = SpeciesProperties(properties)
                         self.species['debris'].append(species_object)
+            
+            # Post mission disposal functions
+            # Find the function that matches the string
+            if properties['pmd_func'] == "pmd_func_sat":
+                species_object.pmd_func = pmd_func_sat
+            elif properties['pmd_func'] == "pmd_func_derelict":
+                species_object.pmd_func = pmd_func_derelict
+            else:
+                species_object.pmd_func = pmd_func_none
+
+            # Drag functions
+            if properties['drag_func'] == "drag_func_exp":
+                species_object.drag_func = drag_func_exp
+            else:
+                species_object.drag_func = drag_func_none
+
+
+                        
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
         return self.species

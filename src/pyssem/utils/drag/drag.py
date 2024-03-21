@@ -63,6 +63,19 @@ def densityexp(h):
 
     return p
 
+def drag_func_none(t, species, scen_properties):
+    """
+    Drag function for species with no drag. Returns a zero matrix.
+
+    :param t: _description_
+    :type t: _type_
+    :param species: _description_
+    :type species: _type_
+    :param scen_properties: _description_
+    :type scen_properties: _type_
+    """
+
+    return zeros(scen_properties.n_shells, 1)
 
 def drag_func_exp(t, species, scen_properties):
     """
@@ -112,5 +125,26 @@ def drag_func_exp(t, species, scen_properties):
         rho_current_shell_k = rho(k)
         rvel_current = -rho_current_shell_k * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k)) * (24 * 3600* 365.25)
         #Fdot(k, 1) = +n0*rvel_upper/scen_properties.Dhu + rvel_current/scen_properties.Dhl * species.sym(k)
+
+
+def population_shell(t, x, obj):
+    """
+    For time varying atmosphere, density needs to be computed within the integrated function, 
+    not as an argument outside it. 
+
+    :param t: is a time in years from start date
+    :type t: _type_
+    :param x: is the equation state
+    :type x: _type_
+    :param obj: is the simulation object
+    :type obj: _type_
+
+    Returns: the rate of change in the species in each shell at the specified time due to drag
+    """
+
+    # need to continue closer to the time
+    obj.scen_properties.X = x
+    obj.scen_properties.t = t
+
 
 

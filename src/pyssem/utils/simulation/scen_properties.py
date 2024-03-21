@@ -262,7 +262,8 @@ class ScenarioProperties:
         return
 
 def launch_func_lambda_fun(t, h, species_properties, scen_properties):
-    """_summary_
+    """
+    This function will returnt the lambda function for a required species. 
 
     :param t: The time from the scenario start in years
     :type t: int
@@ -275,10 +276,10 @@ def launch_func_lambda_fun(t, h, species_properties, scen_properties):
     :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
     :rtype: SciPy interp1d function
     """
-    # Find the index for the given altitude
-    h_inds = np.where(scen_properties.HMid == h)[0]
-    print(species_properties.sym_name)
+    # # Find the index for the given altitude
+    # h_inds = np.where(scen_properties.HMid == h)
+    # print(species_properties.sym_name)
 
     # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
-    Lambdadot = species_properties.lambda_funs[h_inds](t)
+    Lambdadot = species_properties.lambda_funs
     return Lambdadot
