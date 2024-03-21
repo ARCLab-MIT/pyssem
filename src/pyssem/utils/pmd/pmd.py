@@ -69,6 +69,8 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
         for k in range(scen_properties.n_shells):
             Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
 
+    return Cpmddot
+
 # Example usage of find_alt_bin, assuming altitude bins are predefined in scen_properties
 def find_alt_bin(disposal_altitude, scen_properties):
     # This is a placeholder function; you need to define the logic based on your altitude bins

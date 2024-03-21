@@ -48,7 +48,7 @@ def main(species_json):
     # with open('scenario_properties.pkl', 'rb') as f:
     #     scenario_properties = pickle.load(f)
 
-    scenario_properties.build_model()
+    # scenario_properties.build_model()
 
     return
     

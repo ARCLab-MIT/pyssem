@@ -230,13 +230,21 @@ class ScenarioProperties:
             Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
             self.full_Cdot_PMD[:, i] = Cdot_PMD
 
-            # Collisions
-
             # Drag
+            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
+            try:
+                self.drag_term_upper[:, i] = upper_term
+                self.drag_term_cur[:, i] = current_term
+            except:
+                continue
+        
+        # Collisions
+        for i in self.collision_pairs:
+            self.full_coll += i.eqs
                         
         equations = self.full_Cdot_PMD + self.full_coll
 
         # convert equations to a function for speed
-        xdot_eqs_func = sp.lambdify(t, equations, "numpy")
+        #xdot_eqs_func = sp.lambdify(t, equations, "numpy")
 
         return

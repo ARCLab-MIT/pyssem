@@ -17,7 +17,7 @@ class SpeciesProperties:
         self.radius = None 
         self.A = None  # m^2
         self.amr = None  # m^2/kg
-        self.beta = None  # m^2/kg
+        self.beta = None  # m^2/kg, ballistic coefficient (Cd * A / mass)
         self.B = None # 
         self.density_filepath = None  # For drag
 
@@ -80,6 +80,27 @@ class SpeciesProperties:
                 else:
                     print(f"Warning: Property {key} not found in SpeciesProperties class.")
                     # Post mission disposal functions
+            
+            # Handle derived properties
+            if self.radius is not None and self.A is None:
+                self.A = np.pi * self.radius ** 2
+            if self.A == "Calculated based on radius":
+                self.A = np.pi * self.radius ** 2
+            if self.A is not None and self.amr is None:
+                self.amr = self.A / self.mass
+            if self.Cd is not None and self.amr is not None and self.beta is None:
+                self.beta = self.Cd * self.amr
+            if self.radius is not None and hasattr(self, 'trackable') is False:
+                self.trackable = self.radius >= self.trackable_radius_threshold
+            
+            # Ballistic Coefficient
+            if hasattr(self, 'Cd') and hasattr(self, 'amr'):
+                self.beta = self.Cd * self.amr
+            else:
+                self.beta = None
+            if self.beta is None:
+                print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
+
 
 class Species:
     """
@@ -139,18 +160,7 @@ class Species:
                 else:
                     species_props_copy[field] = field_value
 
-            # Handle derived properties
-            if 'radius' in species_props_copy and 'A' not in species_props_copy:
-                species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
-            if species_props_copy['A'] == "Calculated based on radius":
-                species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
-            if 'A' in species_props_copy and 'amr' not in species_props_copy:
-                species_props_copy['amr'] = species_props_copy['A'] / species_props_copy['mass']
-            if 'Cd' in species_props_copy and 'amr' in species_props_copy and 'beta' not in species_props_copy:
-                species_props_copy['beta'] = species_props_copy['Cd'] * species_props_copy['amr']
-            if 'radius' in species_props_copy and 'trackable' not in species_props_copy:
-                species_props_copy['trackable'] = species_props_copy['radius'] >= trackable_radius_threshold
-
+                 
             # Create the species instance and append it to the species list
             species_instance = SpeciesProperties(species_props_copy)
             multi_species_list.append(species_instance)
