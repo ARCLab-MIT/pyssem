@@ -10,7 +10,7 @@ from scipy.interpolate import interp1d
 import sympy as sp
 import matplotlib.pyplot as plt
 from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
-from utils.drag.drag import drag_func_none, drag_func_exp
+from utils.drag.drag import drag_func_none, drag_func_exp, static_exp_dens_func, JB2008_dens_func
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -63,23 +63,23 @@ class ScenarioProperties:
         self.max_altitude = max_altitude
         self.n_shells = n_shells
         self.launch_function = launch_function
+        self.density_model = density_model
         self.delta = delta
         self.integrator = integrator
-        self.density_model = density_model
         self.LC = LC
         self.v_imp = v_imp
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
-        if self.density_model == 'static_exp_dens_func':
+        if self.density_model == static_exp_dens_func:
             self.time_dep_density = False
-        elif self.density_model == 'JB2008_dens_func':
+        elif self.density_model == JB2008_dens_func:
             self.time_dep_density = True
             if not self.density_filepath:
                 self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
-            self.density_model = self.static_exp_dens_func
+            self.density_model = static_exp_dens_func
 
         # FILL OUT THE INTEGRATOR FIXED STEPS WHEN REQUIRED
             
@@ -106,16 +106,19 @@ class ScenarioProperties:
         self.species = []
         self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
+        self.species_length = 0
         
         self.collision_pairs = [] 
 
         # Parameters for simulation
-        self.full_Cdot_PMD = []
-        self.full_lambda = []
-        self.full_coll = []
+        self.full_Cdot_PMD
+        self.full_lambda
+        self.full_coll
+        self.full_drag
+        self.equations
         self.drag_term_upper = None
         self.drag_term_cur = None
-        
+        self.sym_drag = False
 
     
     def add_species_set(self, species_list: list):
@@ -142,6 +145,8 @@ class ScenarioProperties:
                 else:
                     # If the key does exist, append the species to the list
                     self.species_cells[name].append(species)
+                
+                self.species_length += 1
     
         self.species = species_list
 
@@ -217,9 +222,11 @@ class ScenarioProperties:
             for species in species_group:
                 species_list.append(species)
     
-        self.full_Cdot_PMD = sp.zeros(self.n_shells, len(species_list))
-        self.full_lambda = [None] * len(species_list)
-        self.full_coll = sp.zeros(self.n_shells, len(species_list)) 
+        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
+        self.full_lambda = [None] * self.species_length
+        self.full_coll = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
 
         for i, species in enumerate(species_list):
             # Launch function will have been previously defined, but always takes the same arguments
@@ -238,13 +245,27 @@ class ScenarioProperties:
             except:
                 continue
         
-        # Collisions
-        for i in self.collision_pairs:
-            self.full_coll += i.eqs
-                        
-        equations = self.full_Cdot_PMD + self.full_coll
+        # # Collisions
+        # for i in self.collision_pairs:
+        #     self.full_coll += i.eqs
 
-        # convert equations to a function for speed
-        #xdot_eqs_func = sp.lambdify(t, equations, "numpy")
+        #self.equations = sp.zeros(self.n_shells, self.species_length)      
+        self.equations = self.full_Cdot_PMD + self.full_coll
+
+        # Recalculate objects based on density, as this is time varying 
+        if not self.time_dep_density: # static density
+            rho = self.density_model(0, self.HMid, self.species, self) # time and scen_properties are not used in this function
+            rho_reshape = rho.reshape(-1, 1)
+            rho_mat = np.tile(rho_reshape, (1, self.species_length)) # repeat the density for each species (not sure if needed?)
+            rho_mat = sp.Matrix(rho_mat)
+            #self.full_drag = self.drag_term_upper * rho_mat[:, 1:] + self.drag_term_cur * rho_mat[:, :-1] # multiplying drag flux by density
+            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(rho_mat)
+            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(rho_mat)
+            self.full_drag = drag_upper_with_density + drag_cur_with_density
+            self.equations += self.full_drag
+            self.sym_drag = True
+        
+        if self.time_dep_density:
+            return
 
         return

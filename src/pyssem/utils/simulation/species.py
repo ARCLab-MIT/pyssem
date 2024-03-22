@@ -248,7 +248,6 @@ class Species:
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
         
         # Pass any required functions
-        #self.convert_params_to_functions()
         return self.species
     
     def convert_params_to_functions(self):
