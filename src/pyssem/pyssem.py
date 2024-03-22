@@ -50,6 +50,8 @@ def main(species_json):
 
     scenario_properties.build_model()
 
+    scenario_properties.run_model()
+
     return
     
     # # Then add these generated species to the scenario properties

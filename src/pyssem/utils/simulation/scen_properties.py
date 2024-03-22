@@ -7,6 +7,7 @@ from utils.launch.launch import ADEPT_traffic_model
 import json
 import pandas as pd
 from scipy.interpolate import interp1d
+from scipy.integrate import solve_ivp
 import sympy as sp
 import matplotlib.pyplot as plt
 from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
@@ -212,7 +213,6 @@ class ScenarioProperties:
     
     ## Simulation Part
 
-
     def build_model(self):
 
         t = sp.symbols('t')
@@ -269,3 +269,79 @@ class ScenarioProperties:
             return
 
         return
+    
+    def run_model(self):
+
+        # There is some code needed here for when we include varying time intervals
+
+        print("Running Model")
+
+        # First population the matrix with all the variables
+        species_list = []
+        for species_group in self.species.values():
+            for species in species_group:
+                species_list.append(species)
+        sym_matrices = [species.sym for species in species_list]
+        var = sp.Matrix.hstack(*sym_matrices)
+
+        def xdot_func(t, x):
+            return self.population_shell(t, x)
+
+        x0 = sp.zeros(self.n_shells * self.species_length) 
+
+        # expected_num_elements = self.n_shells * self.species_length
+        # if len(x0) == expected_num_elements:
+        #     # Reshape x0 to be a one-dimensional Matrix
+        #     x0 = x0.reshape(expected_num_elements, 1)
+        
+        t_span = (self.scen_times[0], self.scen_times[-1])
+        t_eval = np.linspace(*t_span, num=self.n_shells)
+
+        solution = solve_ivp(xdot_func, t_span, x0, t_eval=t_eval, method='RK45', vectorized=True)
+
+        # Process results
+        self.results['T'] = solution.t
+        self.results['X'] = solution.y
+
+    def population_shell(self, t, x):
+        """For time varying atmosphere, density needs to be computed within the intregrated function, 
+        not as an argument outside it. 
+
+        :param t: a time in years since the start date
+        :type t: int
+        :param x: the current equation state
+        :type x: _type_
+        """
+
+        self.scen_properties.X = x
+        self.scen_properties.t = t
+
+        # Execute any functions that need to run each model loop
+        for fun in self.scen_properties.functions_to_run_each_model_loop:
+            fun(x, t)
+
+        # Calculate the base rate of change using the main function (assume defined elsewhere)
+        xdot = self.xdot_fun(x)
+
+        # Launch rates - updating xdot with launch rates if applicable
+        if not self.scen_properties.sym_lambda:
+            full_lambda_vals = [fun(x, t) for fun in self.scen_properties.full_lambda]
+            xdot += np.array(full_lambda_vals).sum(axis=0)
+
+        # Handle time-dependent density for drag calculation
+        if self.scen_properties.time_dep_density:
+            rho = self.scen_properties.dens_model(t, self.scen_properties.R02, self.scen_properties)
+            rho_mat_k = np.tile(rho[:-1], (len(self.species), 1))
+            rho_mat_kp1 = np.tile(rho[1:], (len(self.species), 1))
+
+            # Adjust for indicator variables if present
+            if hasattr(self.scen_properties, 'indicator_var_list'):
+                indicator_zeros = np.zeros((self.scen_properties.num_integrated_indicator_vars, 1))
+                rho_mat_k = np.vstack((rho_mat_k, indicator_zeros))
+                rho_mat_kp1 = np.vstack((rho_mat_kp1, indicator_zeros))
+
+            # Compute full drag and update xdot
+            full_drag = self.drag_term_upper(x) * rho_mat_kp1 + self.drag_term_cur(x) * rho_mat_k
+            xdot += full_drag
+
+        return xdot
