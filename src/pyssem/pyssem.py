@@ -6,7 +6,7 @@ import json
 import pickle
 
 def main(species_json):
-    # # Create a scenaaio properties object, this is the high level simulation parameters
+    # Create a scenaaio properties object, this is the high level simulation parameters
     # scenario_properties = ScenarioProperties(
     #                 start_date=datetime.strptime('01/03/2022', "%m/%d/%Y"), 
     #                 simulation_duration=100, steps=200, min_altitude=200, 
@@ -35,17 +35,17 @@ def main(species_json):
     # scenario_properties.add_species_set(species_list.species)
 
     # # Create collision pairs
-    # scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+    # #scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
 
     # # Initial Population and ADEPT Launch Model 
     # scenario_properties.initial_pop_and_launch()
 
     # # Save scenario properties is a pickle file
-    # with open('scenario_properties.pkl', 'wb') as f:
+    # with open('scenario_properties_1.pkl', 'wb') as f:
     #     pickle.dump(scenario_properties, f)
 
-    #If scenario properties are saved, then load them
-    with open('scenario_properties.pkl', 'rb') as f:
+    # If scenario properties are saved, then load them
+    with open('scenario_properties_1.pkl', 'rb') as f:
         scenario_properties = pickle.load(f)
 
     scenario_properties.build_model()

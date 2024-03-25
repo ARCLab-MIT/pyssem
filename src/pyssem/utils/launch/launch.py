@@ -255,7 +255,7 @@ def define_object_class(T):
 
 def launch_func_lambda_fun(t, h, species_properties, scen_properties):
     """
-    This function will returnt the lambda function for a required species. 
+    This function will return the lambda function for a required species. 
 
     :param t: The time from the scenario start in years
     :type t: int

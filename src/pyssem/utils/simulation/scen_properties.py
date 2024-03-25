@@ -12,6 +12,7 @@ import sympy as sp
 import matplotlib.pyplot as plt
 from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
 from utils.drag.drag import drag_func_none, drag_func_exp, static_exp_dens_func, JB2008_dens_func
+import inspect
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -112,11 +113,11 @@ class ScenarioProperties:
         self.collision_pairs = [] 
 
         # Parameters for simulation
-        self.full_Cdot_PMD
-        self.full_lambda
-        self.full_coll
-        self.full_drag
-        self.equations
+        self.full_Cdot_PMD = sp.Matrix([])
+        self.full_lambda = sp.Matrix([])
+        self.full_coll = sp.Matrix([])
+        self.full_drag = sp.Matrix([])
+        self.equations = sp.Matrix([])
         self.drag_term_upper = None
         self.drag_term_cur = None
         self.sym_drag = False
@@ -208,6 +209,10 @@ class ScenarioProperties:
         x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
         FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
+        # Store as part of the class, as it is needed for the run_model()
+        self.x0 = x0
+        self.FLM_steps = FLM_steps
+
         self.future_launch_model(FLM_steps)
         return
     
@@ -217,131 +222,201 @@ class ScenarioProperties:
 
         t = sp.symbols('t')
 
-        species_list = []
-        for species_group in self.species.values():
-            for species in species_group:
-                species_list.append(species)
-    
+        species_list = [species for group in self.species.values() for species in group]
         self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
-        self.full_lambda = [None] * self.species_length
+        #self.full_lambda = [None] * self.species_length
+        self.full_lambda = sp.zeros(self.n_shells, self.species_length)
         self.full_coll = sp.zeros(self.n_shells, self.species_length)
         self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
         self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
 
+        # Equations are going to be a matrix of symbolic expressions
+        # Each row corresponds to a shell, and each column corresponds to a species
         for i, species in enumerate(species_list):
-            # Launch function will have been previously defined, but always takes the same arguments
             lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
-            self.full_lambda[i] = lambda_expr
+            self.full_lambda[:, i] = lambda_expr
 
-            # Post mission Disposal
-            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
-            self.full_Cdot_PMD[:, i] = Cdot_PMD
+        #     # Post mission Disposal
+        #     Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
+        #     self.full_Cdot_PMD[:, i] = Cdot_PMD
 
-            # Drag
-            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
-            try:
-                self.drag_term_upper[:, i] = upper_term
-                self.drag_term_cur[:, i] = current_term
-            except:
-                continue
+        #     # Drag
+        #     [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
+        #     try:
+        #         self.drag_term_upper[:, i] = upper_term
+        #         self.drag_term_cur[:, i] = current_term
+        #     except:
+        #         continue
         
         # # Collisions
         # for i in self.collision_pairs:
         #     self.full_coll += i.eqs
 
-        #self.equations = sp.zeros(self.n_shells, self.species_length)      
-        self.equations = self.full_Cdot_PMD + self.full_coll
-
-        # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: # static density
-            rho = self.density_model(0, self.HMid, self.species, self) # time and scen_properties are not used in this function
-            rho_reshape = rho.reshape(-1, 1)
-            rho_mat = np.tile(rho_reshape, (1, self.species_length)) # repeat the density for each species (not sure if needed?)
-            rho_mat = sp.Matrix(rho_mat)
-            #self.full_drag = self.drag_term_upper * rho_mat[:, 1:] + self.drag_term_cur * rho_mat[:, :-1] # multiplying drag flux by density
-            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(rho_mat)
-            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(rho_mat)
-            self.full_drag = drag_upper_with_density + drag_cur_with_density
-            self.equations += self.full_drag
-            self.sym_drag = True
+        self.equations = sp.zeros(self.n_shells, self.species_length)      
+        #self.equations = self.full_Cdot_PMD + self.full_coll
+        self.equations += self.full_lambda
+            
+        # # Recalculate objects based on density, as this is time varying 
+        # if not self.time_dep_density: # static density
+        #     rho = self.density_model(0, self.HMid, self.species, self) # time and scen_properties are not used in this function
+        #     rho_reshape = rho.reshape(-1, 1)
+        #     rho_mat = np.tile(rho_reshape, (1, self.species_length)) # repeat the density for each species (not sure if needed?)
+        #     rho_mat = sp.Matrix(rho_mat)
+        #     #self.full_drag = self.drag_term_upper * rho_mat[:, 1:] + self.drag_term_cur * rho_mat[:, :-1] # multiplying drag flux by density
+        #     drag_upper_with_density = self.drag_term_upper.multiply_elementwise(rho_mat)
+        #     drag_cur_with_density = self.drag_term_cur.multiply_elementwise(rho_mat)
+        #     self.full_drag = drag_upper_with_density + drag_cur_with_density
+        #     self.equations += self.full_drag
+        #     self.sym_drag = True
         
-        if self.time_dep_density:
-            return
+        # if self.time_dep_density:
+        #     return
 
         return
     
-    def run_model(self):
+    # def run_model(self):
+    #     # x0 is the initial conditions, aka the initial population
+    #     # There is some code needed here for when we include varying time intervals
 
-        # There is some code needed here for when we include varying time intervals
+    #     print("Running Model")
+    #     print(self)
 
-        print("Running Model")
+    #     # First population the matrix with all the variables
+    #     species_list = []
+    #     for species_group in self.species.values():
+    #         for species in species_group:
+    #             species_list.append(species)
+    #     sym_matrices = [species.sym for species in species_list]
+    #     var = sp.Matrix.hstack(*sym_matrices)
 
-        # First population the matrix with all the variables
-        species_list = []
-        for species_group in self.species.values():
-            for species in species_group:
-                species_list.append(species)
-        sym_matrices = [species.sym for species in species_list]
-        var = sp.Matrix.hstack(*sym_matrices)
+    #     def xdot_func(t, x):
+    #         return self.population_shell(t, x)
 
-        def xdot_func(t, x):
-            return self.population_shell(t, x)
+    #     x0 = self.x0.to_numpy().flatten()
 
-        x0 = sp.zeros(self.n_shells * self.species_length) 
-
-        # expected_num_elements = self.n_shells * self.species_length
-        # if len(x0) == expected_num_elements:
-        #     # Reshape x0 to be a one-dimensional Matrix
-        #     x0 = x0.reshape(expected_num_elements, 1)
+    #     # expected_num_elements = self.n_shells * self.species_length
+    #     # if len(x0) == expected_num_elements:
+    #     #     # Reshape x0 to be a one-dimensional Matrix
+    #     #     x0 = x0.reshape(expected_num_elements, 1)
         
-        t_span = (self.scen_times[0], self.scen_times[-1])
-        t_eval = np.linspace(*t_span, num=self.n_shells)
+    #     t_span = (self.scen_times[0], self.scen_times[-1])
+    #     t_eval = np.linspace(*t_span, num=self.n_shells)
 
-        solution = solve_ivp(xdot_func, t_span, x0, t_eval=t_eval, method='RK45', vectorized=True)
+    #     solution = solve_ivp(xdot_func, t_span, x0, t_eval=t_eval, method='RK45', vectorized=True)
+
+    #     # Process results
+    #     self.results['T'] = solution.t
+    #     self.results['X'] = solution.y
+
+    # def population_shell(self, t, x):
+    #     """For time varying atmosphere, density needs to be computed within the intregrated function, 
+    #     not as an argument outside it. 
+
+    #     :param t: a time in years since the start date
+    #     :type t: int
+    #     :param x: the current equation state
+    #     :type x: _type_
+    #     """
+
+    #     self.X = x
+    #     self.t = t
+
+    #     # CURRENTLY NOT USED
+    #     # Execute any functions that need to run each model loop
+    #     # for fun in self.functions_to_run_each_model_loop:
+    #     #     fun(x, t)
+
+    #     # Calculate the base rate of change using the main function
+    #     xdot = self.xdot_fun(x)
+
+    #     # Launch rates - updating xdot with launch rates if applicable
+    #     if not self.sym_lambda:
+    #         full_lambda_vals = [fun(x, t) for fun in self.full_lambda]
+    #         xdot += np.array(full_lambda_vals).sum(axis=0)
+
+    #     # Handle time-dependent density for drag calculation
+    #     if self.time_dep_density:
+    #         rho = self.scen_properties.dens_model(t, self.R02, self)
+    #         rho_mat_k = np.tile(rho[:-1], (len(self.species), 1))
+    #         rho_mat_kp1 = np.tile(rho[1:], (len(self.species), 1))
+
+    #         # Adjust for indicator variables if present
+    #         if hasattr(self, 'indicator_var_list'):
+    #             indicator_zeros = np.zeros((self.num_integrated_indicator_vars, 1))
+    #             rho_mat_k = np.vstack((rho_mat_k, indicator_zeros))
+    #             rho_mat_kp1 = np.vstack((rho_mat_kp1, indicator_zeros))
+
+    #         # Compute full drag and update xdot
+    #         full_drag = self.drag_term_upper(x) * rho_mat_kp1 + self.drag_term_cur(x) * rho_mat_k
+    #         xdot += full_drag
+
+    #     return xdot
+
+    def population_shell(self, t, x):
+        """
+        This method should compute the rate of change (xdot) based on the symbolic equations
+        previously defined in `self.equations`. Since `self.equations` is symbolic, you would
+        typically need to convert it to a numerical function that can be used by `solve_ivp`.
+        
+        Parameters:
+        - t: Time, a scalar.
+        - x: State vector at time t.
+        
+        Returns:
+        - xdot: Derivative of the state vector.
+        """
+        # Convert symbolic equations to a lambda function for numerical integration
+        # Assuming self.equations is a Matrix of symbolic expressions
+        print(f"Sample equations: {self.equations[:5]}")
+        t_symbol, x_symbols = sp.symbols('t'), sp.symbols(f'x0:{len(x)}')
+        try:
+            xdot_func = sp.lambdify((t_symbol, *x_symbols), self.equations, 'scipy')
+        except Exception as e:
+            print(inspect.getsource(xdot_func))
+        # Assuming xdot_func is the result of lambdify
+        print("xdot_func ready for evaluation.")
+
+        # Use the lambda function to evaluate xdot
+        try:
+            xdot = xdot_func(t, *x)
+        except Exception as e:
+            print(f"Error during xdot evaluation: {e}")
+        
+        print(f"xdot sample: {xdot[:5]}")
+        
+        return xdot
+    
+    def run_model(self):
+        print("Running Model")
+        
+        # Initial Population
+        x0 = self.x0.to_numpy().flatten()
+        print(f"x0 shape: {x0.shape}")
+        print(f"x0 sample: {x0[:5]}")
+
+
+
+        # Time span for the simulation
+        t_span = (0, self.simulation_duration)
+        t_eval = np.linspace(*t_span, num=self.steps)
+
+        # Convert population_shell to a function that solve_ivp can use
+        def xdot_solve_ivp(t, x):
+            return self.population_shell(t, x)
+        
+        print(f"t_span: {t_span}, t_eval: {t_eval[:5]}")
+        print(f"Starting integration...")
+
+        # Run the model
+        solution = solve_ivp(xdot_solve_ivp, t_span, x0, t_eval=t_eval, method='RK45', vectorized=True)
+
+        if solution.success:
+            print(f"Model run completed successfully.")
+        else:
+            print(f"Model run failed: {solution.message}")
 
         # Process results
         self.results['T'] = solution.t
-        self.results['X'] = solution.y
+        self.results['X'] = solution.y.T
 
-    def population_shell(self, t, x):
-        """For time varying atmosphere, density needs to be computed within the intregrated function, 
-        not as an argument outside it. 
-
-        :param t: a time in years since the start date
-        :type t: int
-        :param x: the current equation state
-        :type x: _type_
-        """
-
-        self.scen_properties.X = x
-        self.scen_properties.t = t
-
-        # Execute any functions that need to run each model loop
-        for fun in self.scen_properties.functions_to_run_each_model_loop:
-            fun(x, t)
-
-        # Calculate the base rate of change using the main function (assume defined elsewhere)
-        xdot = self.xdot_fun(x)
-
-        # Launch rates - updating xdot with launch rates if applicable
-        if not self.scen_properties.sym_lambda:
-            full_lambda_vals = [fun(x, t) for fun in self.scen_properties.full_lambda]
-            xdot += np.array(full_lambda_vals).sum(axis=0)
-
-        # Handle time-dependent density for drag calculation
-        if self.scen_properties.time_dep_density:
-            rho = self.scen_properties.dens_model(t, self.scen_properties.R02, self.scen_properties)
-            rho_mat_k = np.tile(rho[:-1], (len(self.species), 1))
-            rho_mat_kp1 = np.tile(rho[1:], (len(self.species), 1))
-
-            # Adjust for indicator variables if present
-            if hasattr(self.scen_properties, 'indicator_var_list'):
-                indicator_zeros = np.zeros((self.scen_properties.num_integrated_indicator_vars, 1))
-                rho_mat_k = np.vstack((rho_mat_k, indicator_zeros))
-                rho_mat_kp1 = np.vstack((rho_mat_kp1, indicator_zeros))
-
-            # Compute full drag and update xdot
-            full_drag = self.drag_term_upper(x) * rho_mat_kp1 + self.drag_term_cur(x) * rho_mat_k
-            xdot += full_drag
-
-        return xdot
+        return self.results
