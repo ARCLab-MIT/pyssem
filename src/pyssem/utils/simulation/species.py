@@ -314,7 +314,12 @@ class Species:
         """
         for species_group in self.species.values():
             for species in species_group:
-                species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
+                # if a sym_name contains '.' then it will be replaced with '-'
+                temp = species.sym_name.replace('.', '_')
+                species.sym = Matrix(symbols([f'{temp}_{i+1}' for i in range(n_shells)]))
+
+                # For now, the shell number shouldn't make a difference as it is specified by the order within the list
+                #species.sym = Matrix(symbols([f'{species.sym_name}' for i in range(n_shells)]))
 
     
     def pair_actives_to_debris(self, active_species, debris_species):
