@@ -19,25 +19,6 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "S": {
-        "sym_name": "S",
-        "Cd": 2.2,
-        "mass": [1250, 750, 148],
-        "radius": [4, 2, 0.5],
-        "A": "Calculated based on radius",
-        "active": true,
-        "maneuverable": true,
-        "trackable": true,
-        "deltat": [8],
-        "Pm": 0.90,
-        "alpha": 1e-5,
-        "alpha_active": 1e-5,
-        "slotting_effectiveness": 1.0,
-        "drag_effected": false,
-        "launch_func": "launch_func_constant",
-        "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"
-    },
     "Sns": {
         "sym_name": "sns",
         "Cd": 2.2,
@@ -76,19 +57,5 @@
         "launch_func": "launch_func_null",
         "pmd_func": "pmd_func_derelict",
         "drag_func": "drag_func_exp"
-    },
-    "B": {
-        "sym_name": "B",
-        "RBflag" : 1,
-        "Cd": 2.2,
-        "mass": 1783.94,
-        "radius": 2.687936011,
-        "A": [22.6980069221863],
-        "active": false,
-        "slotted": false,
-        "slotting_effectiveness": 1,
-        "Pm": 0,
-        "alpha": 0,
-        "alpha_active": 0
     }
 }

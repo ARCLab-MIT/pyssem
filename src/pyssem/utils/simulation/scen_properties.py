@@ -7,9 +7,12 @@ from utils.launch.launch import ADEPT_traffic_model
 import json
 import pandas as pd
 from scipy.interpolate import interp1d
+from scipy.integrate import solve_ivp
 import sympy as sp
 import matplotlib.pyplot as plt
-
+from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
+from utils.drag.drag import drag_func_none, drag_func_exp, static_exp_dens_func, JB2008_dens_func
+import inspect
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -62,23 +65,23 @@ class ScenarioProperties:
         self.max_altitude = max_altitude
         self.n_shells = n_shells
         self.launch_function = launch_function
+        self.density_model = density_model
         self.delta = delta
         self.integrator = integrator
-        self.density_model = density_model
         self.LC = LC
         self.v_imp = v_imp
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
-        if self.density_model == 'static_exp_dens_func':
+        if self.density_model == static_exp_dens_func:
             self.time_dep_density = False
-        elif self.density_model == 'JB2008_dens_func':
+        elif self.density_model == JB2008_dens_func:
             self.time_dep_density = True
             if not self.density_filepath:
                 self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
-            self.density_model = self.static_exp_dens_func
+            self.density_model = static_exp_dens_func
 
         # FILL OUT THE INTEGRATOR FIXED STEPS WHEN REQUIRED
             
@@ -105,16 +108,19 @@ class ScenarioProperties:
         self.species = []
         self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
+        self.species_length = 0
         
         self.collision_pairs = [] 
 
         # Parameters for simulation
-        self.full_Cdot_PMD = []
-        self.full_lambda = []
-        self.full_coll = []
+        self.full_Cdot_PMD = sp.Matrix([])
+        self.full_lambda = sp.Matrix([])
+        self.full_coll = sp.Matrix([])
+        self.full_drag = sp.Matrix([])
+        self.equations = sp.Matrix([])
         self.drag_term_upper = None
         self.drag_term_cur = None
-        
+        self.sym_drag = False
 
     
     def add_species_set(self, species_list: list):
@@ -141,6 +147,8 @@ class ScenarioProperties:
                 else:
                     # If the key does exist, append the species to the list
                     self.species_cells[name].append(species)
+                
+                self.species_length += 1
     
         self.species = species_list
 
@@ -166,9 +174,11 @@ class ScenarioProperties:
 
         for species_group in self.species.values():
             for species in species_group:
+
                 # Extract the species columns, with altitude and time
                 if species.sym_name in FLM_steps.columns:
                     temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+
                 else:
                     continue
 
@@ -182,34 +192,12 @@ class ScenarioProperties:
                 species.lambda_funs = []
                 for shell in range(self.n_shells):
                     x = scen_times
-                    y = species_FLM.loc[shell, :].values / time_step  # Adjust shell index accordingly
+                    y = species_FLM.loc[shell, :].values / time_step  
                     lambdadot = interp1d(x, y, fill_value="extrapolate")
+                    # This gives you the rate of change of satellites over 1 year, per shell (instantaneous rate of change)
                     species.lambda_funs.append(lambdadot)
 
-                # Optionally, assign or update the launch function here if needed
-                species.launch_func = launch_func_lambda_fun
-
-        #plot one species lambda function as an example
-        x = np.linspace(self.scen_times[0], self.scen_times[-1], num=1000)  # 1000 points from start to end
-
-        plt.figure(figsize=(10, 6))
-        # for i, fun in enumerate(self.species['active'][0].lambda_funs):
-        #     y = fun(x)  # Evaluate the i-th function at each point in x
-        #     plt.plot(x, y, label=f'Shell {i+1}')  # Adjust label as needed
-        y = self.species['active'][0].lambda_funs[10](x)
-        plt.plot(x, y, label='Shell 31')  # Adjust label as needed
-
-        plt.xlim(0,20)
-        plt.ylim(0, 2500)
-        plt.title('Launch Rate Over Time')
-        plt.xlabel('Time (years)')
-        plt.ylabel('Launches Per Year')
-        plt.legend()
-        plt.grid(True)
-
-        # Save plot as PNG
-        plt.savefig('all_launch_rates_plot_shell_22.png')
-         
+                
    
     def initial_pop_and_launch(self):
         """
@@ -222,63 +210,140 @@ class ScenarioProperties:
         x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
         FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
+        # Store as part of the class, as it is needed for the run_model()
+        self.x0 = x0
+        self.FLM_steps = FLM_steps
+
         self.future_launch_model(FLM_steps)
         return
     
     ## Simulation Part
 
-
     def build_model(self):
 
         t = sp.symbols('t')
 
-        species_list = []
-        for species_group in self.species.values():
-            for species in species_group:
-                species_list.append(species)
-    
-        self.full_Cdot_PMD = sp.zeros(self.n_shells, len(species_list))
-        self.full_lambda = [None] * len(species_list)
-        self.full_coll = sp.zeros(self.n_shells, len(species_list)) 
+        species_list = [species for group in self.species.values() for species in group]
+        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
+        self.full_lambda = []
+        self.full_coll = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
 
+        # Equations are going to be a matrix of symbolic expressions
+        # Each row corresponds to a shell, and each column corresponds to a species
         for i, species in enumerate(species_list):
-            # Launch function will have been previously defined, but always takes the same arguments
             lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
-            self.full_lambda[i] = lambda_expr
+            self.full_lambda.append(lambda_expr)
 
             # Post mission Disposal
             Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
             self.full_Cdot_PMD[:, i] = Cdot_PMD
 
-            # Collisions
-
             # Drag
-                        
-        equations = self.full_Cdot_PMD + self.full_coll
+            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
+            try:
+                self.drag_term_upper[:, i] = upper_term
+                self.drag_term_cur[:, i] = current_term
+            except:
+                continue
+        
+        # Collisions
+        for i in self.collision_pairs:
+            self.full_coll += i.eqs
 
-        # convert equations to a function for speed
-        xdot_eqs_func = sp.lambdify(t, equations, "numpy")
+        self.equations = sp.zeros(self.n_shells, self.species_length)      
+        self.equations = self.full_Cdot_PMD + self.full_coll
+            
+        # Recalculate objects based on density, as this is time varying 
+        if not self.time_dep_density: # static density
+            rho = self.density_model(0, self.HMid, self.species, self) # time and scen_properties are not used in this function
+            rho_reshape = rho.reshape(-1, 1)
+            rho_mat = np.tile(rho_reshape, (1, self.species_length)) # repeat the density for each species (not sure if needed?)
+            rho_mat = sp.Matrix(rho_mat)
+            #self.full_drag = self.drag_term_upper * rho_mat[:, 1:] + self.drag_term_cur * rho_mat[:, :-1] # multiplying drag flux by density
+            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(rho_mat)
+            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(rho_mat)
+            self.full_drag = drag_upper_with_density + drag_cur_with_density
+            self.equations += self.full_drag
+            self.sym_drag = True
+        
+        if self.time_dep_density:
+            return
 
         return
 
-def launch_func_lambda_fun(t, h, species_properties, scen_properties):
-    """_summary_
 
-    :param t: The time from the scenario start in years
-    :type t: int
-    :param h: The altitude above the ellipsoid in km of shell lower edge
-    :type h: int
-    :param species_properties: Species properties
-    :type species_properties: Species
-    :param scen_properties: Scenario properties
-    :type scen_properties: ScenarioProperties
-    :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
-    :rtype: SciPy interp1d function
-    """
-    # Find the index for the given altitude
-    h_inds = np.where(scen_properties.HMid == h)[0]
-    print(species_properties.sym_name)
+    def population_shell(self, t, x):
+        """
+        This method should compute the rate of change (xdot) based on the symbolic equations
+        previously defined in `self.equations`. Since `self.equations` is symbolic, you would
+        typically need to convert it to a numerical function that can be used by `solve_ivp`.
+        
+        Parameters:
+        - t: Time, a scalar.
+        - x: State vector at time t.
+        
+        Returns:
+        - xdot: Derivative of the state vector.
+        """
+        # this is just for time varying lambda - to get the vector for the rate of change for population at each shell
 
-    # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
-    Lambdadot = species_properties.lambda_funs[h_inds](t)
-    return Lambdadot
+        # Convert symbolic equations to a lambda function for numerical integration
+        # Assuming self.equations is a Matrix of symbolic expressions
+        print(f"Sample equations: {self.equations[:5]}")
+        t_symbol, x_symbols = sp.symbols('t'), sp.symbols(f'x0:{len(x)}')
+        try:
+            xdot_func = sp.lambdify((t_symbol, *x_symbols), self.equations, 'numpy')
+        except Exception as e:
+            print(inspect.getsource(xdot_func))
+        # Assuming xdot_func is the result of lambdify
+        print("xdot_func ready for evaluation.")
+
+        # Use the lambda function to evaluate xdot
+        try:
+            sympy_values = xdot_func(t, *x)
+        except Exception as e:
+            print(f"Error during xdot evaluation: {e}")
+
+        # xdot = sympy_values + lambda_values
+        xdot = sympy_values
+      
+        print(f"xdot sample: {xdot[:5]}")
+        
+        return xdot
+    
+    def run_model(self):
+        print("Running Model")
+        
+        # Initial Population
+        x0 = self.x0.to_numpy().flatten()
+        print(f"x0 shape: {x0.shape}")
+        print(f"x0 sample: {x0[:5]}")
+
+        # Time span for the simulation
+        t_span = (0, self.simulation_duration)
+        t_eval = np.linspace(*t_span, num=self.steps)
+
+        # Convert population_shell to a function that solve_ivp can use
+        def xdot_solve_ivp(t, x):
+            return self.population_shell(t, x)
+        
+        print(f"t_span: {t_span}, t_eval: {t_eval[:5]}")
+        print(f"Starting integration...")
+
+        # Run the model
+        solution = solve_ivp(xdot_solve_ivp, t_span, x0, t_eval=t_eval, method='RK45', vectorized=True)
+
+        if solution.success:
+            print(f"Model run completed successfully.")
+        else:
+            print(f"Model run failed: {solution.message}")
+
+        # Process results
+        self.results['T'] = solution.t
+        self.results['X'] = solution.y.T
+
+        return self.results
+
+        

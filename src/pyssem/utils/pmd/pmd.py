@@ -64,11 +64,12 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
     # Iterate over each shell and calculate the PMD rate
     for i, species in enumerate(species_properties.pmd_linked_species):
         Pm = species.Pm # 0 = no Pmd, 1 = full Pm
-        deltat = species.deltat
         
         # Failed PMD contribution for each linked species
         for k in range(scen_properties.n_shells):
-            Cpmddot[k, i] = (1 - Pm) / deltat * species.sym[k]
+            Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+
+    return Cpmddot
 
 # Example usage of find_alt_bin, assuming altitude bins are predefined in scen_properties
 def find_alt_bin(disposal_altitude, scen_properties):

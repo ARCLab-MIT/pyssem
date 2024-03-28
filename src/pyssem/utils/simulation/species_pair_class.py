@@ -10,6 +10,8 @@ class SpeciesPairClass:
         If the symbolic argument "n_f" is passed, it will be replaced with the n_f value
         for a collision involved species1 and species2 at each dv in scen_properties.v_imp2
 
+        Other species will gain from a collision - e.g. debris. 
+
         Args:
             species1 (Species): The first species in the collision
             species2 (Species): The second species in the collision

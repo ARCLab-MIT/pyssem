@@ -17,7 +17,7 @@ class SpeciesProperties:
         self.radius = None 
         self.A = None  # m^2
         self.amr = None  # m^2/kg
-        self.beta = None  # m^2/kg
+        self.beta = None  # m^2/kg, ballistic coefficient (Cd * A / mass)
         self.B = None # 
         self.density_filepath = None  # For drag
 
@@ -79,6 +79,28 @@ class SpeciesProperties:
                     setattr(self, key, value)
                 else:
                     print(f"Warning: Property {key} not found in SpeciesProperties class.")
+                    # Post mission disposal functions
+            
+            # Handle derived properties
+            if self.radius is not None and self.A is None:
+                self.A = np.pi * self.radius ** 2
+            if self.A == "Calculated based on radius":
+                self.A = np.pi * self.radius ** 2
+            if self.A is not None and self.amr is None:
+                self.amr = self.A / self.mass
+            if self.Cd is not None and self.amr is not None and self.beta is None:
+                self.beta = self.Cd * self.amr
+            if self.radius is not None and hasattr(self, 'trackable') is False:
+                self.trackable = self.radius >= self.trackable_radius_threshold
+            
+            # Ballistic Coefficient
+            if hasattr(self, 'Cd') and hasattr(self, 'amr'):
+                self.beta = self.Cd * self.amr
+            else:
+                self.beta = None
+            if self.beta is None:
+                print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
+
 
 class Species:
     """
@@ -138,18 +160,7 @@ class Species:
                 else:
                     species_props_copy[field] = field_value
 
-            # Handle derived properties
-            if 'radius' in species_props_copy and 'A' not in species_props_copy:
-                species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
-            if species_props_copy['A'] == "Calculated based on radius":
-                species_props_copy['A'] = np.pi * species_props_copy['radius'] ** 2
-            if 'A' in species_props_copy and 'amr' not in species_props_copy:
-                species_props_copy['amr'] = species_props_copy['A'] / species_props_copy['mass']
-            if 'Cd' in species_props_copy and 'amr' in species_props_copy and 'beta' not in species_props_copy:
-                species_props_copy['beta'] = species_props_copy['Cd'] * species_props_copy['amr']
-            if 'radius' in species_props_copy and 'trackable' not in species_props_copy:
-                species_props_copy['trackable'] = species_props_copy['radius'] >= trackable_radius_threshold
-
+                 
             # Create the species instance and append it to the species list
             species_instance = SpeciesProperties(species_props_copy)
             multi_species_list.append(species_instance)
@@ -235,8 +246,51 @@ class Species:
                         self.species['debris'].append(species_object)
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
+        
+        # Pass any required functions
         return self.species
     
+    def convert_params_to_functions(self):
+        """
+        Pass functions that are in string format to actual functions.
+        """
+        # convert_params_to_functions = {
+        #     "pmd_func": {
+        #         "pmd_func_derelict": pmd_func_derelict, 
+        #         "pmd_func_sat": pmd_func_sat,
+        #         "pmd_func_none": pmd_func_none
+        #     },
+        #     "drag_func": {
+        #         "drag_func_none": drag_func_none,
+        #         "drag_func_exp" : drag_func_exp
+        #     }
+        # }
+
+        # for species_group in self.species.values():
+        #     for species in species_group:
+        #         for key, value in species.__dict__.items():
+        #             if key in convert_params_to_functions and value in convert_params_to_functions[key]:
+        #                 setattr(species, key, convert_params_to_functions[key][value])
+
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.pmd_func == "pmd_func_derelict":
+                    species.pmd_func = pmd_func_derelict
+                elif species.pmd_func == "pmd_func_sat":
+                    species.pmd_func = pmd_func_sat
+                else:
+                    species.pmd_func = pmd_func_none
+
+                if species.drag_func == "drag_func_none":
+                    species.drag_func = drag_func_none
+                else:                 
+                    species.drag_func = drag_func_exp
+
+                species.launch_func = launch_func_lambda_fun    
+
+        return
+        
+
     def apply_launch_rates(self, n_shells: int):
         """
         This will loop through each of the species, if launch rate is constant, it will create a launch array. 
@@ -260,7 +314,12 @@ class Species:
         """
         for species_group in self.species.values():
             for species in species_group:
-                species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
+                # if a sym_name contains '.' then it will be replaced with '-'
+                temp = species.sym_name.replace('.', '_')
+                species.sym = Matrix(symbols([f'{temp}_{i+1}' for i in range(n_shells)]))
+
+                # For now, the shell number shouldn't make a difference as it is specified by the order within the list
+                #species.sym = Matrix(symbols([f'{species.sym_name}' for i in range(n_shells)]))
 
     
     def pair_actives_to_debris(self, active_species, debris_species):

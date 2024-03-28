@@ -7,17 +7,17 @@ def densityexp(h):
     Calculates atmospheric density based on altitude using a exponential model.
 
     Args:
-        h (float or np.ndarray): Height above ellipsoid in km.
+        h (np.array): Height of orbital shells in km.
 
     Returns:
         np.ndarray: Atmospheric density in kg/km^3.
     """
     
-    # Ensure h is a NumPy array to handle both scalar and vector inputs
-    h = np.maximum(h, 0)  # Ensure altitude is non-negative
+    # Convert h to a numpy array for vectorized operations
+    h = np.array(h)
 
-    # Initialize density array
-    p = np.zeros_like(h)
+    # Initialize the pressure array
+    p = np.zeros_like(h, dtype=float)
 
     # Define altitude layers and corresponding parameters (h0, p0, H) based on Vallado (2013)
     layers = [
@@ -63,13 +63,23 @@ def densityexp(h):
 
     return p
 
-
-def drag_func_exp(t, species, scen_properties):
+def drag_func_none(t, species, scen_properties):
     """
-    Drag function for the species
+    Drag function for species with no drag. Returns a zero matrix.
 
-    Currently this is only for exponential atmospheric density model. I think it would be best
-    to make this flexible for all models which are defined by the user.
+    :param t: _description_
+    :type t: _type_
+    :param species: _description_
+    :type species: _type_
+    :param scen_properties: _description_
+    :type scen_properties: _type_
+    """
+
+    return zeros(scen_properties.n_shells, 1)
+
+def drag_func_exp(t, h, species, scen_properties):
+    """
+    Drag function for the species, without density. This allows for time varying rhos to be used at much better speed. 
 
     Args:
         t (float): Time from scenario start in years
@@ -80,37 +90,70 @@ def drag_func_exp(t, species, scen_properties):
         numpy.ndarray: The rate of change in the species in each shell at the specified time due to drag.
                        If only one value is applied, it is assumed to be true for all shells.
     """
-    Fdot = zeros(scen_properties.n_shells, 1)
+    rvel_upper = zeros(scen_properties.n_shells, 1)
+    rvel_current = zeros(scen_properties.n_shells, 1)
+    upper_term = zeros(scen_properties.n_shells, 1)
+    current_term = zeros(scen_properties.n_shells, 1)
 
     if species.drag_effected:
-        # Calculate the Shell's altitde and Atmopsheric Density
-        h = species.R02
-        rho = densityexp(h) # Currently only exponential
-
-        # Calculate the drag force 
-        for k in range(scen_properties.n_shell):
-            
+        # Calculate the rate of change of the semi major axis (without density, as this will be applied later)
+        for k in range(scen_properties.n_shells):
+    
             # Check the shell is not the top shell
-            if k < scen_properties.n_shell:
-                n0 = species.sym(k+1)
-                h = scen_properties.sym(k+1)
-                rho_k1 = rho(k+1)
-
+            if k < scen_properties.n_shells - 1:
+                n0 = species.sym[k+1]
                 # Calculate Drag Flux (Relative Velocity)
-                rvel_upper = -rho_k1 * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k+1)) * (24 * 3600* 365.25)
+                rvel_upper[k] = -species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
             
             # Otherwise assume that no flux is coming down from the highest shell
             else:
                 n0 = 0
-                h = scen_properties.R02(k+1)
-                rho_k1 = rho(k+1)
-
-                # Calculate Drag Flux
-                rvel_upper = -rho_k1 * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k+1)) * (24 * 3600* 365.25)
+                rvel_upper[k] = -species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
         
-        # Take the current shell and then calculate...
-        rho_current_shell_k = rho(k)
-        rvel_current = -rho_current_shell_k * species.beta * sqrt(scen_properties.mu * scen_properties.RO(k)) * (24 * 3600* 365.25)
-        #Fdot(k, 1) = +n0*rvel_upper/scen_properties.Dhu + rvel_current/scen_properties.Dhl * species.sym(k)
+            # Calculate Drag Force
+            rvel_current[k] = -species.beta * np.sqrt(scen_properties.mu * scen_properties.R0[k]) * (24 * 3600* 365.25)
+            upper_term[k] = n0 * rvel_upper[k] / scen_properties.Dhu
+            current_term[k] = rvel_current[k] / scen_properties.Dhl * species.sym[k]
+    
+    return upper_term, current_term
+
+def static_exp_dens_func(t, h, species, scen_properties):
+    """
+    This is a wrapper for densityexp to be used in the simulation. 
+
+    :param t: time is the time in years (unused in this function)
+    :type t: int
+    :param h: height above the ellipsoid in km
+    :type h: int
+    :param species: _description_
+    :type species: _type_
+    :param scen_properties: _description_
+    :type scen_properties: _type_
+    """
+    return densityexp(h)
+
+def JB2008_dens_func():
+    # To be completed later
+    pass
+
+def population_shell(t, x, obj):
+    """
+    For time varying atmosphere, density needs to be computed within the integrated function, 
+    not as an argument outside it. 
+
+    :param t: is a time in years from start date
+    :type t: _type_
+    :param x: is the equation state
+    :type x: _type_
+    :param obj: is the simulation object
+    :type obj: _type_
+
+    Returns: the rate of change in the species in each shell at the specified time due to drag
+    """
+
+    # need to continue closer to the time
+    obj.scen_properties.X = x
+    obj.scen_properties.t = t
+
 
 

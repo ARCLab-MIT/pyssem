@@ -131,7 +131,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
     for obj_class in T['obj_class'].unique():
         species_class = species_dict.get(obj_class)
         if species_class in scen_properties.species_cells:
-            # If len is 1, just take the sym name of the species
             if len(scen_properties.species_cells[species_class]) == 1:
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
@@ -144,6 +143,11 @@ def ADEPT_traffic_model(scen_properties, file_path):
     
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
+
+    # length of alt bin
+    print(f"Length of Alt Bin: {len(T_new['alt_bin'].unique())}")
+
+    
     
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
@@ -151,9 +155,13 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
-    # Aiming for a matrix, with the species as columns and the number of orbital shells as rows based on alt_bin
-    x0_summary = x0.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+    print(x0['alt_bin'].unique())
 
+    x0_summary = x0.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+    x0_summary.reset_index()
+    print(x0_summary.head())
+
+    
     # Future Launch Model
     flm_steps = pd.DataFrame()
 
@@ -217,10 +225,12 @@ def find_alt_bin(altitude, scen_properties):
     if altitude >= shell_altitudes[-1]:
         return 
 
-    for i in range(len(shell_altitudes) - 1):  # -1 to prevent index out of range
-        if shell_altitudes[i] <= altitude < shell_altitudes[i + 1]:
-            return i  
-        
+    for i in range(len(shell_altitudes)):  # -1 to prevent index out of range
+        try:
+            if shell_altitudes[i] <= altitude < shell_altitudes[i + 1]:
+                return i  
+        except IndexError: # This is the top most shell and will be the last one
+            return len(shell_altitudes) 
     
 
 def define_object_class(T):
@@ -253,5 +263,26 @@ def define_object_class(T):
 
     return T
 
+def launch_func_lambda_fun(t, h, species_properties, scen_properties):
+    """
+    This function will return the lambda function for a required species. 
 
+    :param t: The time from the scenario start in years
+    :type t: int
+    :param h: The altitude above the ellipsoid in km of shell lower edge
+    :type h: int
+    :param species_properties: Species properties
+    :type species_properties: Species
+    :param scen_properties: Scenario properties
+    :type scen_properties: ScenarioProperties
+    :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
+    :rtype: SciPy interp1d function
+    """
+    # # Find the index for the given altitude
+    # h_inds = np.where(scen_properties.HMid == h)
+    # print(species_properties.sym_name)
+
+    # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
+    Lambdadot = species_properties.lambda_funs
+    return Lambdadot
 
