@@ -108,6 +108,7 @@ class ScenarioProperties:
         self.species = []
         self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
+        self.species_sym_names = []
         self.species_length = 0
         
         self.collision_pairs = [] 
@@ -149,6 +150,7 @@ class ScenarioProperties:
                     self.species_cells[name].append(species)
                 
                 self.species_length += 1
+                self.species_sym_names.append(species.sym_name)
     
         self.species = species_list
 
@@ -254,7 +256,7 @@ class ScenarioProperties:
 
         self.equations = sp.zeros(self.n_shells, self.species_length)      
         self.equations = self.full_Cdot_PMD + self.full_coll
-            
+
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: # static density
             rho = self.density_model(0, self.HMid, self.species, self) # time and scen_properties are not used in this function

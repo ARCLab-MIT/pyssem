@@ -147,8 +147,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # length of alt bin
     print(f"Length of Alt Bin: {len(T_new['alt_bin'].unique())}")
 
-    
-    
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
     
