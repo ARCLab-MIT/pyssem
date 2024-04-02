@@ -10,7 +10,7 @@ def main(species_json):
     scenario_properties = ScenarioProperties(
                     start_date=datetime.strptime('01/03/2022', "%m/%d/%Y"), 
                     simulation_duration=100, steps=200, min_altitude=200, 
-                    max_altitude=1400, n_shells=10, launch_function="Constant", 
+                    max_altitude=1400, n_shells=40, launch_function="Constant", 
                     delta=10, integrator = "rk4", density_model = "static_exp_dens_func", 
                     LC=0.1, v_imp=10)
 
@@ -52,7 +52,7 @@ def main(species_json):
         pickle.dump(scenario_properties, f)
 
 
-    scenario_properties.run_model()
+    #scenario_properties.run_model()
 
     return
     

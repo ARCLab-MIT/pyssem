@@ -99,21 +99,19 @@ def ADEPT_traffic_model(scen_properties, file_path):
     :return: The initial population and future launch model
     :rtype:  pandas.DataFrame, pandas.DataFrame
     """
-    # Read the CSV file into a DataFrame
+    # Load the traffic model data
     T = pd.read_csv(file_path)
     
-    # Convert 'epoch_start' from Julian to datetime format
     T['epoch_start_datime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
-    
-    # Define object classes if 'obj_class' is not defined
+
     if 'obj_class' not in T.columns:
         T = define_object_class(T)  # Make sure this function is defined and imported
-    
+
     # Calculate Apogee, Perigee, and Altitude
     T['apogee'] = T['sma'] * (1 + T['ecc'])
     T['perigee'] = T['sma'] * (1 - T['ecc'])
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
-    
+
     # Map species type based on object class
     species_dict = {"Non-station-keeping Satellite": "Sns",
                     "Rocket Body": "B",
@@ -121,26 +119,26 @@ def ADEPT_traffic_model(scen_properties, file_path):
                     "Coordinated Satellite": "S",
                     "Debris": "N",
                     "Candidate Satellite": "C"}
-    
+
     T['species_class'] = T['obj_class'].map(species_dict)
-    
+
     # Initialize an empty DataFrame for new data
     T_new = pd.DataFrame()
-    
+
     # Loop through object classes and assign species based on mass
     for obj_class in T['obj_class'].unique():
-        species_class = species_dict.get(obj_class)
-        if species_class in scen_properties.species_cells:
-            if len(scen_properties.species_cells[species_class]) == 1:
-                T_obj_class = T[T['obj_class'] == obj_class].copy()
-                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                T_new = pd.concat([T_new, T_obj_class])
-            else:
-                species_cells = scen_properties.species_cells[species_class]
-                T_obj_class = T[T['obj_class'] == obj_class].copy()
-                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                T_new = pd.concat([T_new, T_obj_class])
-    
+            species_class = species_dict.get(obj_class)
+            if species_class in scen_properties.species_cells:
+                    if len(scen_properties.species_cells[species_class]) == 1:
+                            T_obj_class = T[T['obj_class'] == obj_class].copy()
+                            T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                            T_new = pd.concat([T_new, T_obj_class])
+                    else:
+                            species_cells = scen_properties.species_cells[species_class]
+                            T_obj_class = T[T['obj_class'] == obj_class].copy()
+                            T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                            T_new = pd.concat([T_new, T_obj_class])
+
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
@@ -149,17 +147,29 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
-    
+
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
     print(x0['alt_bin'].unique())
 
-    x0_summary = x0.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-    x0_summary.reset_index()
-    print(x0_summary.head())
 
-    
+    # Create a pivot table, keep alt_bin
+    df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+    print(df.head())
+
+    # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
+    x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_sym_names).fillna(0)
+    x0_summary.index.name = 'alt_bin'
+
+    # Merge the two dataframes
+    for column in df.columns:
+        if column in x0_summary.columns:
+            x0_summary[column] = df[column]
+
+    # fill NaN with 0
+    x0_summary.fillna(0, inplace=True)
+
     # Future Launch Model
     flm_steps = pd.DataFrame()
 
