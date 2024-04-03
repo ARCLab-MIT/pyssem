@@ -159,7 +159,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     print(df.head())
 
     # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
-    x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_sym_names).fillna(0)
+    x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
     x0_summary.index.name = 'alt_bin'
 
     # Merge the two dataframes

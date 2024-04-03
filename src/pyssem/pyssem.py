@@ -27,13 +27,13 @@ def main(species_json):
     # launch function should be constant over time, rather than a function of altitude=
     species_list.apply_launch_rates(scenario_properties.n_shells)
 
-    species_list.create_symbolic_variables(scenario_properties.n_shells)
+    all_symbolic_vars = species_list.create_symbolic_variables(scenario_properties.n_shells)
 
     # Pair the active species to the debris species for PMD modeling
     species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['debris'])
 
     # Add the final species to the scenario properties to be used in the simulation
-    scenario_properties.add_species_set(species_list.species)
+    scenario_properties.add_species_set(species_list.species, all_symbolic_vars)
 
     # Create collision pairs
     scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
@@ -48,7 +48,7 @@ def main(species_json):
     scenario_properties.build_model()
 
     # Save scenario properties is a pickle file
-    with open('scenario_properties_2.pkl', 'wb') as f:
+    with open('scenario_properties_short.pkl', 'wb') as f:
         pickle.dump(scenario_properties, f)
 
 

@@ -311,15 +311,23 @@ class Species:
     def create_symbolic_variables(self, n_shells: int):
         """
         This will create the symbolic variables for each of the species. 
+
+        Args:
+            n_shells (int): Number of shells in the simulation.
+        
+        Returns:
+            list: List of symbolic variables for all species.
         """
+        all_species_symbols = []
         for species_group in self.species.values():
             for species in species_group:
-                # if a sym_name contains '.' then it will be replaced with '-'
-                temp = species.sym_name.replace('.', '_')
+                # if a sym_name contains '.' then it will be replaced with 'p'
+                temp = species.sym_name.replace('.', 'p') # P means decimal point
                 species.sym = Matrix(symbols([f'{temp}_{i+1}' for i in range(n_shells)]))
+                all_species_symbols.extend(species.sym)
+        
+        return all_species_symbols
 
-                # For now, the shell number shouldn't make a difference as it is specified by the order within the list
-                #species.sym = Matrix(symbols([f'{species.sym_name}' for i in range(n_shells)]))
 
     
     def pair_actives_to_debris(self, active_species, debris_species):

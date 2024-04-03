@@ -108,8 +108,9 @@ class ScenarioProperties:
         self.species = []
         self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
-        self.species_sym_names = []
+        self.species_names = []
         self.species_length = 0
+        self.all_symbolic_vars = []
         
         self.collision_pairs = [] 
 
@@ -124,13 +125,14 @@ class ScenarioProperties:
         self.sym_drag = False
 
     
-    def add_species_set(self, species_list: list):
+    def add_species_set(self, species_list: list, all_symbolic_vars: None):
         """
         Adds a list of species to the overall scenario properties. 
         It will update the species_cell dictionary with the species types as the keys and the species as the values.
 
         :param species_list: List of species to add to the scenario
         :type species_list: list
+        :param all_symbolic_vars: List of symbolic variables for the species: List of Symbolic variables, optional.
         """
         for species_group in species_list.values():
             for species in species_group:
@@ -150,9 +152,12 @@ class ScenarioProperties:
                     self.species_cells[name].append(species)
                 
                 self.species_length += 1
-                self.species_sym_names.append(species.sym_name)
+                self.species_names.append(species.sym_name)
     
         self.species = species_list
+
+        if all_symbolic_vars:
+            self.all_symbolic_vars = all_symbolic_vars
 
     def add_collision_pairs(self, collision_pairs: list):
         """
@@ -205,8 +210,8 @@ class ScenarioProperties:
         """
         Generate the initial population and the launch rates. 
         """
-        #filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        #filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # save as csv
