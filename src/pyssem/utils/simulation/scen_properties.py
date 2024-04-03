@@ -263,9 +263,6 @@ class ScenarioProperties:
         self.equations = sp.zeros(self.n_shells, self.species_length)      
         self.equations = self.full_Cdot_PMD + self.full_coll
 
-        # For launch, interpolated functions are significantly slower to evaluate compared to simple functions
-        # Therefore, we can check if the launch function is a simple function or an interpolated function
-
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: # static density
@@ -282,80 +279,61 @@ class ScenarioProperties:
         
         if self.time_dep_density:
             return
+        
+        # Need to re-shape the equations to be a 1D array
+        
 
         return
 
-
-    def population_shell(self, t, x):
-        """
-        This method should compute the rate of change (xdot) based on the symbolic equations
-        previously defined in `self.equations`. Since `self.equations` is symbolic, you would
-        typically need to convert it to a numerical function that can be used by `solve_ivp`.
-        
-        Parameters:
-        - t: Time, a scalar.
-        - x: State vector at time t.
-        
-        Returns:
-        - xdot: Derivative of the state vector.
-        """
-        # this is just for time varying lambda - to get the vector for the rate of change for population at each shell
-
-        # Convert symbolic equations to a lambda function for numerical integration
-        # Assuming self.equations is a Matrix of symbolic expressions
-        print(f"Sample equations: {self.equations[:5]}")
-        t_symbol, x_symbols = sp.symbols('t'), sp.symbols(f'x0:{len(x)}')
-        try:
-            xdot_func = sp.lambdify((t_symbol, *x_symbols), self.equations, 'numpy')
-        except Exception as e:
-            print(inspect.getsource(xdot_func))
-        # Assuming xdot_func is the result of lambdify
-        print("xdot_func ready for evaluation.")
-
-        # Use the lambda function to evaluate xdot
-        try:
-            sympy_values = xdot_func(t, *x)
-        except Exception as e:
-            print(f"Error during xdot evaluation: {e}")
-
-        # xdot = sympy_values + lambda_values
-        xdot = sympy_values
-      
-        print(f"xdot sample: {xdot[:5]}")
-        
-        return xdot
-    
     def run_model(self):
         print("Running Model")
         
         # Initial Population
-        x0 = self.x0.to_numpy().flatten()
-        print(f"x0 shape: {x0.shape}")
-        print(f"x0 sample: {x0[:5]}")
+        x0 = self.x0.T.values.flatten()
 
-        # Time span for the simulation
-        t_span = (0, self.simulation_duration)
-        t_eval = np.linspace(*t_span, num=self.steps)
+        # Convert the equations to lambda functions
+        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in self.equations]
 
-        # Convert population_shell to a function that solve_ivp can use
-        def xdot_solve_ivp(t, x):
-            return self.population_shell(t, x)
-        
-        print(f"t_span: {t_span}, t_eval: {t_eval[:5]}")
-        print(f"Starting integration...")
+        # Launch rates
+        full_lambda_flattened = []
 
-        # Run the model
-        solution = solve_ivp(xdot_solve_ivp, t_span, x0, t_eval=t_eval, method='RK45', vectorized=True)
+        for i in range(len(self.full_lambda)):
+            if self.full_lambda[i] is not None:
+                full_lambda_flattened.extend(self.full_lambda[i])
+            else:
+                # Append None to the list, length of scenario_properties.n_shells
+                full_lambda_flattened.extend([None]*self.n_shells)
 
-        if solution.success:
+        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, args=(full_lambda_flattened, equations), t_eval=self.scen_times, method='RK45')    
+
+        if output.success:
             print(f"Model run completed successfully.")
         else:
-            print(f"Model run failed: {solution.message}")
+            print(f"Model run failed: {output.message}")
 
         # Process results
-        self.results['T'] = solution.t
-        self.results['X'] = solution.y.T
+        self.results['T'] = output.t
+        self.results['X'] = output.y.T
 
         return self.results
 
+
+def population_shell(t, N, full_lambda, equations):
+    # Initialize the rate of change array
+    dN_dt = np.zeros_like(N)
+    
+    # Iterate over each component in N
+    for i in range(len(N)):
+        # Compute the intrinsic rate of change from the differential equation
+        dN_dt[i] = equations[i](*N)
         
+        # Compute and add the external modification rate, if applicable
+        lambda_value = full_lambda[i]
+        if lambda_value is not None:
+            # Add the lambda_value's contribution to the rate of change
+            # Assume lambda_value is a function of time t
+            increase = lambda_value(t)
+            if increase is not None:
+                dN_dt[i] += increase
+            
+    return dN_dt

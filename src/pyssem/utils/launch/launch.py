@@ -113,7 +113,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
     # Map species type based on object class
-    species_dict = {"Non-station-keeping Satellite": "Sns",
+    species_dict = {"Non-station-keeping Satellite": "sns",
                     "Rocket Body": "B",
                     "Station-keeping Satellite": "Su",
                     "Coordinated Satellite": "S",
