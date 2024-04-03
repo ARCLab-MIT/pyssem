@@ -195,12 +195,12 @@ class ScenarioProperties:
                 species_FLM = species_FLM / time_step
 
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
-                # Remeber indexing starts at 0 (40th shell is index 39)
+                # Remember indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
                 for shell in range(self.n_shells):
                     x = scen_times
                     y = species_FLM.loc[shell, :].values / time_step  
-                    lambdadot = interp1d(x, y, fill_value="extrapolate")
+                    lambdadot = interp1d(x, y, kind='linear') # can add extrapolation
                     # This gives you the rate of change of satellites over 1 year, per shell (instantaneous rate of change)
                     species.lambda_funs.append(lambdadot)
 
@@ -262,6 +262,10 @@ class ScenarioProperties:
 
         self.equations = sp.zeros(self.n_shells, self.species_length)      
         self.equations = self.full_Cdot_PMD + self.full_coll
+
+        # For launch, interpolated functions are significantly slower to evaluate compared to simple functions
+        # Therefore, we can check if the launch function is a simple function or an interpolated function
+
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: # static density

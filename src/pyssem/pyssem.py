@@ -48,7 +48,7 @@ def main(species_json):
     scenario_properties.build_model()
 
     # Save scenario properties is a pickle file
-    with open('scenario_properties_short.pkl', 'wb') as f:
+    with open('scenario_properties_long.pkl', 'wb') as f:
         pickle.dump(scenario_properties, f)
 
 
@@ -61,6 +61,6 @@ def main(species_json):
 
 if __name__ == "__main__":
     # import the template species.json file
-    with open('src\pyssem\species.json') as f:
+    with open('src\pyssem\species-long.json') as f:
         species_template = json.load(f)
     main(species_template)

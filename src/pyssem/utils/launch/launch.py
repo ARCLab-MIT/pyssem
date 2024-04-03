@@ -210,7 +210,8 @@ def find_mass_bin(mass, scen_properties, species_cell):
     for species in species_cell:
         if species.mass_lb <= mass < species.mass_ub:
             return species.sym_name
-        return None
+    
+    return None
 
 def find_alt_bin(altitude, scen_properties):
     """
