@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
 from utils.drag.drag import drag_func_none, drag_func_exp, static_exp_dens_func, JB2008_dens_func
 import inspect
+from numba import jit, prange
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -200,9 +201,11 @@ class ScenarioProperties:
                 for shell in range(self.n_shells):
                     x = scen_times
                     y = species_FLM.loc[shell, :].values / time_step  
-                    lambdadot = interp1d(x, y, kind='linear') # can add extrapolation
-                    # This gives you the rate of change of satellites over 1 year, per shell (instantaneous rate of change)
-                    species.lambda_funs.append(lambdadot)
+                     
+                    if np.all(y == 0):
+                        species.lambda_funs.append(None)  
+                    else:
+                        species.lambda_funs.append(np.array(y)) 
 
                 
    
@@ -304,7 +307,7 @@ class ScenarioProperties:
                 # Append None to the list, length of scenario_properties.n_shells
                 full_lambda_flattened.extend([None]*self.n_shells)
 
-        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, args=(full_lambda_flattened, equations), t_eval=self.scen_times, method='RK45')    
+        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, args=(full_lambda_flattened, equations, self.scen_times), t_eval=self.scen_times, method='LSODA')    
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -317,23 +320,19 @@ class ScenarioProperties:
 
         return self.results
 
-
-def population_shell(t, N, full_lambda, equations):
+def population_shell(t, N, full_lambda, equations, times):
     # Initialize the rate of change array
     dN_dt = np.zeros_like(N)
     
     # Iterate over each component in N
-    for i in range(len(N)):
+    for i in prange(len(N)):
         # Compute the intrinsic rate of change from the differential equation
         dN_dt[i] = equations[i](*N)
-        
+
         # Compute and add the external modification rate, if applicable
-        lambda_value = full_lambda[i]
-        if lambda_value is not None:
-            # Add the lambda_value's contribution to the rate of change
-            # Assume lambda_value is a function of time t
-            increase = lambda_value(t)
-            if increase is not None:
-                dN_dt[i] += increase
-            
+        # Now using np.interp to calculate the increase
+        # if full_lambda[i] is not None:
+        #     increase = np.interp(t, times, full_lambda[i])
+        #     dN_dt[i] += increase
+               
     return dN_dt

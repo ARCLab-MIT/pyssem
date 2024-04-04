@@ -3,7 +3,8 @@ from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
-import pickle
+import dill as pickle
+import cProfile
 
 def main(species_json):
     # Create a scenaaio properties object, this is the high level simulation parameters
@@ -51,13 +52,17 @@ def main(species_json):
     with open('scenario_properties_short.pkl', 'wb') as f:
         pickle.dump(scenario_properties, f)
 
+    profiler = cProfile.Profile()
+    profiler.enable()
 
-    scenario_properties.run_model()
+    scenario_properties.run_model()  # Run the method you want to profile
+
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')
+    stats.print_stats()
 
     return
     
-    # # Then add these generated species to the scenario properties
-    # scenario_properties.add_species_set(species)
 
 if __name__ == "__main__":
     # import the template species.json file
