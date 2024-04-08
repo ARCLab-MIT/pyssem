@@ -142,8 +142,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
-    # length of alt bin
-    print(f"Length of Alt Bin: {len(T_new['alt_bin'].unique())}")
 
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
@@ -151,12 +149,12 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
-    print(x0['alt_bin'].unique())
+    # Export x0 as a csv
+    x0.to_csv('initial_population.csv', index=False)
 
 
     # Create a pivot table, keep alt_bin
     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
-    print(df.head())
 
     # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
     x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)

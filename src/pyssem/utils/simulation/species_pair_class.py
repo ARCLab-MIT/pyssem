@@ -54,7 +54,7 @@ class SpeciesPairClass:
             self.nf = n_f_catastrophic.transpose()
         else:
             self.nf = n_f_damaging.transpose()
-
+            
         self.gammas = gammas
         self.source_sinks = source_sinks
         self.eqs = Matrix(scen_properties.n_shells, len(all_species), lambda i, j: 0)

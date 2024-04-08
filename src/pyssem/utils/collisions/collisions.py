@@ -333,7 +333,7 @@ def create_collision_pairs(scen_properties):
             frags_made[dv_index, :] = temp
 
         for i, species in enumerate(debris_species):
-            # # Get the column of the frags made matrix, remember, indexing starts at 0
+            # Get the column of the frags made matrix, remember, indexing starts at 0
             frags_made_sym = Matrix(frags_made[:, i])  # Convert array slice to Matrix
             new_column = gammas[:, 1].multiply_elementwise(frags_made_sym)
             new_column = new_column.reshape(gammas.rows, 1)  # Ensure it's a column vector
