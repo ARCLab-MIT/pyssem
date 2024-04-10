@@ -212,7 +212,8 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     # Only up to 1m, then randomly sample larger objects as quoted above
     dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
     dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
-    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  # Cumulative distribution
+    # Cumulative distribution
+    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  
     ndd = np.maximum(0, -np.diff(nddcdf))
     # Make sure int
     repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
@@ -292,28 +293,51 @@ def create_collision_pairs(scen_properties):
         m1, m2 = s1.mass, s2.mass
         r1, r2 = s1.radius, s2.radius
 
-        # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
-        gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
+        # # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
+        # gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
 
-        # Create a list of source sinks, first two are the active species
+        # # Create a list of source sinks, first two are the active species
         source_sinks = [s1, s2]
 
-        # Calculate gamma based on the species properties
-        for row in range(scen_properties.n_shells):
-            multiplier = 1  # Default multiplier
-            if s1.maneuverable and s2.maneuverable:
-                multiplier *= s1.alpha_active * s2.alpha_active
-                if s1.slotted and s2.slotted:
-                    multiplier *= min(s1.slotting_effectiveness, s2.slotting_effectiveness)
-            elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
-                if s1.trackable and s2.maneuverable:
-                    multiplier *= s2.alpha
-                elif s2.trackable and s1.maneuverable:
-                    multiplier *= s1.alpha
+        # # Calculate gamma based on the species properties
+        # for row in range(scen_properties.n_shells):
+        #     multiplier = 1  
+        #     # alpha_a * alpha_a if both maneuverable
+        #     if s1.maneuverable and s2.maneuverable:
+        #         multiplier *= s1.alpha_active * s2.alpha_active
+        #         if s1.slotted and s2.slotted:
+        #             multiplier *= min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+        #     # Alpha is one is maneverable and both are trackable=
+        #     elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
+        #         if s1.trackable and s2.maneuverable:
+        #             multiplier *= s2.alpha
+        #         elif s2.trackable and s1.maneuverable:
+        #             multiplier *= s1.alpha
 
-            # Update 'gammas' rows with the computed multiplier
-            gammas[row, 0] *= multiplier
-            gammas[row, 1] = gammas[row, 0]  # Copy the first column to the second
+        #     # Update 'gammas' rows with the computed multiplier
+        #     gammas[row, 0] *= multiplier
+        #     gammas[row, 1] = gammas[row, 0]  # Copy the first column to the second
+
+        # Initialize the gammas matrix with symbolic '-1's, 2 columns for each species
+        gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
+
+        # Implementing logic for gammas calculations based on species properties
+        if s1.maneuverable and s2.maneuverable:
+            # Multiplying each element in the first column of gammas by the product of alpha_active values
+            gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
+            if s1.slotted and s2.slotted:
+                # Applying the minimum slotting effectiveness if both are slotted
+                gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+
+        elif (s1.maneuverable and not s2.maneuverable) or \
+            (s2.maneuverable and not s1.maneuverable):
+            if s1.trackable and s2.maneuverable:
+                gammas[:, 0] = gammas[:, 0] * s2.alpha
+            elif s2.trackable and s1.maneuverable:
+                gammas[:, 0] = gammas[:, 0] * s1.alpha
+
+        # Applying symmetric loss to both colliding species
+        gammas[:, 1] = gammas[:, 0]
 
         # Rocket Body Flag - 1: RB; 0: not RB
         # Will be 0 if both are None type
@@ -326,16 +350,20 @@ def create_collision_pairs(scen_properties):
         else:
             RBflag = max(s1.RBflag, s2.RBflag)
         
-        # A matrix of the fragments made, columns are the orbital shells, rows are the debris species
+
+        ####  Calculate the number of fragments made for each debris species
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
+        isCatastrophic = np.zeros(len(scen_properties.v_imp2))
+
         for dv_index, dv in enumerate(scen_properties.v_imp2):
+            # Temp will be a 1D array of the number of fragments in each debris bin. E.g if there are 8 debris species, there will be 8 elements
             temp = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
             frags_made[dv_index, :] = temp
 
         for i, species in enumerate(debris_species):
             # Get the column of the frags made matrix, remember, indexing starts at 0
             frags_made_sym = Matrix(frags_made[:, i])  # Convert array slice to Matrix
-            new_column = gammas[:, 1].multiply_elementwise(frags_made_sym)
+            new_column = -gammas[:, 1].multiply_elementwise(frags_made_sym)
             new_column = new_column.reshape(gammas.rows, 1)  # Ensure it's a column vector
 
             # Use col_insert to add the new column. Insert at index 2+i

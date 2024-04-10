@@ -124,7 +124,9 @@ class ScenarioProperties:
         self.drag_term_upper = None
         self.drag_term_cur = None
         self.sym_drag = False
-
+        
+        # Outputs
+        self.output = None
     
     def add_species_set(self, species_list: list, all_symbolic_vars: None):
         """
@@ -214,8 +216,8 @@ class ScenarioProperties:
         Generate the initial population and the launch rates. 
         """
         #filepath = os.path.join(os.path.dirname(__file__), '../data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        #filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        #filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # save as csv
@@ -308,7 +310,9 @@ class ScenarioProperties:
                 # Append None to the list, length of scenario_properties.n_shells
                 full_lambda_flattened.extend([None]*self.n_shells)
 
-        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, args=(full_lambda_flattened, equations, self.scen_times), t_eval=self.scen_times, method='LSODA')    
+        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
+                           args=(full_lambda_flattened, equations, self.scen_times), 
+                           t_eval=self.scen_times, method='BDF')    
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -316,24 +320,27 @@ class ScenarioProperties:
             print(f"Model run failed: {output.message}")
 
         # Process results
-        self.results['T'] = output.t
-        self.results['X'] = output.y.T
+        self.output = output
 
-        return self.results
+        return 
 
 def population_shell(t, N, full_lambda, equations, times):
     # Initialize the rate of change array
     dN_dt = np.zeros_like(N)
-    
     # Iterate over each component in N
-    for i in prange(len(N)):
-        # Compute the intrinsic rate of change from the differential equation
-        dN_dt[i] = equations[i](*N)
-
+    for i in range(len(N)):
+       
         # Compute and add the external modification rate, if applicable
         # Now using np.interp to calculate the increase
-        # if full_lambda[i] is not None:
-        #     increase = np.interp(t, times, full_lambda[i])
-        #     dN_dt[i] += increase
-               
+        if full_lambda[i] is not None:
+            increase = np.interp(t, times, full_lambda[i])
+            # If increase is nan set to 0
+            if np.isnan(increase):
+                increase = 0
+            else:
+                dN_dt[i] += increase
+
+        # Compute the intrinsic rate of change from the differential equation
+        dN_dt[i] += equations[i](*N)
+
     return dN_dt
