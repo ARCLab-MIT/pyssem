@@ -207,6 +207,8 @@ class ScenarioProperties:
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
                     else:
+                        # Interpolate the launch rates
+                        #species.lambda_funs.append(interp1d(x, y, kind='linear', fill_value='extrapolate'))
                         species.lambda_funs.append(np.array(y)) 
 
                 

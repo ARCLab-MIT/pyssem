@@ -10,7 +10,7 @@ def main(species_json):
     # Create a scenaaio properties object, this is the high level simulation parameters
     scenario_properties = ScenarioProperties(
                     start_date=datetime.strptime('01/03/2022', "%m/%d/%Y"), 
-                    simulation_duration=100, steps=200, min_altitude=200, 
+                    simulation_duration=100, steps=100, min_altitude=200, 
                     max_altitude=1400, n_shells=40, launch_function="Constant", 
                     delta=10, integrator = "rk4", density_model = "static_exp_dens_func", 
                     LC=0.1, v_imp=10)
@@ -56,11 +56,9 @@ def main(species_json):
 
     with open('scenario_properties-long.pkl', 'wb') as f:
        pickle.dump(scenario_properties, f)
-    
-    
+        
     return
     
-
 if __name__ == "__main__":
     # import the template species.json file
     with open('src\pyssem\species-long.json') as f:

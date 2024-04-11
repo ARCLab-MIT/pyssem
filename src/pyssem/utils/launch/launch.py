@@ -149,10 +149,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
-    # Export x0 as a csv
-    x0.to_csv('initial_population.csv', index=False)
-
-
     # Create a pivot table, keep alt_bin
     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
 

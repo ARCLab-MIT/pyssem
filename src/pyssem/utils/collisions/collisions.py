@@ -289,13 +289,10 @@ def create_collision_pairs(scen_properties):
         r1, r2 = s1.radius, s2.radius
 
         # # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
-        # gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
+        gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
 
         # # Create a list of source sinks, first two are the active species
         source_sinks = [s1, s2]
-
-        # Initialize the gammas matrix with symbolic '-1's, 2 columns for each species
-        gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
 
         # Implementing logic for gammas calculations based on species properties
         if s1.maneuverable and s2.maneuverable:
@@ -331,14 +328,17 @@ def create_collision_pairs(scen_properties):
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
         isCatastrophic = np.zeros(len(scen_properties.v_imp2))
 
+        # This will tell you the number of fragments in each debris bin
         for dv_index, dv in enumerate(scen_properties.v_imp2):
             # Temp will be a 1D array of the number of fragments in each debris bin. E.g if there are 8 debris species, there will be 8 elements
             temp = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
             frags_made[dv_index, :] = temp
-
+        
+        # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
         for i, species in enumerate(debris_species):
-            # Get the column of the frags made matrix, remember, indexing starts at 0
-            frags_made_sym = Matrix(frags_made[:, i])  # Convert array slice to Matrix
+            frags_made_sym = Matrix(frags_made[:, i]) 
+
+            # Multiply it by the likelihood of collision (gammas) to get the number of fragments made for each shell
             new_column = -gammas[:, 1].multiply_elementwise(frags_made_sym)
             new_column = new_column.reshape(gammas.rows, 1)  # Ensure it's a column vector
 
