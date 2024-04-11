@@ -1,4 +1,4 @@
-from sympy import symbols, Matrix, pi, S, Expr
+from sympy import symbols, Matrix, pi, S, Expr, zeros
 
 class SpeciesPairClass:
     def __init__(self, species1, species2, gammas, source_sinks, scen_properties):
@@ -47,13 +47,18 @@ class SpeciesPairClass:
         M1 = species1.mass
         M2 = species2.mass
         LC = scen_properties.LC
-        n_f_catastrophic = S(0.1) * LC**(-S(1.71)) * (M1 + M2)**(S(0.75)) * Matrix.ones(scen_properties.v_imp2.shape[0], 1)
-        n_f_damaging = S(0.1) * LC**(-S(1.71)) * (min(M1, M2) * scen_properties.v_imp2**2)**(S(0.75))
+        
+        nf = zeros(len(scen_properties.v_imp2), 1)
 
-        if self.catastrophic:
-            self.nf = n_f_catastrophic.transpose()
-        else:
-            self.nf = n_f_damaging.transpose()
+        for i, dv in enumerate(scen_properties.v_imp2):
+            if self.catastrophic[i]:
+                n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
+                nf[i] = n_f_catastrophic
+            else:
+                n_f_damaging = 0.1 * LC**(-S(1.71)) * (min(M1, M2) * dv**2)**(S(0.75))
+                nf[i] = n_f_damaging
+
+        self.nf = nf.transpose() 
             
         self.gammas = gammas
         self.source_sinks = source_sinks
@@ -106,8 +111,9 @@ class SpeciesPairClass:
             smaller_mass = mass2
         
         smaller_mass_g = smaller_mass * (1000) # kg to g
-        energy = [0.5 * smaller_mass_g * v**2 for v in vels]
-        is_catastrophic = [True if e > 40 else False for e in energy]
+        energy = [0.5 * smaller_mass * v**2 for v in vels]
+        is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
+
         return is_catastrophic
 
     def calculate_equations(self, gammas, source_sinks, scen_properties):

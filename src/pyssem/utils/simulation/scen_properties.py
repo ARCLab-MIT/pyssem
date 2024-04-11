@@ -292,7 +292,7 @@ class ScenarioProperties:
         return
 
     def run_model(self):
-        print("Running Model")
+        print("Conversion of equations to lambda functions...")
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
@@ -310,6 +310,7 @@ class ScenarioProperties:
                 # Append None to the list, length of scenario_properties.n_shells
                 full_lambda_flattened.extend([None]*self.n_shells)
 
+        print("Integrating equations...")
         output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
                            args=(full_lambda_flattened, equations, self.scen_times), 
                            t_eval=self.scen_times, method='BDF')    

@@ -271,11 +271,6 @@ def create_collision_pairs(scen_properties):
     # Debris species
     debris_species = scen_properties.species['debris']
 
-    # not sure what this code does 
-    # if nargin < 2
-    #     N_species = scen_properties.species_cell.N;
-    # end
-
     # Calculate the Mass bin centres, edges and widths
     binC = np.zeros(len(debris_species))
     binE = np.zeros(2 * len(debris_species))
@@ -298,25 +293,6 @@ def create_collision_pairs(scen_properties):
 
         # # Create a list of source sinks, first two are the active species
         source_sinks = [s1, s2]
-
-        # # Calculate gamma based on the species properties
-        # for row in range(scen_properties.n_shells):
-        #     multiplier = 1  
-        #     # alpha_a * alpha_a if both maneuverable
-        #     if s1.maneuverable and s2.maneuverable:
-        #         multiplier *= s1.alpha_active * s2.alpha_active
-        #         if s1.slotted and s2.slotted:
-        #             multiplier *= min(s1.slotting_effectiveness, s2.slotting_effectiveness)
-        #     # Alpha is one is maneverable and both are trackable=
-        #     elif s1.maneuverable and not s2.maneuverable or s2.maneuverable and not s1.maneuverable:
-        #         if s1.trackable and s2.maneuverable:
-        #             multiplier *= s2.alpha
-        #         elif s2.trackable and s1.maneuverable:
-        #             multiplier *= s1.alpha
-
-        #     # Update 'gammas' rows with the computed multiplier
-        #     gammas[row, 0] *= multiplier
-        #     gammas[row, 1] = gammas[row, 0]  # Copy the first column to the second
 
         # Initialize the gammas matrix with symbolic '-1's, 2 columns for each species
         gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
