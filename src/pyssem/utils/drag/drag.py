@@ -96,22 +96,30 @@ def drag_func_exp(t, h, species, scen_properties):
     current_term = zeros(scen_properties.n_shells, 1)
 
     if species.drag_effected:
-        # Calculate the rate of change of the semi major axis (without density, as this will be applied later)
-        for k in range(scen_properties.n_shells):
-    
+        # Calculate Rho (density)
+        h = scen_properties.R0_km # Altitude 
+        rho = densityexp(h)
+
+        # Calculate the rate of change of the semi major axis      
+        for k in range(scen_properties.n_shells):            
+
             # Check the shell is not the top shell
             if k < scen_properties.n_shells - 1:
                 n0 = species.sym[k+1]
+                rho_k1 = rho[k+1]
+
                 # Calculate Drag Flux (Relative Velocity)
-                rvel_upper[k] = -species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
+                rvel_upper[k] = - rho_k1* species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
             
             # Otherwise assume that no flux is coming down from the highest shell
             else:
                 n0 = 0
-                rvel_upper[k] = -species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
+                rho_k1 = rho[k+1]
+                rvel_upper[k] = -rho_k1*species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
         
             # Calculate Drag Force
-            rvel_current[k] = -species.beta * np.sqrt(scen_properties.mu * scen_properties.R0[k]) * (24 * 3600* 365.25)
+            rho_k = rho[k]
+            rvel_current[k] = - rho_k* species.beta * np.sqrt(scen_properties.mu * scen_properties.R0[k]) * (24 * 3600* 365.25)
             upper_term[k] = n0 * rvel_upper[k] / scen_properties.Dhu
             current_term[k] = rvel_current[k] / scen_properties.Dhl * species.sym[k]
     

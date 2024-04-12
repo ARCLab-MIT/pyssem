@@ -218,8 +218,8 @@ class ScenarioProperties:
         Generate the initial population and the launch rates. 
         """
         #filepath = os.path.join(os.path.dirname(__file__), '../data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        #filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        #filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # save as csv

@@ -37,7 +37,7 @@ def main(species_json):
     scenario_properties.add_species_set(species_list.species, all_symbolic_vars)
 
     # Create collision pairs
-    scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+    #scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
 
     # Initial Population and ADEPT Launch Model 
     scenario_properties.initial_pop_and_launch()
