@@ -87,6 +87,7 @@
         "active": false,
         "slotted": false,
         "slotting_effectiveness": 1,
+        "drag_effected": true,
         "Pm": 0,
         "alpha": 0,
         "alpha_active": 0, 

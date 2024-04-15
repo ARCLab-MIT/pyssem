@@ -79,6 +79,8 @@ def drag_func_none(t, species, scen_properties):
 
 def drag_func_exp(t, h, species, scen_properties):
     """
+    Creating the symbolic variables for the drag function. 
+
     Drag function for the species, without density. This allows for time varying rhos to be used at much better speed. 
 
     Args:
@@ -95,31 +97,25 @@ def drag_func_exp(t, h, species, scen_properties):
     upper_term = zeros(scen_properties.n_shells, 1)
     current_term = zeros(scen_properties.n_shells, 1)
 
-    if species.drag_effected:
-        # Calculate Rho (density)
-        h = scen_properties.R0_km # Altitude 
-        rho = densityexp(h)
+    seconds_per_year = 365.25 * 24 * 3600
 
-        # Calculate the rate of change of the semi major axis      
+    if species.drag_effected:
+
+        # Set up equations for the rate of change of the semi major axis, density not included
         for k in range(scen_properties.n_shells):            
 
             # Check the shell is not the top shell
             if k < scen_properties.n_shells - 1:
                 n0 = species.sym[k+1]
-                rho_k1 = rho[k+1]
-
                 # Calculate Drag Flux (Relative Velocity)
-                rvel_upper[k] = - rho_k1* species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
+                rvel_upper[k] = -species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * seconds_per_year
             
             # Otherwise assume that no flux is coming down from the highest shell
             else:
                 n0 = 0
-                rho_k1 = rho[k+1]
-                rvel_upper[k] = -rho_k1*species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * (24 * 3600* 365.25)
+                rvel_upper[k] = -species.beta * sqrt(scen_properties.mu * scen_properties.R0[k+1]) * seconds_per_year
         
-            # Calculate Drag Force
-            rho_k = rho[k]
-            rvel_current[k] = - rho_k* species.beta * np.sqrt(scen_properties.mu * scen_properties.R0[k]) * (24 * 3600* 365.25)
+            rvel_current[k] = -species.beta * np.sqrt(scen_properties.mu * scen_properties.R0[k]) * seconds_per_year
             upper_term[k] = n0 * rvel_upper[k] / scen_properties.Dhu
             current_term[k] = rvel_current[k] / scen_properties.Dhl * species.sym[k]
     
@@ -155,7 +151,6 @@ def population_shell(t, x, obj):
     :type x: _type_
     :param obj: is the simulation object
     :type obj: _type_
-
     Returns: the rate of change in the species in each shell at the specified time due to drag
     """
 

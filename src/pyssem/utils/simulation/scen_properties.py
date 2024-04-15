@@ -218,8 +218,8 @@ class ScenarioProperties:
         Generate the initial population and the launch rates. 
         """
         #filepath = os.path.join(os.path.dirname(__file__), '../data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        #filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        #filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
 
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
@@ -275,13 +275,18 @@ class ScenarioProperties:
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: # static density
-            rho = self.density_model(0, self.HMid, self.species, self) # time and scen_properties are not used in this function
-            rho_reshape = rho.reshape(-1, 1)
-            rho_mat = np.tile(rho_reshape, (1, self.species_length)) # repeat the density for each species (not sure if needed?)
+            # Take the shell altitudes, this will be n_shells + 1
+            rho = self.density_model(0, self.R0_km, self.species, self)
+            rho_reshape = rho.reshape(-1, 1) # Convert to column vector
+            rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
             rho_mat = sp.Matrix(rho_mat)
-            #self.full_drag = self.drag_term_upper * rho_mat[:, 1:] + self.drag_term_cur * rho_mat[:, :-1] # multiplying drag flux by density
-            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(rho_mat)
-            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(rho_mat)
+            # Second to last row
+            upper_rho = rho_mat[1:, :]
+            # First to penultimate row (mimics rho_mat(1:end-1, :))
+            current_rho = rho_mat[:-1, :]
+            
+            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
+            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
             self.full_drag = drag_upper_with_density + drag_cur_with_density
             self.equations += self.full_drag
             self.sym_drag = True
