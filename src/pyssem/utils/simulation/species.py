@@ -72,6 +72,8 @@ class SpeciesProperties:
         self.pmd_func = None
         self.drag_func = None
 
+        self.trackable_radius_threshold = 0.05  # m
+
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
             for key, value in properties_json.items():
@@ -90,9 +92,10 @@ class SpeciesProperties:
                 self.amr = self.A / self.mass
             if self.Cd is not None and self.amr is not None and self.beta is None:
                 self.beta = self.Cd * self.amr
-            if self.radius is not None and hasattr(self, 'trackable') is False:
+
+            if self.radius is not None and hasattr(self, 'trackable'):
                 self.trackable = self.radius >= self.trackable_radius_threshold
-            
+                        
             # Ballistic Coefficient
             if hasattr(self, 'Cd') and hasattr(self, 'amr'):
                 self.beta = self.Cd * self.amr
@@ -129,7 +132,6 @@ class Species:
         :return: _description_
         :rtype: _type_
         """
-        trackable_radius_threshold = 0.05  # m
 
         if len(species_properties['mass']) == 1:
             raise ValueError("Multi-property species must have multiple masses.")

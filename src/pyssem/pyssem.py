@@ -51,11 +51,11 @@ def main(species_json):
     with open('scenario_properties-long.pkl', 'wb') as f:
        pickle.dump(scenario_properties, f)
 
-    # Save scenario properties is a pickle file
-    scenario_properties.run_model()  # Run the method you want to profile
+    # # Save scenario properties is a pickle file
+    # scenario_properties.run_model()  # Run the method you want to profile
 
-    with open('scenario_properties-long.pkl', 'wb') as f:
-       pickle.dump(scenario_properties, f)
+    # with open('scenario_properties-long.pkl', 'wb') as f:
+    #    pickle.dump(scenario_properties, f)
         
     return
     

@@ -100,7 +100,6 @@ def drag_func_exp(t, h, species, scen_properties):
     seconds_per_year = 365.25 * 24 * 3600
 
     if species.drag_effected:
-
         # Set up equations for the rate of change of the semi major axis, density not included
         for k in range(scen_properties.n_shells):            
 
