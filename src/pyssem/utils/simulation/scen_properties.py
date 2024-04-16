@@ -200,15 +200,17 @@ class ScenarioProperties:
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
                 # Remember indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
+                species.lambda_interp1d = []
                 for shell in range(self.n_shells):
                     x = scen_times
                     y = species_FLM.loc[shell, :].values / time_step  
                      
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
+                        species.lambda_interp1d.append(None)
                     else:
                         # Interpolate the launch rates
-                        #species.lambda_funs.append(interp1d(x, y, kind='linear', fill_value='extrapolate'))
+                        species.lambda_interp1d.append(interp1d(x, y, kind='linear', fill_value='extrapolate'))
                         species.lambda_funs.append(np.array(y)) 
 
                 
@@ -284,7 +286,7 @@ class ScenarioProperties:
             upper_rho = rho_mat[1:, :]
             # First to penultimate row (mimics rho_mat(1:end-1, :))
             current_rho = rho_mat[:-1, :]
-            
+
             drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
             drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
             self.full_drag = drag_upper_with_density + drag_cur_with_density
