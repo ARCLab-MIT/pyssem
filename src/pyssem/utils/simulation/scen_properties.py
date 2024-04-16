@@ -194,23 +194,17 @@ class ScenarioProperties:
 
                 species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
 
-                # divide all the values by the time step to get the rate per year
-                species_FLM = species_FLM / time_step
-
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
                 # Remember indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
-                species.lambda_interp1d = []
+
                 for shell in range(self.n_shells):
-                    x = scen_times
                     y = species_FLM.loc[shell, :].values / time_step  
-                     
+        
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
-                        species.lambda_interp1d.append(None)
                     else:
-                        # Interpolate the launch rates
-                        species.lambda_interp1d.append(interp1d(x, y, kind='linear', fill_value='extrapolate'))
+
                         species.lambda_funs.append(np.array(y)) 
 
                 
