@@ -113,7 +113,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
     # Map species type based on object class
-    species_dict = {"Non-station-keeping Satellite": "sns",
+    species_dict = {"Non-station-keeping Satellite": "Sns",
                     "Rocket Body": "B",
                     "Station-keeping Satellite": "Su",
                     "Coordinated Satellite": "S",
@@ -165,55 +165,26 @@ def ADEPT_traffic_model(scen_properties, file_path):
     x0_summary.fillna(0, inplace=True)
 
     # Future Launch Model
-    # flm_steps = pd.DataFrame()
-
-    # time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
-
-    # time_steps = [scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
-    #             for i in range(scen_properties.steps + 1)]    
-    
-    # for start, end in zip(time_steps[:-1], time_steps[1:]):
-    #     flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
-    #     print(f"Step: {start} - {end}, Objects: {flm_step.shape[0]}")
-    #     flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-
-    #     # all objects aren't always in shells, so you need to these back in. 
-    #     flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
-
-    #     flm_summary.reset_index(inplace=True)
-    #     flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
-
-    #     flm_summary['epoch_start_date'] = start # Add the start date to the table for reference
-    #     flm_steps = pd.concat([flm_steps, flm_summary])
-
-    time_steps = [scen_properties.start_date + timedelta(days=365.25 * scen_properties.scen_times[i])
-              for i in range(len(scen_properties.scen_times))]
-
     flm_steps = pd.DataFrame()
 
-    # Define empty DataFrame to hold steps data
-    species_names = T_new['species'].unique()  # Gather all species names dynamically
-    base_structure = pd.DataFrame(0, index=range(scen_properties.N_shell),
-                                columns=species_names)
+    time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
 
-    for ii in range(len(time_steps) - 1):
-        if ii % 10 == 0:
-            print(f"Start Time: {time_steps[ii]} Stop Time: {time_steps[ii+1]}")
-        
-        # Filter data for the current step
-        flm_step = T_new[(T_new['epoch_start_datime'] > time_steps[ii]) & 
-                        (T_new['epoch_start_datime'] <= time_steps[ii + 1])]
-        
-        # Check if there is data, pivot it
-        if not flm_step.empty:
-            summary = flm_step.groupby(['alt_bin', 'species'])['weight'].sum().unstack(fill_value=0)
-            summary = summary.reindex(range(scen_properties.N_shell), fill_value=0)
-            summary.index.name = 'alt_bin'
-        else:
-            summary = base_structure.copy()
+    time_steps = [scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
+                for i in range(scen_properties.steps + 1)]    
 
-        summary['epoch_start_date'] = time_steps[ii]  # Add the start date to each summary for reference
-        flm_steps = pd.concat([flm_steps, summary.reset_index()])
+    for start, end in zip(time_steps[:-1], time_steps[1:]):
+        flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
+        print(f"Step: {start} - {end}, Objects: {flm_step.shape[0]}")
+        flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+        # all objects aren't always in shells, so you need to these back in. 
+        flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
+
+        flm_summary.reset_index(inplace=True)
+        flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+
+        flm_summary['epoch_start_date'] = start # Add the start date to the table for reference
+        flm_steps = pd.concat([flm_steps, flm_summary])
     
     return x0_summary, flm_steps
 

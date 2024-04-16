@@ -340,7 +340,7 @@ def population_shell(t, N, full_lambda, equations, times):
         if full_lambda[i] is not None:
             increase = np.interp(t, times, full_lambda[i])
             # If increase is nan set to 0
-            if np.isnan(increase):
+            if np.isnan(increase) or np.isinf(increase):
                 increase = 0
             else:
                 dN_dt[i] += increase

@@ -324,8 +324,8 @@ class Species:
         for species_group in self.species.values():
             for species in species_group:
                 # if a sym_name contains '.' then it will be replaced with 'p'
-                temp = species.sym_name.replace('.', 'p') # P means decimal point
-                species.sym = Matrix(symbols([f'{temp}_{i+1}' for i in range(n_shells)]))
+                species.sym_name.replace('.', 'p') # P means decimal point
+                species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
                 all_species_symbols.extend(species.sym)
         
         return all_species_symbols

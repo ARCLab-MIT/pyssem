@@ -20,7 +20,7 @@
         "drag_func": "drag_func_exp"
     },
     "Sns": {
-        "sym_name": "sns",
+        "sym_name": "Sns",
         "Cd": 2.2,
         "mass": 6,
         "radius": 0.105550206,

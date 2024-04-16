@@ -12,7 +12,7 @@ def main(species_json):
                     start_date=datetime.strptime('01/03/2022', "%m/%d/%Y"), 
                     simulation_duration=100, steps=200, min_altitude=200, 
                     max_altitude=1400, n_shells=40, launch_function="Constant", 
-                    delta=10, integrator = "rk4", density_model = "static_exp_dens_func", 
+                    delta=10, integrator = "BDF", density_model = "static_exp_dens_func", 
                     LC=0.1, v_imp=10)
 
     # Create a list of species for the scene
@@ -37,7 +37,7 @@ def main(species_json):
     scenario_properties.add_species_set(species_list.species, all_symbolic_vars)
 
     # Create collision pairs
-    #scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+    scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
 
     # Initial Population and ADEPT Launch Model 
     scenario_properties.initial_pop_and_launch()
@@ -51,11 +51,11 @@ def main(species_json):
     with open('scenario_properties-long.pkl', 'wb') as f:
        pickle.dump(scenario_properties, f)
 
-    # # Save scenario properties is a pickle file
-    # scenario_properties.run_model()  # Run the method you want to profile
+    # Save scenario properties is a pickle file
+    scenario_properties.run_model() 
 
-    # with open('scenario_properties-long.pkl', 'wb') as f:
-    #    pickle.dump(scenario_properties, f)
+    with open('scenario_properties-long.pkl', 'wb') as f:
+       pickle.dump(scenario_properties, f)
         
     return
     
