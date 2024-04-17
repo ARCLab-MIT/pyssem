@@ -317,7 +317,7 @@ class ScenarioProperties:
         print("Integrating equations...")
         output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
                            args=(full_lambda_flattened, equations, self.scen_times), 
-                           t_eval=self.scen_times, method='BDF')    
+                           t_eval=self.scen_times, method='LSODA')    
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -345,7 +345,7 @@ def population_shell(t, N, full_lambda, equations, times):
             else:
                 dN_dt[i] += increase
 
-        # Compute the intrinsic rate of change from the differential equation
-        dN_dt[i] += equations[i](*N)
+    # Compute the intrinsic rate of change from the differential equation
+    dN_dt[i] += equations[i](*N)
 
     return dN_dt
