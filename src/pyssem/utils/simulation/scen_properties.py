@@ -301,8 +301,10 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
+        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+
         # Convert the equations to lambda functions
-        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in self.equations]
+        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
 
         # Launch rates
         full_lambda_flattened = []
@@ -317,7 +319,7 @@ class ScenarioProperties:
         print("Integrating equations...")
         output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
                            args=(full_lambda_flattened, equations, self.scen_times), 
-                           t_eval=self.scen_times, method='LSODA')    
+                           t_eval=self.scen_times, method=self.integrator)    
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -332,6 +334,7 @@ class ScenarioProperties:
 def population_shell(t, N, full_lambda, equations, times):
     # Initialize the rate of change array
     dN_dt = np.zeros_like(N)
+    print(t)
     # Iterate over each component in N
     for i in range(len(N)):
        
