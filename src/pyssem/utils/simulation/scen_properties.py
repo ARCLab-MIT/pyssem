@@ -1,19 +1,10 @@
 import numpy as np
 from math import pi
 from datetime import datetime
-from utils.pmd.pmd import pmd_func_derelict
-from utils.collisions.collisions import create_collision_pairs
 from utils.launch.launch import ADEPT_traffic_model
-import json
-import pandas as pd
-from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp
 import sympy as sp
-import matplotlib.pyplot as plt
-from utils.pmd.pmd import pmd_func_derelict, pmd_func_sat, pmd_func_none
-from utils.drag.drag import drag_func_none, drag_func_exp, static_exp_dens_func, JB2008_dens_func
-import inspect
-import os
+from utils.drag.drag import static_exp_dens_func, JB2008_dens_func
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
