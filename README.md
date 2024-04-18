@@ -1,4 +1,4 @@
-# pySSEM - Source Sink Evolutionary Mode
+# pySSEM - Source Sink Evolutionary Model
 
 ## Description
 
