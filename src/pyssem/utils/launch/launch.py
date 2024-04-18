@@ -129,6 +129,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     for obj_class in T['obj_class'].unique():
             species_class = species_dict.get(obj_class)
             if species_class in scen_properties.species_cells:
+                    # if species class is candidate satellite, continue
                     if len(scen_properties.species_cells[species_class]) == 1:
                             T_obj_class = T[T['obj_class'] == obj_class].copy()
                             T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name

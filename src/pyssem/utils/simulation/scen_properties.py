@@ -204,9 +204,8 @@ class ScenarioProperties:
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
                     else:
-
-                        species.lambda_funs.append(np.array(y)) 
-
+                        species.lambda_funs.append(np.array(y))
+                        
                 
    
     def initial_pop_and_launch(self):
@@ -319,7 +318,7 @@ class ScenarioProperties:
         print("Integrating equations...")
         output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
                            args=(full_lambda_flattened, equations, self.scen_times), 
-                           t_eval=self.scen_times, method=self.integrator)    
+                           t_eval=self.scen_times, method='BDF')    
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -348,7 +347,7 @@ def population_shell(t, N, full_lambda, equations, times):
             else:
                 dN_dt[i] += increase
 
-    # Compute the intrinsic rate of change from the differential equation
-    dN_dt[i] += equations[i](*N)
+        # Compute the intrinsic rate of change from the differential equation
+        dN_dt[i] += equations[i](*N)
 
     return dN_dt
