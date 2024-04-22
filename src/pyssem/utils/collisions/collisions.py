@@ -1,7 +1,7 @@
 from itertools import combinations
 from sympy import symbols, Matrix
 import numpy as np
-from utils.simulation.species_pair_class import SpeciesPairClass
+from pyssem.utils.simulation.species_pair_class import SpeciesPairClass
 from tqdm import tqdm
 
 import numpy as np

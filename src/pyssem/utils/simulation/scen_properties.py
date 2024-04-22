@@ -1,10 +1,12 @@
 import numpy as np
 from math import pi
 from datetime import datetime
-from utils.launch.launch import ADEPT_traffic_model
+from pyssem.utils.launch.launch import ADEPT_traffic_model
 from scipy.integrate import solve_ivp
 import sympy as sp
-from utils.drag.drag import static_exp_dens_func, JB2008_dens_func
+from pyssem.utils.drag.drag import static_exp_dens_func, JB2008_dens_func
+from pkg_resources import resource_filename
+
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -204,14 +206,15 @@ class ScenarioProperties:
         Generate the initial population and the launch rates. 
         """
         #filepath = os.path.join(os.path.dirname(__file__), '../data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        #filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
         #filepath = r"C:\Users\IT\Documents\UCL\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
+        filepath = resource_filename('pyssem.utils.launch', 'data/x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # save as csv
-        x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
-        FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
+        # x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
+        # FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0

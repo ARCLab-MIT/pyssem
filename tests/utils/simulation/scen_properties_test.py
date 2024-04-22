@@ -1,5 +1,4 @@
-#import src.pyssem.pyssem as pyssem
-import pytest
+import src.pyssem.utils.simulation.scen_properties as pyssem
 
 # Create a pytest fixture to load the species.json file
 def inc(x):
@@ -11,4 +10,3 @@ def test_answer():
 
 if __name__ == '__main__':
     test_answer()
-

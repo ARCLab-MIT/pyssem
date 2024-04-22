@@ -1,10 +1,9 @@
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
+from pyssem.utils.simulation.scen_properties import ScenarioProperties
+from pyssem.utils.simulation.species import Species
+from pyssem.utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import dill as pickle
-import cProfile
 
 def main(species_json):
     # Create a scenaaio properties object, this is the high level simulation parameters
@@ -37,7 +36,7 @@ def main(species_json):
     scenario_properties.add_species_set(species_list.species, all_symbolic_vars)
 
     # Create collision pairs
-    scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+    #scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
 
     # Initial Population and ADEPT Launch Model 
     scenario_properties.initial_pop_and_launch()
