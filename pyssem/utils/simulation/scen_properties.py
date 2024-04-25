@@ -309,7 +309,7 @@ class ScenarioProperties:
 
         print("Integrating equations...")
         output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
-                           args=(full_lambda_flattened, equations, self.scen_times), 
+                           args=(full_lambda_flattened, equations, self.scen_times, print_time), 
                            t_eval=self.scen_times, method='BDF')    
 
         if output.success:

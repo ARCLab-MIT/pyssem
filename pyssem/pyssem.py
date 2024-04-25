@@ -1,12 +1,13 @@
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 from dill import pickle
 
 class pySSEM_model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, delta, integrator, density_model, LC, v_imp):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -18,7 +19,6 @@ class pySSEM_model:
         - max_altitude (int): Maximum altitude in meters.
         - n_shells (int): Number of shells in the simulation.
         - launch_function (str): Type of launch function (e.g., "Constant").
-        - delta (float): Specific parameter used in the model, unitless.
         - integrator (str): Type of integrator to use (e.g., "BDF").
         - density_model (str): Density model to use ("static_exp_dens_func").
         - LC (float): Coefficient related to launch (unitless).
@@ -46,8 +46,6 @@ class pySSEM_model:
                 raise ValueError("max_altitude must be greater than min_altitude.")
             if not isinstance(n_shells, int) or n_shells <= 0:
                 raise ValueError("n_shells must be a positive integer.")
-            if not isinstance(delta, (int, float)):
-                raise ValueError("delta must be a numeric type.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
             if not isinstance(v_imp, (int, float)):
@@ -102,13 +100,16 @@ class pySSEM_model:
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
+            # Create Collision Pairs
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+
             return species_list
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
         except Exception as e:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
 
-    def run_model(self):
+    def run_model(self, print_time = False):
         """
         Execute the simulation model using the provided scenario properties.
         
@@ -124,7 +125,7 @@ class pySSEM_model:
 
             self.scenario_properties.initial_pop_and_launch()
             self.scenario_properties.build_model()
-            self.scenario_properties.run_model()
+            self.scenario_properties.run_model(print_time)
             return self.scenario_properties
         
         except Exception as e:
