@@ -67,9 +67,11 @@ class ScenarioProperties:
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
-        if self.density_model == static_exp_dens_func:
+        if self.density_model == "static_exp_dens_func":
+            self.density_model = static_exp_dens_func
             self.time_dep_density = False
-        elif self.density_model == JB2008_dens_func:
+        elif self.density_model == "JB2008_dens_func":
+            self.density_model = JB2008_dens_func
             self.time_dep_density = True
             if not self.density_filepath:
                 self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
