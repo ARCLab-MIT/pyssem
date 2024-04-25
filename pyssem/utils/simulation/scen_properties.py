@@ -10,7 +10,7 @@ from pkg_resources import resource_filename
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, launch_function: str, delta: float = 10.0, integrator: str = "rk4", 
+                 max_altitude: float, n_shells: int, launch_function: str, integrator: str = "rk4", 
                  density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
         """
         Constructor for ScenarioProperties
@@ -21,7 +21,6 @@ class ScenarioProperties:
             min_altitude (float): Minimum Altitude shell in km
             max_altitude (float): Maximum Altitude shell in km
             n_shells (int): Number of Altitude Shells 
-            delta (float): Ratio of the density of disabling due to lethal debris (collisions)
             integrator (str, optional): Integrator type. Defaults to "rk4".
             density_model (str, optional): Density Model of Choice. Defaults to "static_exp_dens_func".
             LC (float, optional): Minimum size of fragments [m]. Defaults to 0.1.
@@ -41,8 +40,6 @@ class ScenarioProperties:
             raise TypeError("shells must be an integer")
         if not isinstance(launch_function, str):
             raise TypeError("launch_function must be a string")
-        if not isinstance(delta, (int, float)):
-            raise TypeError("delta must be a number (int or float)")
         if not isinstance(integrator, str):
             raise TypeError("integrator must be a string")
         if not isinstance(density_model, str):
@@ -60,7 +57,6 @@ class ScenarioProperties:
         self.n_shells = n_shells
         self.launch_function = launch_function
         self.density_model = density_model
-        self.delta = delta
         self.integrator = integrator
         self.LC = LC
         self.v_imp = v_imp
