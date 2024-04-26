@@ -309,7 +309,7 @@ class ScenarioProperties:
 
         print("Integrating equations...")
         output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
-                           args=(full_lambda_flattened, equations, self.scen_times, print_time), 
+                           args=(full_lambda_flattened, equations, self.scen_times), 
                            t_eval=self.scen_times, method='BDF')    
 
         if output.success:
@@ -325,7 +325,7 @@ class ScenarioProperties:
 def population_shell(t, N, full_lambda, equations, times):
     # Initialize the rate of change array
     dN_dt = np.zeros_like(N)
-    print(t)
+    # print(t)
     # Iterate over each component in N
     for i in range(len(N)):
        

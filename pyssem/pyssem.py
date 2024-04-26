@@ -109,7 +109,7 @@ class pySSEM_model:
         except Exception as e:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
 
-    def run_model(self, print_time = False):
+    def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
         
@@ -125,7 +125,7 @@ class pySSEM_model:
 
             self.scenario_properties.initial_pop_and_launch()
             self.scenario_properties.build_model()
-            self.scenario_properties.run_model(print_time)
+            self.scenario_properties.run_model()
             return self.scenario_properties
         
         except Exception as e:
