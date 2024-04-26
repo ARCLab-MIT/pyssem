@@ -11,22 +11,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.8'  
+          python-version: '3.8'
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install setuptools wheel twine  # Ensure setuptools, wheel and twine are installed
+
+      - name: Install other dependencies
+        run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Build and publish to PyPI
+      - name: Build source and wheel distribution
+        run: |
+          python setup.py sdist bdist_wheel
+
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.4.2
         with:
-          user: __token__  # Use this for PyPI API tokens
+          user: blueriver212  # PyPI token username
           password: ${{ secrets.PYPI_API_TOKEN }}
-          # If your project uses dist/, you might need to add `packages-dir: dist`
 
       - name: Install the package (optional, for testing after publishing)
         run: pip install pyssem
