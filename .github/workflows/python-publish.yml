@@ -42,9 +42,9 @@ jobs:
     name: upload release to PyPI
     needs: build
     runs-on: ubuntu-latest
-    # environment: release
-    # permissions:
-    #   id-token: write
+    environment: release
+    permissions:
+      id-token: write
     steps:
       - name: Download built distributions
         uses: actions/download-artifact@v2
