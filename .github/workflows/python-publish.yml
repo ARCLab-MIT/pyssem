@@ -33,7 +33,7 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.4.2
         with:
-          user: blueriver212  # PyPI token username
+          user: __token__  # PyPI token username
           password: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Install the package (optional, for testing after publishing)
