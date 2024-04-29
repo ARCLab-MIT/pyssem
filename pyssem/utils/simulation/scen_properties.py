@@ -11,7 +11,8 @@ from pkg_resources import resource_filename
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str, integrator: str = "rk4", 
-                 density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0):
+                 density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
+                 launch_file: str = None):
         """
         Constructor for ScenarioProperties
         Args:
@@ -48,6 +49,9 @@ class ScenarioProperties:
             raise TypeError("LC must be a number (int or float)")
         if not isinstance(v_imp, (int, float)):
             raise TypeError("v_imp must be a number (int or float)")
+        if launch_file is not None:
+            if not isinstance(launch_file, str):
+                raise TypeError("launch_file must be a string")
 
         self.start_date = start_date
         self.simulation_duration = simulation_duration
@@ -60,6 +64,7 @@ class ScenarioProperties:
         self.integrator = integrator
         self.LC = LC
         self.v_imp = v_imp
+        self.launch_file = launch_file
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
@@ -201,12 +206,14 @@ class ScenarioProperties:
    
     def initial_pop_and_launch(self):
         """
-        Generate the initial population and the launch rates. 
+        Generate the initial population and the launch rates. The Launch File path should be included in the scenario properties instantiation.
         """
-        #filepath = os.path.join(os.path.dirname(__file__), '../data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        #filepath = r"D:\ucl\pyssem\src\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        filepath = r"C:\Users\IT\Documents\UCL\pyssem\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv"
-        #filepath = resource_filename('utils.launch', 'data/x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+
+        # Load the launch file
+        if self.launch_file is not None:
+            filepath = self.launch_file
+        else:
+            raise ValueError("No launch file provided.")
 
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
