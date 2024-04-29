@@ -10,9 +10,9 @@ from pkg_resources import resource_filename
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, launch_function: str, integrator: str = "rk4", 
-                 density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
-                 launch_file: str = None):
+                 max_altitude: float, n_shells: int, launch_function: str, launchfile: str, 
+                 integrator: str = "rk4", density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
+                 ):
         """
         Constructor for ScenarioProperties
         Args:
@@ -49,8 +49,8 @@ class ScenarioProperties:
             raise TypeError("LC must be a number (int or float)")
         if not isinstance(v_imp, (int, float)):
             raise TypeError("v_imp must be a number (int or float)")
-        if launch_file is not None:
-            if not isinstance(launch_file, str):
+        if launchfile is not None:
+            if not isinstance(launchfile, str):
                 raise TypeError("launch_file must be a string")
 
         self.start_date = start_date
@@ -64,7 +64,7 @@ class ScenarioProperties:
         self.integrator = integrator
         self.LC = LC
         self.v_imp = v_imp
-        self.launch_file = launch_file
+        self.launch_file = launchfile
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False

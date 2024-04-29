@@ -7,7 +7,7 @@ import json
 class pySSEM_model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
                         n_shells, launch_function, integrator, density_model, LC, v_imp,
-                        launchfile=None):
+                        launchfile):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -50,9 +50,6 @@ class pySSEM_model:
                 raise ValueError("LC must be a numeric type.")
             if not isinstance(v_imp, (int, float)):
                 raise ValueError("v_imp must be a numeric type.")
-            if launchfile is not None:
-                if not isinstance(launchfile, str):
-                    raise ValueError("launchfile must be a string.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -152,7 +149,8 @@ if __name__ == "__main__":
         integrator="BDF",
         density_model="static_exp_dens_func",
         LC=0.1,
-        v_imp=10
+        v_imp=10,
+        launchfile=r'C:\Users\IT\Documents\UCL\pyssem\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
     )
 
     # Configure species
