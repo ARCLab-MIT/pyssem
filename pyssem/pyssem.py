@@ -6,7 +6,8 @@ import json
 
 class pySSEM_model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp,
+                        launchfile=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -49,6 +50,9 @@ class pySSEM_model:
                 raise ValueError("LC must be a numeric type.")
             if not isinstance(v_imp, (int, float)):
                 raise ValueError("v_imp must be a numeric type.")
+            if launchfile is not None:
+                if not isinstance(launchfile, str):
+                    raise ValueError("launchfile must be a string.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -62,7 +66,8 @@ class pySSEM_model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp
+                v_imp=v_imp,
+                launchfile=launchfile
             )
 
 
