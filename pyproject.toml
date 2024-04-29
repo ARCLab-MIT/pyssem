@@ -33,7 +33,3 @@ dependencies = [
     "sympy~=1.11",
     "tqdm~=4.65"
 ]
-
-[tool.setuptools_scm]
-# Configuration for setuptools_scm
-local_scheme = "no-local-version"
