@@ -31,7 +31,6 @@ jobs:
       - name: Install other dependencies
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
       - name: Build source and wheel distribution
         run: |
           python setup.py sdist bdist_wheel
@@ -62,3 +61,7 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
           repository_url: https://test.pypi.org/legacy/
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
