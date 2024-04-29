@@ -1,13 +1,11 @@
 from setuptools import setup, find_packages
-import setuptools_scm
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name='pyssem',
-    use_scm_version=True,
-    setup_requires=['setuptools_scm'],
+    version='0.0.1',
     author='Indigo Brownhall',
     author_email='indigo.brownhall.20@ucl.ac.uk',
     url='https://github.com/ARCLab-MIT/pyssem',
