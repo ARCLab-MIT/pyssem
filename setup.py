@@ -6,7 +6,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='pyssem',
-    use_scm_version=True,
+    use_scm_version={
+        "local_scheme": "no-local-version" # STOPS LOCAL HASH BEING ADDED
+                     },
     setup_requires=['setuptools_scm'],
     author='Indigo Brownhall',
     author_email='indigo.brownhall.20@ucl.ac.uk',
@@ -18,12 +20,12 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown', 
     install_requires=[
-        "numpy~=1.24.3",
-        "pandas~=2.0.3",
-        "scipy~=1.10.1",
+        "numpy~=1.21",
+        "pandas~=2.0",
+        "scipy~=1.10",
         "setuptools~=68.0.0",
-        "sympy~=1.11.1",
-        "tqdm~=4.65.0"
+        "sympy~=1.11",
+        "tqdm~=4.65"
     ],
     extras_require={
         'dev': ['pytest', 'check-manifest'],
