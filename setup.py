@@ -6,7 +6,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='pyssem',
-    use_scm_version=True,
+    use_scm_version={
+        "local_scheme": "no-local-version" # STOPS LOCAL HASH BEING ADDED
+                     },
     setup_requires=['setuptools_scm'],
     author='Indigo Brownhall',
     author_email='indigo.brownhall.20@ucl.ac.uk',
