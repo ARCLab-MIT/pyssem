@@ -34,6 +34,51 @@ To create a Model you need the following properties:
   }
 ```
 
+Species are defined as a separate "species" list within your json. Each item is a new species type, each species can have multiple lengths (see documentation for more information). 
+```json
+"species": {
+    "S": {
+      "sym_name": "S",
+      "Cd": 2.2,
+      "mass": [1250, 750, 148],
+      "radius": [4, 2, 0.5],
+      "A": "Calculated based on radius",
+      "active": true,
+      "maneuverable": true,
+      "trackable": true,
+      "deltat": [8],
+      "Pm": 0.90,
+      "alpha": 1e-5,
+      "alpha_active": 1e-5,
+      "slotted": true, 
+      "slotting_effectiveness": 1.0,
+      "drag_effected": false,
+      "launch_func": "launch_func_constant",
+      "pmd_func": "pmd_func_sat",
+      "drag_func": "drag_func_exp"
+  },
+  "Su": {
+      "sym_name": "Su",
+      "Cd": 2.2,
+      "mass": [260, 473],
+      "A": [1.6652, 13.5615],
+      "radius": [0.728045069, 2.077681285],
+      "active": true,
+      "maneuverable": true,
+      "trackable": true,
+      "deltat": [8, 8],
+      "Pm": 0.65,
+      "alpha": 1e-5,
+      "alpha_active": 1e-5,
+      "RBflag": 0,
+      "slotting_effectiveness": 1.0,
+      "drag_effected": false,
+      "launch_func": "launch_func_constant",
+      "pmd_func": "pmd_func_sat",
+      "drag_func": "drag_func_exp"
+  }
+```
+
 An example of running the simulation:
 ```python
 from pyssem.model import Model
