@@ -8,10 +8,67 @@ pySSEM is a tool that investigates the evolution of the space objects population
 
 ## Installation
 
-Currently, to install pySSEM, you just need to pull the git repository and run `pyssem.py`.
+Ensure that you have a Python version above 3.8 before running the package. 
+
+Download the python package using pip (currently Test Environment) and install the required packages:
 
 ```bash
-git clone <repository_url>
-cd <repository_directory>
-python pyssem.py# pyssem
-Python port of MOCAT-SSEM framework
+pip install -i https://test.pypi.org/simple/ pyssem==1.0
+pip install -r requirements.txt
+```
+
+To create a Model you need the following properties:
+```json
+"scenario_properties": {
+    "start_date": "01/03/2022",   
+    "simulation_duration": 100,              
+    "steps": 200,                            
+    "min_altitude": 200,                   
+    "max_altitude": 1400,                   
+    "n_shells": 40,                         
+    "launch_function": "Constant", 
+    "integrator": "BDF",                
+    "density_model": "static_exp_dens_func", 
+    "LC": 0.1,                             
+    "v_imp": 10.0                          
+  }
+```
+
+An example of running the simulation:
+```python
+from pyssem.model import Model
+import json
+import os
+
+# Load simulation configuration
+with open('/path/to/example-sim-simple.json') as f:
+  simulation_data = json.load(f)
+
+scenario_props = simulation_data['scenario_properties']
+
+# Create an instance of the Model with the simulation parameters
+model = Model(
+    start_date=scenario_props["start_date"].split("T")[0],  # Assuming date is in ISO format
+    simulation_duration=scenario_props["simulation_duration"],
+    steps=scenario_props["steps"],
+    min_altitude=scenario_props["min_altitude"],
+    max_altitude=scenario_props["max_altitude"],
+    n_shells=scenario_props["n_shells"],
+    launch_function=scenario_props["launch_function"],
+    integrator=scenario_props["integrator"],
+    density_model=scenario_props["density_model"],
+    LC=scenario_props["LC"],
+    v_imp=scenario_props["v_imp"],
+    launchfile='path/to/launchfile.csv'
+)
+
+species = simulation_data["species"]
+species_list = model.configure_species(species)
+
+# Run the model
+results = model.run_model()
+```
+
+
+
+
