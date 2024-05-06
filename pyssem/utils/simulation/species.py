@@ -1,8 +1,8 @@
 import json
 from sympy import Matrix
-from utils.pmd.pmd import *
-from utils.drag.drag import *
-from utils.launch.launch import *
+from ..pmd.pmd import *
+from ..drag.drag import *
+from ..launch.launch import *
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):

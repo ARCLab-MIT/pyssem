@@ -1,10 +1,11 @@
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
+import os
 
-class pySSEM_model:
+class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
                         n_shells, launch_function, integrator, density_model, LC, v_imp,
                         launchfile=None):
@@ -50,9 +51,6 @@ class pySSEM_model:
                 raise ValueError("LC must be a numeric type.")
             if not isinstance(v_imp, (int, float)):
                 raise ValueError("v_imp must be a numeric type.")
-            if launchfile is not None:
-                if not isinstance(launchfile, str):
-                    raise ValueError("launchfile must be a string.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -87,7 +85,6 @@ class pySSEM_model:
         try:
             species_list = Species()
             
-            # Import the species from a JSON file 
             species_list.add_species_from_json(species_json)
             
             # Pass functions for drag and PMD
@@ -136,28 +133,30 @@ class pySSEM_model:
             raise RuntimeError(f"Failed to run model: {str(e)}")
 
 if __name__ == "__main__":
-    # import the template species.json file
-    with open('pyssem\species-long.json') as f:
-        species_data = json.load(f)
+    with open(os.path.join('pyssem', 'example-sim-simple.json')) as f:
+        simulation_data = json.load(f)
+
+    scenario_props = simulation_data["scenario_properties"]
+    launchfile = os.path.join('pyssem', 'utils', 'launch', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
     # Create an instance of the pySSEM_model with the simulation parameters
-    model = pySSEM_model(
-        start_date="01/03/2022",
-        simulation_duration=100,
-        steps=200,
-        min_altitude=200,
-        max_altitude=1400,
-        n_shells=40,
-        launch_function="Constant",
-        integrator="BDF",
-        density_model="static_exp_dens_func",
-        LC=0.1,
-        v_imp=10
+    model = Model(
+        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+        simulation_duration=scenario_props["simulation_duration"],
+        steps=scenario_props["steps"],
+        min_altitude=scenario_props["min_altitude"],
+        max_altitude=scenario_props["max_altitude"],
+        n_shells=scenario_props["n_shells"],
+        launch_function=scenario_props["launch_function"],
+        integrator=scenario_props["integrator"],
+        density_model=scenario_props["density_model"],
+        LC=scenario_props["LC"],
+        v_imp=scenario_props["v_imp"],
+        launchfile=launchfile
     )
 
-    # Configure species
-    species_list = model.configure_species(species_data)
-    
-    # Run the model
+    species = simulation_data["species"]
+
+    species_list = model.configure_species(species)
+
     results = model.run_model()
-    print("Simulation results:", results)

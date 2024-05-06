@@ -3,16 +3,17 @@ from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
 import sympy as sp
-from utils.drag.drag import static_exp_dens_func, JB2008_dens_func
-from utils.launch.launch import ADEPT_traffic_model
+from ..drag.drag import static_exp_dens_func, JB2008_dens_func
+from ..launch.launch import ADEPT_traffic_model
 from pkg_resources import resource_filename
-
+import pandas as pd
+import os
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, launch_function: str, integrator: str = "rk4", 
-                 density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
-                 launch_file: str = None):
+                 max_altitude: float, n_shells: int, launch_function: str, launchfile: str, 
+                 integrator: str = "rk4", density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
+                 ):
         """
         Constructor for ScenarioProperties
         Args:
@@ -49,8 +50,8 @@ class ScenarioProperties:
             raise TypeError("LC must be a number (int or float)")
         if not isinstance(v_imp, (int, float)):
             raise TypeError("v_imp must be a number (int or float)")
-        if launch_file is not None:
-            if not isinstance(launch_file, str):
+        if launchfile is not None:
+            if not isinstance(launchfile, str):
                 raise TypeError("launch_file must be a string")
 
         self.start_date = start_date
@@ -64,7 +65,7 @@ class ScenarioProperties:
         self.integrator = integrator
         self.LC = LC
         self.v_imp = v_imp
-        self.launch_file = launch_file
+        self.launch_file = launchfile
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
@@ -211,15 +212,17 @@ class ScenarioProperties:
 
         # Load the launch file
         if self.launch_file is not None:
+            print('Using provided launch file:')
             filepath = self.launch_file
         else:
-            raise ValueError("No launch file provided.")
-
+            print('Using default launch file:')            
+            resource_path = 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
+            filespath = os.path.join(os.path.dirname(__file__), resource_path)
+            if not os.path.exists(filespath):
+                raise ValueError("Default launch file not found. Please provide a launch file")
+                   
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
-        # save as csv
-        # x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
-        # FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0

@@ -10,22 +10,26 @@ name = "pyssem"
 
 dynamic = ["version"]
 
-description = "A Python package for managing and analyzing simulations."
+description = "A detailed description of your project."
 readme = "README.md"
 authors = [{name = "Indigo Brownhall", email = "indigo.brownhall.20@ucl.ac.uk"}]
-maintainers = [{name = "Indigo Brownhall", email = "indigo.brownhall.20@ucl.ac.uk"}]
 license = {file = "LICENSE"}
-keywords = ["Space Environment", "Modelling", "Space Debris", "SSEM"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-            'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License', 
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10'
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    "numpy~=1.21",
+    "pandas~=2.0",
+    "scipy~=1.10",
+    "setuptools~=68.0.0", 
+    "sympy~=1.11",
+    "tqdm~=4.65"
 ]

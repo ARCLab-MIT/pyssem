@@ -1,0 +1,6 @@
+setuptools==68.0.0 
+numpy==1.21
+pandas==2.0
+scipy==1.10
+sympy==1.11
+tqdm==4.65

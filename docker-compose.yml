@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  app:
+    image: pyssem-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app  # Mounts the current directory to /app in the container
+    ports:
+      - "5000:5000"  # Assuming your app might need port 5000, change as necessary
+    environment:
+      - PYTHONUNBUFFERED=1  # Keeps Python output in the console, useful for debugging
