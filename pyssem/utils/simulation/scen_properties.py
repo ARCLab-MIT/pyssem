@@ -6,7 +6,7 @@ import sympy as sp
 from utils.drag.drag import static_exp_dens_func, JB2008_dens_func
 from utils.launch.launch import ADEPT_traffic_model
 from pkg_resources import resource_filename
-
+import pandas as pd
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -215,11 +215,21 @@ class ScenarioProperties:
         else:
             raise ValueError("No launch file provided.")
 
-        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+        x0_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv') # potentiall will need src at the front
+        flm_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'FLM_steps.csv')
+        
+        if not os.path.exist(x0_path) ot not os.path.exist(flm_path):
+            [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+
+            x0.to_csv(x0_path, sep=',', index=False, header=True)
+            FLM_steps.to_csv(flm_path, sep=',', index=False, header=True)
+        else:
+            # Read in the dataframes
+            x0 = pd.read_csv(x0_path)
+            FLM_steps = pd.read_csv(flm_path)
 
         # save as csv
-        # x0.to_csv('src/pyssem/utils/launch/data/x0.csv', sep=',', index=False, header=True)
-        # FLM_steps.to_csv('src/pyssem/utils/launch/data/FLM_steps.csv', sep=',', index=False, header=True)
+
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0

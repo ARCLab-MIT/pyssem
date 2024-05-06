@@ -3,6 +3,7 @@ from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
+import os
 
 class pySSEM_model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
@@ -159,10 +160,12 @@ if __name__ == "__main__":
     # results = model.run_model()
     # print("Simulation results:", results)
 
-    with open('pyssem\example-sim.json') as f:
+    with open(os.path.join('pyssem', 'example-sim-simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
+
+    launchfile = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
     # Create an instance of the pySSEM_model with the simulation parameters
     model = pySSEM_model(
@@ -177,7 +180,7 @@ if __name__ == "__main__":
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
         v_imp=scenario_props["v_imp"],
-        launchfile=r'C:\Users\IT\Documents\UCL\pyssem\pyssem\utils\launch\data\x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
+        launchfile=launchfile
     )
 
     species = simulation_data["species"]
