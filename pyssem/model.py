@@ -1,6 +1,6 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
+from pyssem.utils.simulation.scen_properties import ScenarioProperties
+from pyssem.utils.simulation.species import Species
+from pyssem.utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
@@ -133,11 +133,14 @@ class Model:
             raise RuntimeError(f"Failed to run model: {str(e)}")
 
 if __name__ == "__main__":
+
     with open(os.path.join('pyssem', 'example-sim-simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
-    launchfile = os.path.join('pyssem', 'utils', 'launch', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+
+    # I have put this in the data file
+    launchfile = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
     # Create an instance of the pySSEM_model with the simulation parameters
     model = Model(
