@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - .:/usr/src/app
+      - .:/app  # Mounts the current directory to /app in the container
     ports:
       - "5000:5000"  # Assuming your app might need port 5000, change as necessary
     environment:
