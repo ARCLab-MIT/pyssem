@@ -3,6 +3,7 @@ from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
+import os
 
 class pySSEM_model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
