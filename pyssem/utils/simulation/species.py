@@ -109,14 +109,13 @@ class Species:
     """
     This is a collection of SpeciesProperties objects. It is used to store the properties of multiple species in a
     scene. 
+
+    It will also be used to create
     """
-    species = {'active': [], 'debris': [], 'rocket_body': []}
+    species = None
 
     def __init__(self) -> None:
-        pass
-
-    def add_species(self, species_properties: SpeciesProperties) -> None:
-        self.species.append(species_properties)
+        self.species = {'active': [], 'debris': [], 'rocket_body': []}
     
     def add_multi_property_species(self, species_properties):
         """
@@ -256,23 +255,6 @@ class Species:
         """
         Pass functions that are in string format to actual functions.
         """
-        # convert_params_to_functions = {
-        #     "pmd_func": {
-        #         "pmd_func_derelict": pmd_func_derelict, 
-        #         "pmd_func_sat": pmd_func_sat,
-        #         "pmd_func_none": pmd_func_none
-        #     },
-        #     "drag_func": {
-        #         "drag_func_none": drag_func_none,
-        #         "drag_func_exp" : drag_func_exp
-        #     }
-        # }
-
-        # for species_group in self.species.values():
-        #     for species in species_group:
-        #         for key, value in species.__dict__.items():
-        #             if key in convert_params_to_functions and value in convert_params_to_functions[key]:
-        #                 setattr(species, key, convert_params_to_functions[key][value])
 
         for species_group in self.species.values():
             for species in species_group:

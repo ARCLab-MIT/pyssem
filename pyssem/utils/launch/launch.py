@@ -2,7 +2,7 @@ from sympy import zeros, Matrix, symbols
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
-import os
+from tqdm import tqdm
 
 def find_alt_bin(altitude, scen_properties):
     # Convert altitude ranges to numpy arrays for vectorized operations
@@ -175,9 +175,9 @@ def ADEPT_traffic_model(scen_properties, file_path):
     time_steps = [scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
                 for i in range(scen_properties.steps + 1)]    
 
-    for start, end in zip(time_steps[:-1], time_steps[1:]):
+    for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps)-1, desc="Processing Time Steps"):
         flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
-        print(f"Step: {start} - {end}, Objects: {flm_step.shape[0]}")
+        # print(f"Step: {start} - {end}, Objects: {flm_step.shape[0]}")
         flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
 
         # all objects aren't always in shells, so you need to these back in. 
