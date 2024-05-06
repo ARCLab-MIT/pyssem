@@ -101,9 +101,8 @@ def ADEPT_traffic_model(scen_properties, file_path):
     :rtype:  pandas.DataFrame, pandas.DataFrame
     """
     # Load the traffic model data
-    
-    resource_path = 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
-    T = pd.read_csv(os.path.join(os.path.dirname(__file__), resource_path))
+
+    T = pd.read_csv(file_path)
     
     T['epoch_start_datime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
 

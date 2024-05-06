@@ -212,22 +212,16 @@ class ScenarioProperties:
 
         # Load the launch file
         if self.launch_file is not None:
+            print('Using provided launch file:')
             filepath = self.launch_file
         else:
-            raise ValueError("No launch file provided.")
-
-        # x0_path = os.path.join('pyssem', 'utils', 'launch','x0.csv') # potentially will need src at the front
-        # flm_path = os.path.join('pyssem', 'utils', 'launch', 'FLM_steps.csv')
-        
-        # if os.path.exists(x0_path) and os.path.exists(flm_path):
-        #     x0 = pd.read_csv(x0_path)
-        #     FLM_steps = pd.read_csv(flm_path)
-        # else:
-        #     # Read in the dataframes
+            print('Using default launch file:')            
+            resource_path = 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
+            filespath = os.path.join(os.path.dirname(__file__), resource_path)
+            if not os.path.exists(filespath):
+                raise ValueError("Default launch file not found. Please provide a launch file")
+                   
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
-
-        #     x0.to_csv(x0_path, sep=',', index=False, header=True)
-        #     FLM_steps.to_csv(flm_path, sep=',', index=False, header=True)
 
 
         # Store as part of the class, as it is needed for the run_model()

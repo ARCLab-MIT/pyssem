@@ -8,7 +8,7 @@ import os
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
                         n_shells, launch_function, integrator, density_model, LC, v_imp,
-                        launchfile):
+                        launchfile=None):
         """
         Initialize the scenario properties for the simulation model.
 
