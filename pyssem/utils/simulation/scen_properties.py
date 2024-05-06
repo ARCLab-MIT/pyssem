@@ -15,7 +15,9 @@ class ScenarioProperties:
                  integrator: str = "rk4", density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
                  ):
         """
-        Constructor for ScenarioProperties
+        Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
+        
+        There is no validation here as this should have been completed within the Model class. 
         Args:
             start_date (datetime): Start date of the simulation
             simulation_duration (int): Years of the simulation to run 
@@ -28,32 +30,6 @@ class ScenarioProperties:
             LC (float, optional): Minimum size of fragments [m]. Defaults to 0.1.
             v_imp (float, optional): Impact velocity [km/s]. Defaults to 10.
         """
-        if not isinstance(start_date, datetime):
-            raise TypeError("start_date must be a datetime object")
-        if not isinstance(simulation_duration, int):
-            raise TypeError("simulation_duration must be an integer")
-        if not isinstance(steps, int):
-            raise TypeError("steps must be an integer")
-        if not isinstance(min_altitude, (int, float)):
-            raise TypeError("min_altitude must be a number (int or float)")
-        if not isinstance(max_altitude, (int, float)):
-            raise TypeError("max_altitude must be a number (int or float)")
-        if not isinstance(n_shells, int):
-            raise TypeError("shells must be an integer")
-        if not isinstance(launch_function, str):
-            raise TypeError("launch_function must be a string")
-        if not isinstance(integrator, str):
-            raise TypeError("integrator must be a string")
-        if not isinstance(density_model, str):
-            raise TypeError("density_model must be a string")
-        if not isinstance(LC, (int, float)):
-            raise TypeError("LC must be a number (int or float)")
-        if not isinstance(v_imp, (int, float)):
-            raise TypeError("v_imp must be a number (int or float)")
-        if launchfile is not None:
-            if not isinstance(launchfile, str):
-                raise TypeError("launch_file must be a string")
-
         self.start_date = start_date
         self.simulation_duration = simulation_duration
         self.steps = steps
@@ -168,10 +144,17 @@ class ScenarioProperties:
         """
         self.collision_pairs = collision_pairs
 
-    def get_species(self):
-        return self.species
     
     def future_launch_model(self, FLM_steps):
+        """
+        This will take the FLM steps and convert them into lambda functions for each species. 
+        The code uses the np.arrays() to create the number of objects launched into each shell, for each species. These are then interpolated at simulation time. 
+
+        It does not return anything, but updates the species objects with the lambda functions.
+
+        :param FLM_steps: The FLM steps from the launch file
+        :type FLM_steps: pd.DataFrame
+        """
         # Check for consistent time step
         scen_times = np.array(self.scen_times)
         if len(np.unique(np.round(np.diff(scen_times), 5))) == 1:
@@ -202,12 +185,12 @@ class ScenarioProperties:
                         species.lambda_funs.append(None)  
                     else:
                         species.lambda_funs.append(np.array(y))
-                        
-                
-   
+                         
     def initial_pop_and_launch(self):
         """
         Generate the initial population and the launch rates. The Launch File path should be included in the scenario properties instantiation.
+        
+        Returns: None
         """
 
         # Load the launch file
@@ -229,11 +212,16 @@ class ScenarioProperties:
         self.FLM_steps = FLM_steps
 
         self.future_launch_model(FLM_steps)
-        return
     
-    ## Simulation Part
-
     def build_model(self):
+        """
+        Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
+
+        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species, launch, pmd, drag and collisions equations
+        and add them shape them into a matrix of symbolic expressions. 
+
+        :return: None
+        """
 
         t = sp.symbols('t')
 
@@ -293,10 +281,18 @@ class ScenarioProperties:
         
         # Need to re-shape the equations to be a 1D array
         
-
         return
 
     def run_model(self):
+        """
+        For each species, integrate the equations of population change for each shell and species.
+
+        The starting point will be, x0, the initial population.
+
+        The launch rate will be first calculated at time t, then the change of population in that species will be calculated using the ODEs. 
+
+        :return: None
+        """
         print("Conversion of equations to lambda functions...")
         
         # Initial Population
@@ -333,9 +329,21 @@ class ScenarioProperties:
         return 
 
 def population_shell(t, N, full_lambda, equations, times):
+    """
+    Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
+
+    :param t: Timestep
+    :param N: Population Count
+    :param full_lambda: Launch rates
+    :param equations: Equations
+    :param times: Times
+
+    :return: Rate of change of population
+    """
+
     # Initialize the rate of change array
     dN_dt = np.zeros_like(N)
-    # print(t)
+
     # Iterate over each component in N
     for i in range(len(N)):
        
