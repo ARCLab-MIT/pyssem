@@ -7,6 +7,7 @@ from utils.drag.drag import static_exp_dens_func, JB2008_dens_func
 from utils.launch.launch import ADEPT_traffic_model
 from pkg_resources import resource_filename
 import pandas as pd
+import os
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -215,20 +216,18 @@ class ScenarioProperties:
         else:
             raise ValueError("No launch file provided.")
 
-        x0_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv') # potentiall will need src at the front
-        flm_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'FLM_steps.csv')
+        x0_path = os.path.join('pyssem', 'utils', 'launch','x0.csv') # potentially will need src at the front
+        flm_path = os.path.join('pyssem', 'utils', 'launch', 'FLM_steps.csv')
         
-        if not os.path.exist(x0_path) ot not os.path.exist(flm_path):
+        if os.path.exists(x0_path) and os.path.exists(flm_path):
+            x0 = pd.read_csv(x0_path)
+            FLM_steps = pd.read_csv(flm_path)
+        else:
+            # Read in the dataframes
             [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
             x0.to_csv(x0_path, sep=',', index=False, header=True)
             FLM_steps.to_csv(flm_path, sep=',', index=False, header=True)
-        else:
-            # Read in the dataframes
-            x0 = pd.read_csv(x0_path)
-            FLM_steps = pd.read_csv(flm_path)
-
-        # save as csv
 
 
         # Store as part of the class, as it is needed for the run_model()

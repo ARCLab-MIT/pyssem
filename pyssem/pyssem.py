@@ -3,6 +3,7 @@ from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
+import os
 
 class pySSEM_model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
@@ -132,7 +133,7 @@ class pySSEM_model:
             raise RuntimeError(f"Failed to run model: {str(e)}")
 
 if __name__ == "__main__":
-    with open('pyssem\example-sim.json') as f:
+    with open(os.path.join('pyssem', 'example-sim-simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
