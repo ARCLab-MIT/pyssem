@@ -2,6 +2,7 @@ from sympy import zeros, Matrix, symbols
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
+import os
 
 def find_alt_bin(altitude, scen_properties):
     # Convert altitude ranges to numpy arrays for vectorized operations
@@ -100,7 +101,9 @@ def ADEPT_traffic_model(scen_properties, file_path):
     :rtype:  pandas.DataFrame, pandas.DataFrame
     """
     # Load the traffic model data
-    T = pd.read_csv(file_path)
+    
+    resource_path = 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
+    T = pd.read_csv(os.path.join(os.path.dirname(__file__), resource_path))
     
     T['epoch_start_datime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
 

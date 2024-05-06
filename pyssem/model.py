@@ -1,11 +1,11 @@
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
 
-class pySSEM_model:
+class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
                         n_shells, launch_function, integrator, density_model, LC, v_imp,
                         launchfile):
@@ -137,11 +137,10 @@ if __name__ == "__main__":
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
-
-    launchfile = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+    launchfile = os.path.join('pyssem', 'utils', 'launch', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
     # Create an instance of the pySSEM_model with the simulation parameters
-    model = pySSEM_model(
+    model = Model(
         start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
         simulation_duration=scenario_props["simulation_duration"],
         steps=scenario_props["steps"],

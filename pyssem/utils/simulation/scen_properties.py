@@ -3,8 +3,8 @@ from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
 import sympy as sp
-from utils.drag.drag import static_exp_dens_func, JB2008_dens_func
-from utils.launch.launch import ADEPT_traffic_model
+from ..drag.drag import static_exp_dens_func, JB2008_dens_func
+from ..launch.launch import ADEPT_traffic_model
 from pkg_resources import resource_filename
 import pandas as pd
 import os
@@ -216,18 +216,18 @@ class ScenarioProperties:
         else:
             raise ValueError("No launch file provided.")
 
-        x0_path = os.path.join('pyssem', 'utils', 'launch','x0.csv') # potentially will need src at the front
-        flm_path = os.path.join('pyssem', 'utils', 'launch', 'FLM_steps.csv')
+        # x0_path = os.path.join('pyssem', 'utils', 'launch','x0.csv') # potentially will need src at the front
+        # flm_path = os.path.join('pyssem', 'utils', 'launch', 'FLM_steps.csv')
         
-        if os.path.exists(x0_path) and os.path.exists(flm_path):
-            x0 = pd.read_csv(x0_path)
-            FLM_steps = pd.read_csv(flm_path)
-        else:
-            # Read in the dataframes
-            [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+        # if os.path.exists(x0_path) and os.path.exists(flm_path):
+        #     x0 = pd.read_csv(x0_path)
+        #     FLM_steps = pd.read_csv(flm_path)
+        # else:
+        #     # Read in the dataframes
+        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
-            x0.to_csv(x0_path, sep=',', index=False, header=True)
-            FLM_steps.to_csv(flm_path, sep=',', index=False, header=True)
+        #     x0.to_csv(x0_path, sep=',', index=False, header=True)
+        #     FLM_steps.to_csv(flm_path, sep=',', index=False, header=True)
 
 
         # Store as part of the class, as it is needed for the run_model()
