@@ -1,9 +1,10 @@
-from pyssem.utils.simulation.scen_properties import ScenarioProperties
-from pyssem.utils.simulation.species import Species
-from pyssem.utils.collisions.collisions import create_collision_pairs
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
+import pickle
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
@@ -127,6 +128,10 @@ class Model:
             self.scenario_properties.initial_pop_and_launch()
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+
+            # save the scenario properties to a pickle file
+            with open('scenario-properties.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
             return self.scenario_properties
         
         except Exception as e:
@@ -163,3 +168,9 @@ if __name__ == "__main__":
     species_list = model.configure_species(species)
 
     results = model.run_model()
+
+    # Open the pickle file
+    # with open('scenario-properties.pkl', 'rb') as f:
+    #     results = pickle.load(f)
+
+    # results.run_model()

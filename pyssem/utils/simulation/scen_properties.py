@@ -8,11 +8,12 @@ from ..launch.launch import ADEPT_traffic_model
 from pkg_resources import resource_filename
 import pandas as pd
 import os
+import pickle
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str, launchfile: str, 
-                 integrator: str = "rk4", density_model: str = "static_exp_dens_func", LC: float = 0.1, v_imp: float = 10.0,
+                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = 10.0,
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -47,12 +48,11 @@ class ScenarioProperties:
         self.time_dep_density = False
         if self.density_model == "static_exp_dens_func":
             self.density_model = static_exp_dens_func
-            self.time_dep_density = False
         elif self.density_model == "JB2008_dens_func":
             self.density_model = JB2008_dens_func
             self.time_dep_density = True
-            if not self.density_filepath:
-                self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
+            # if not self.density_filepath:
+            #     self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
             self.density_model = static_exp_dens_func
@@ -61,6 +61,7 @@ class ScenarioProperties:
             
         # Parameters
         self.scen_times = np.linspace(0, self.simulation_duration, self.steps) 
+        self.scen_times_dates = self.calculate_scen_times_dates()
         self.mu = 3.986004418e14  # earth's gravitational constant meters^3/s^2
         self.re = 6378.1366  # radius of the earth [km]
 
@@ -100,6 +101,26 @@ class ScenarioProperties:
         
         # Outputs
         self.output = None
+
+    def calculate_scen_times_dates(self):
+        # Calculate the number of months for each step
+        months_per_step = self.simulation_duration / self.steps
+        
+        # Initialize an empty array for storing the dates
+        scen_times_dates = np.empty_like(self.scen_times, dtype='datetime64[M]')
+        
+        # Calculate the dates for each step
+        for i, time in enumerate(self.scen_times):
+            # Calculate the number of months to add based on the time step
+            months_to_add = int(round(time / months_per_step))
+            
+            # Add the months to the start date
+            date = self.start_date + pd.DateOffset(months=months_to_add)
+            
+            # Store the date in the array
+            scen_times_dates[i] = date
+        
+        return scen_times_dates
     
     def add_species_set(self, species_list: list, all_symbolic_vars: None):
         """
@@ -274,10 +295,11 @@ class ScenarioProperties:
             drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
             self.full_drag = drag_upper_with_density + drag_cur_with_density
             self.equations += self.full_drag
-            self.sym_drag = True
+            self.sym_drag = True 
         
-        if self.time_dep_density:
-            return
+        # For now, I am going to assume that you don't actually have to do anything here
+        # if self.time_dep_density:
+        #     return
         
         # Need to re-shape the equations to be a 1D array
         
@@ -314,8 +336,8 @@ class ScenarioProperties:
                 full_lambda_flattened.extend([None]*self.n_shells)
 
         print("Integrating equations...")
-        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0, 
-                           args=(full_lambda_flattened, equations, self.scen_times), 
+        output = solve_ivp(population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0, 
+                           args=(full_lambda_flattened, equations, self.scen_times, self.density_model, self.R0_km, self.scen_times_dates), 
                            t_eval=self.scen_times, method='BDF')    
 
         if output.success:
@@ -328,7 +350,8 @@ class ScenarioProperties:
 
         return 
 
-def population_shell(t, N, full_lambda, equations, times):
+
+def population_shell_time_varying_density(t, N, full_lambda, equations, times, density_model, R0_km, dates):
     """
     Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
@@ -337,27 +360,73 @@ def population_shell(t, N, full_lambda, equations, times):
     :param full_lambda: Launch rates
     :param equations: Equations
     :param times: Times
+    :param density_model: Density Model
+    :param R0_km: Altitude of the shells
 
     :return: Rate of change of population
     """
 
     # Initialize the rate of change array
-    dN_dt = np.zeros_like(N)
+    dN_dt = np.zeros_like(N)       
 
-    # Iterate over each component in N
-    for i in range(len(N)):
-       
-        # Compute and add the external modification rate, if applicable
-        # Now using np.interp to calculate the increase
-        if full_lambda[i] is not None:
-            increase = np.interp(t, times, full_lambda[i])
-            # If increase is nan set to 0
-            if np.isnan(increase) or np.isinf(increase):
-                increase = 0
-            else:
-                dN_dt[i] += increase
+    rho = density_model(t, R0_km) 
 
-        # Compute the intrinsic rate of change from the differential equation
-        dN_dt[i] += equations[i](*N)
-
+    
     return dN_dt
+
+    # # Iterate over each component in N
+    # for i in range(len(N)):
+    
+    #     # # Compute and add the external modification rate, if applicable
+    #     # # Now using np.interp to calculate the increase
+    #     # if full_lambda[i] is not None:
+    #     #     increase = np.interp(t, times, full_lambda[i])
+    #     #     # If increase is nan set to 0
+    #     #     if np.isnan(increase) or np.isinf(increase):
+    #     #         increase = 0
+    #     #     else:
+    #     #         dN_dt[i] += increase
+
+    #     # Compute the intrinsic rate of change from the differential equation
+    #     dN_dt[i] += equations[i](*N)
+
+    
+
+# def population_shell(t, N, full_lambda, equations, times, density_model, R0_km):
+#         """
+#         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
+
+#         :param t: Timestep (int)
+#         :param N: Population Count (Flattened array of species and shells)
+#         :param full_lambda: Launch rates (Flattened np.array of species and shells)
+#         :param equations: Equations (Lambdified sympy functions for each species and shell)
+#         :param times: Times (Times for the simulation, usually years)
+
+#         :return: Rate of change of population at the given timestep, t. 
+#         """
+
+#         # Initialize the rate of change array
+#         dN_dt = np.zeros_like(N)
+
+#         # Iterate over each component in N
+#         for i in range(len(N)):
+        
+#             # Compute and add the external modification rate, if applicable
+#             # Now using np.interp to calculate the increase
+#             # if full_lambda[i] is not None:
+#             #     increase = np.interp(t, times, full_lambda[i])
+#             #     # If increase is nan set to 0
+#             #     if np.isnan(increase) or np.isinf(increase):
+#             #         increase = 0
+#             #     else:
+#             #         dN_dt[i] += increase
+
+#             # First take the population array, and the density model and then find the resulting population change due to the drag
+#             rho = density_model(t, N, R0_km)
+
+#             # Compute the intrinsic rate of change from the differential equation
+#             dN_dt[i] += equations[i](*N)
+
+#     return dN_dt
+
+

@@ -1,6 +1,8 @@
 from sympy import zeros, symbols, sqrt, exp
 import numpy as np
-#from math import sqrt
+import pandas as pd
+from scipy.spatial import KDTree
+import json
 
 def densityexp(h):
     """
@@ -135,9 +137,67 @@ def static_exp_dens_func(t, h, species, scen_properties):
     """
     return densityexp(h)
 
-def JB2008_dens_func():
-    # To be completed later
-    pass
+def find_closest_year_month(lst, value):
+    closest = min(lst, key=lambda x: abs(x - value))
+    return closest
+
+
+# def get_density_values(altitudes, time):
+#     # Convert time to pandas datetime
+#     requested_date = pd.to_datetime(time)
+    
+#     # Find the closest available date in the density data
+#     available_dates = pd.to_datetime(list(density_data.keys()))
+#     closest_date = available_dates[np.abs(available_dates - requested_date).argmin()].strftime('%Y-%m')
+    
+#     # Output array for densities
+#     density_values = np.empty_like(altitudes, dtype=float)
+    
+#     # Iterate over requested altitudes to find closest matches and corresponding densities
+#     for i, alt in enumerate(altitudes):
+#         closest_alt_idx = altitude_tree.query([alt])[1]  # Find closest altitude index
+#         closest_alt = f"{altitude_values[closest_alt_idx]}"  # Get altitude key
+#         density_values[i] = density_data[closest_date][closest_alt]
+    
+    return density_values
+
+def JB2008_dens_func(t, h, scen_times_dates):
+    """
+    This will take in an array of species at different altitudes and then 
+    will calulate the density at each altitude and return the new number of species in each shell.
+
+    :param t: Time from t0
+    :type t: int
+    :param h: np.array of altitudes in km
+    :type h: np.array
+    :param scen_times_dates: A list of the scen_times in year-month format
+    :type scen_times_dates: List of str. 
+    """
+
+    # First calculate the closest time in year-months
+    time_str = min(scen_times_dates, key=lambda x: abs(x - t))
+
+    with open('atmospheric_density_data.json', 'r') as file:
+        density_data = json.load(file)
+
+    # Extract unique altitudes from the keys of any month-year (assuming uniform across all entries)
+    altitude_values = np.array([int(alt.split()[0]) for alt in h])
+    altitude_tree = KDTree(altitude_values.reshape(-1, 1))
+
+    available_dates = pd.to_datetime(list(density_data.keys()))
+    closest_date = available_dates[np.abs(available_dates - requested_date).argmin()].strftime('%Y-%m')
+    
+    # Output array for densities
+    density_values = np.empty_like(altitudes, dtype=float)
+    
+    for i, alt in enumerate(altitudes):
+        closest_alt_idx = altitude_tree.query([alt])[1]  
+        closest_alt = f"{altitude_values[closest_alt_idx]}"  
+        density_values[i] = density_data[closest_date][closest_alt]
+
+    return density_values
+
+    
 
 def population_shell(t, x, obj):
     """
