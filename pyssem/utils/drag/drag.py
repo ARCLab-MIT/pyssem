@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
 import json
+import os
 
 def densityexp(h):
     """
@@ -137,31 +138,7 @@ def static_exp_dens_func(t, h, species, scen_properties):
     """
     return densityexp(h)
 
-def find_closest_year_month(lst, value):
-    closest = min(lst, key=lambda x: abs(x - value))
-    return closest
-
-
-# def get_density_values(altitudes, time):
-#     # Convert time to pandas datetime
-#     requested_date = pd.to_datetime(time)
-    
-#     # Find the closest available date in the density data
-#     available_dates = pd.to_datetime(list(density_data.keys()))
-#     closest_date = available_dates[np.abs(available_dates - requested_date).argmin()].strftime('%Y-%m')
-    
-#     # Output array for densities
-#     density_values = np.empty_like(altitudes, dtype=float)
-    
-#     # Iterate over requested altitudes to find closest matches and corresponding densities
-#     for i, alt in enumerate(altitudes):
-#         closest_alt_idx = altitude_tree.query([alt])[1]  # Find closest altitude index
-#         closest_alt = f"{altitude_values[closest_alt_idx]}"  # Get altitude key
-#         density_values[i] = density_data[closest_date][closest_alt]
-    
-    return density_values
-
-def JB2008_dens_func(t, h, scen_times_dates):
+def JB2008_dens_func(t, h, scen_times_dates, start_date, end_date, num_steps):
     """
     This will take in an array of species at different altitudes and then 
     will calulate the density at each altitude and return the new number of species in each shell.
@@ -174,31 +151,53 @@ def JB2008_dens_func(t, h, scen_times_dates):
     :type scen_times_dates: List of str. 
     """
 
-    # First calculate the closest time in year-months
-    time_str = min(scen_times_dates, key=lambda x: abs(x - t))
+    # Calculate the total time range in days
+    try:
+        total_days = (end_date - start_date).days
 
-    with open('atmospheric_density_data.json', 'r') as file:
-        density_data = json.load(file)
+        # Calculate the target date based on the total time range and the timestep
+        target_date_dt = start_date + pd.DateOffset(days=t * total_days / num_steps)
 
-    # Extract unique altitudes from the keys of any month-year (assuming uniform across all entries)
-    altitude_values = np.array([int(alt.split()[0]) for alt in h])
-    altitude_tree = KDTree(altitude_values.reshape(-1, 1))
+        # Find the closest date in year-month format from the available dates
+        closest_date = min(scen_times_dates, key=lambda x: abs(pd.to_datetime(x) - target_date_dt))
 
-    available_dates = pd.to_datetime(list(density_data.keys()))
-    closest_date = available_dates[np.abs(available_dates - requested_date).argmin()].strftime('%Y-%m')
-    
-    # Output array for densities
-    density_values = np.empty_like(altitudes, dtype=float)
-    
-    for i, alt in enumerate(altitudes):
-        closest_alt_idx = altitude_tree.query([alt])[1]  
-        closest_alt = f"{altitude_values[closest_alt_idx]}"  
-        density_values[i] = density_data[closest_date][closest_alt]
+        # Restate target_date in year-month format
+        target_date_str = target_date_dt.strftime('%Y-%m')
+
+        # Load the density data
+        path = os.path.join(os.path.dirname(__file__), 'dens_highvar_2000_dens_highvar_2000_lookup.json')
+
+        with open(path, 'r') as file:
+            density_data = json.load(file)
+
+        # Extract the altitudes and densities for the closest date
+        altitude_values = np.array([int(alt) for alt in density_data[target_date_str].keys()])
+        altitude_tree = KDTree(h.reshape(-1, 1))
+
+        # Output array for densities
+        density_values = np.empty_like(h, dtype=float)
+        density_values = [] 
+
+    except KeyError:
+        print(f"Error: Altitude {closest_alt} not found in density data for date {target_date_str}.")
+
+    try:
+        for i, alt in enumerate(h):
+            closest_alt_idx = altitude_tree.query([alt])[1]  
+            closest_alt = altitude_values[closest_alt_idx]
+
+            # Check if closest_alt_idx is a single index or an array
+            if isinstance(closest_alt_idx, int):
+                closest_alt_idx = [closest_alt_idx]
+
+            density_values.append(density_data[target_date_str][str(closest_alt)])
+   
+    except:
+        print(f"Error: Altitude {closest_alt} not found in density data for date {target_date_str}.")
 
     return density_values
 
     
-
 def population_shell(t, x, obj):
     """
     For time varying atmosphere, density needs to be computed within the integrated function, 

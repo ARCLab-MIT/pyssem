@@ -95,7 +95,6 @@ class Model:
             species_list.apply_launch_rates(self.scenario_properties.n_shells)
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
-
             # Pair the active species to the debris species for PMD modeling
             species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['debris'])
 
@@ -103,7 +102,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            # self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             return species_list
         except json.JSONDecodeError:
@@ -169,7 +168,7 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    # Open the pickle file
+    #Open the pickle file
     # with open('scenario-properties.pkl', 'rb') as f:
     #     results = pickle.load(f)
 
