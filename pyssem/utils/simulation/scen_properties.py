@@ -287,8 +287,10 @@ class ScenarioProperties:
             rho_reshape = rho.reshape(-1, 1) # Convert to column vector
             rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
             rho_mat = sp.Matrix(rho_mat)
+            
             # Second to last row
             upper_rho = rho_mat[1:, :]
+            
             # First to penultimate row (mimics rho_mat(1:end-1, :))
             current_rho = rho_mat[:-1, :]
 
