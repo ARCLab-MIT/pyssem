@@ -301,8 +301,10 @@ class ScenarioProperties:
             self.sym_drag = True 
         
         if self.time_dep_density:
-            pass
-                
+            # Don't apply rho as this will occur at integration
+            # Dont add to full equations either
+            self.full_drag = self.drag_term_upper + self.drag_term_cur
+            
         return
 
     def run_model(self):
@@ -320,11 +322,11 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
-        # equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
 
         # Convert the equations to lambda functions
-        #equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
-        equations = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+        #equations = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
         # Launch rates
         full_lambda_flattened = []
 
@@ -336,15 +338,10 @@ class ScenarioProperties:
                 full_lambda_flattened.extend([None]*self.n_shells)
 
         print("Integrating equations...")
-        if self.time_dep_density:
-            output = solve_ivp(population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0, 
-                           args=(full_lambda_flattened, equations, self.scen_times, self.density_model, 
-                                 self.R0_km, self.scen_times_dates, self.start_date, self.end_date, self.steps), 
-                           t_eval=self.scen_times, method='BDF')    
-        else:
-            output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
+
+        output = solve_ivp(population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
+                        args=(full_lambda_flattened, equations, self.scen_times),
+                        t_eval=self.scen_times, method='BDF')
             
         if output.success:
             print(f"Model run completed successfully.")

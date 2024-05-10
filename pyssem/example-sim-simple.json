@@ -14,7 +14,7 @@
     "n_shells": 40,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
-    "density_model": "JB2008_dens_func", 
+    "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
     "v_imp": 10.0                          
   },
