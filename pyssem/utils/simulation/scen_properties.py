@@ -51,8 +51,7 @@ class ScenarioProperties:
         elif self.density_model == "JB2008_dens_func":
             self.density_model = JB2008_dens_func
             self.time_dep_density = True
-            if not self.density_filepath:
-                self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
+            # might need to include file path when there are different values
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
             self.density_model = static_exp_dens_func
