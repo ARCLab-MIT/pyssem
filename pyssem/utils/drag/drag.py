@@ -138,83 +138,83 @@ def static_exp_dens_func(t, h, species, scen_properties):
     """
     return densityexp(h)
 
-def JB2008_dens_func(t, h, scen_times_dates, start_date, end_date, num_steps):
+def preload_density_data(file_path):
+    with open(file_path, 'r') as file:
+        density_data = json.load(file)
+    return density_data
+
+# Function to precompute date mapping for given time range
+def precompute_date_mapping(start_date, end_date, num_points=101):
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+    total_days = (end_date - start_date).days
+    dates = [start_date + pd.to_timedelta(i / (num_points - 1) * total_days, unit='d') for i in range(num_points)]
+    date_mapping = [date.strftime('%Y-%m') for date in dates]
+    return date_mapping
+
+# Function to precompute nearest altitude mapping using KDTree for efficient lookup
+def precompute_nearest_altitudes(available_altitudes, max_query=2000, resolution=1):
+    altitude_tree = KDTree(np.array(available_altitudes).reshape(-1, 1))
+    altitude_mapping = {}
+    for alt in range(0, max_query + resolution, resolution):
+        _, idx = altitude_tree.query([[alt]])
+        nearest_alt = available_altitudes[idx[0]]
+        altitude_mapping[alt] = nearest_alt
+    return altitude_mapping
+
+def JB2008_dens_func(t, h, density_data, date_mapping, nearest_altitude_mapping):
     """
-    This will take in an array of species at different altitudes and then 
-    will calulate the density at each altitude and return the new number of species in each shell.
+    Calculate density at various altitudes based on a percentage through a time range
+    using precomputed data for efficiency.
 
-    :param t: Time from t0
-    :type t: int
-    :param h: np.array of altitudes in km
-    :type h: np.array
-    :param scen_times_dates: A list of the scen_times in year-month format
-    :type scen_times_dates: List of str. 
+    :param t: Percentage of the way through the simulation (0-100).
+    :param h: List of altitudes for which densities are required.
+    :param density_data: Preloaded density data.
+    :param date_mapping: Precomputed date mapping.
+    :param nearest_altitude_mapping: Precomputed nearest altitude mapping.
+    :return: List of densities corresponding to each altitude in h.
     """
+    num_dates = len(date_mapping)
+    t_normalized = min(max(t / 100 * (num_dates - 1), 0), num_dates - 1)
+    
+    # Find the two nearest indices and their corresponding dates
+    t_index_floor = int(np.floor(t_normalized))
+    t_index_ceil = int(np.ceil(t_normalized))
 
-    # Calculate the total time range in days
-    try:
-        total_days = (end_date - start_date).days
+    if t_index_ceil >= num_dates:
+        t_index_ceil = num_dates - 1
 
-        # Calculate the target date based on the total time range and the timestep
-        target_date_dt = start_date + pd.DateOffset(days=t * total_days / num_steps)
+    date_floor = date_mapping[t_index_floor]
+    date_ceil = date_mapping[t_index_ceil]
+    
+    # Interpolation weight
+    if t_index_floor == t_index_ceil:
+        weight = 1
+    else:
+        weight = (t_normalized - t_index_floor) / (t_index_ceil - t_index_floor)
 
-        # Find the closest date in year-month format from the available dates
-        closest_date = min(scen_times_dates, key=lambda x: abs(pd.to_datetime(x) - target_date_dt))
+    # Get density values for the floor and ceil dates
+    density_values_floor = []
+    density_values_ceil = []
 
-        # Restate target_date in year-month format
-        target_date_str = target_date_dt.strftime('%Y-%m')
+    for alt in h:
+        query_alt = round(min(alt, max(nearest_altitude_mapping.keys())), 0) # wont index if a decimal
+        nearest_alt = nearest_altitude_mapping[query_alt]
 
-        # Load the density data
-        path = os.path.join(os.path.dirname(__file__), 'dens_highvar_2000_dens_highvar_2000_lookup.json')
+        try:
+            density_floor = density_data[date_floor][str(nearest_alt)]
+            density_ceil = density_data[date_ceil][str(nearest_alt)]
+        except KeyError as e:
+            print(f"KeyError: {e} for date_floor: {date_floor}, date_ceil: {date_ceil}, nearest_alt: {nearest_alt}")
+            return None
 
-        with open(path, 'r') as file:
-            density_data = json.load(file)
+        density_values_floor.append(density_floor)
+        density_values_ceil.append(density_ceil)
 
-        # Extract the altitudes and densities for the closest date
-        altitude_values = np.array([int(alt) for alt in density_data[target_date_str].keys()])
-        altitude_tree = KDTree(h.reshape(-1, 1))
-
-        # Output array for densities
-        density_values = np.empty_like(h, dtype=float)
-        density_values = [] 
-
-    except KeyError:
-        print(f"Error: Altitude {closest_alt} not found in density data for date {target_date_str}.")
-
-    try:
-        for i, alt in enumerate(h):
-            closest_alt_idx = altitude_tree.query([alt])[1]  
-            closest_alt = altitude_values[closest_alt_idx]
-
-            # Check if closest_alt_idx is a single index or an array
-            if isinstance(closest_alt_idx, int):
-                closest_alt_idx = [closest_alt_idx]
-
-            density_values.append(density_data[target_date_str][str(closest_alt)])
-   
-    except:
-        print(f"Error: Altitude {closest_alt} not found in density data for date {target_date_str}.")
+    # Ensure that the interpolated values correctly capture the cyclical variations
+    density_values_floor = np.array(density_values_floor)
+    density_values_ceil = np.array(density_values_ceil)
+    
+    density_values = density_values_floor * (1 - weight) + density_values_ceil * weight
 
     return density_values
-
-    
-def population_shell(t, x, obj):
-    """
-    For time varying atmosphere, density needs to be computed within the integrated function, 
-    not as an argument outside it. 
-
-    :param t: is a time in years from start date
-    :type t: _type_
-    :param x: is the equation state
-    :type x: _type_
-    :param obj: is the simulation object
-    :type obj: _type_
-    Returns: the rate of change in the species in each shell at the specified time due to drag
-    """
-
-    # need to continue closer to the time
-    obj.scen_properties.X = x
-    obj.scen_properties.t = t
-
-
-
