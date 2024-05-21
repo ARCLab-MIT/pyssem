@@ -8,10 +8,10 @@
   "scenario_properties": {
     "start_date": "01/03/2022",   
     "simulation_duration": 100,              
-    "steps": 200,                            
-    "min_altitude": 200,                   
-    "max_altitude": 1400,                   
-    "n_shells": 40,                         
+    "steps": 100,                            
+    "min_altitude": 500,                   
+    "max_altitude": 2000,                   
+    "n_shells": 10,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "JB2008_dens_func", 
@@ -34,7 +34,7 @@
       "alpha_active": 1e-5,
       "RBflag": 0,
       "slotting_effectiveness": 1.0,
-      "drag_effected": false,
+      "drag_effected": true,
       "launch_func": "launch_func_constant",
       "pmd_func": "pmd_func_sat",
       "drag_func": "drag_func_exp"
@@ -58,6 +58,23 @@
       "launch_func": "launch_func_null",
       "pmd_func": "pmd_func_derelict",
       "drag_func": "drag_func_exp"
-  }
-  }
+  },
+  "B": {
+      "sym_name": "B",
+      "RBflag" : 1,
+      "Cd": 2.2,
+      "mass": 1783.94,
+      "radius": 2.687936011,
+      "A": 22.6980069221863,
+      "active": false,
+      "slotted": false,
+      "slotting_effectiveness": 1,
+      "drag_effected": true,
+      "Pm": 0,
+      "alpha": 0,
+      "alpha_active": 0, 
+      "trackable": true,
+      "pmd_func": "pmd_func_none",
+      "drag_func": "drag_func_exp"
+  }}
 }

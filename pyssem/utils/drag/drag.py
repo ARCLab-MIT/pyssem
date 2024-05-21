@@ -1,6 +1,9 @@
 from sympy import zeros, symbols, sqrt, exp
 import numpy as np
-#from math import sqrt
+import pandas as pd
+from scipy.spatial import KDTree
+import json
+import os
 
 def densityexp(h):
     """
@@ -135,27 +138,83 @@ def static_exp_dens_func(t, h, species, scen_properties):
     """
     return densityexp(h)
 
-def JB2008_dens_func():
-    # To be completed later
-    pass
+def preload_density_data(file_path):
+    with open(file_path, 'r') as file:
+        density_data = json.load(file)
+    return density_data
 
-def population_shell(t, x, obj):
+# Function to precompute date mapping for given time range
+def precompute_date_mapping(start_date, end_date, num_points=101):
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+    total_days = (end_date - start_date).days
+    dates = [start_date + pd.to_timedelta(i / (num_points - 1) * total_days, unit='d') for i in range(num_points)]
+    date_mapping = [date.strftime('%Y-%m') for date in dates]
+    return date_mapping
+
+# Function to precompute nearest altitude mapping using KDTree for efficient lookup
+def precompute_nearest_altitudes(available_altitudes, max_query=2000, resolution=1):
+    altitude_tree = KDTree(np.array(available_altitudes).reshape(-1, 1))
+    altitude_mapping = {}
+    for alt in range(0, max_query + resolution, resolution):
+        _, idx = altitude_tree.query([[alt]])
+        nearest_alt = available_altitudes[idx[0]]
+        altitude_mapping[alt] = nearest_alt
+    return altitude_mapping
+
+def JB2008_dens_func(t, h, density_data, date_mapping, nearest_altitude_mapping):
     """
-    For time varying atmosphere, density needs to be computed within the integrated function, 
-    not as an argument outside it. 
+    Calculate density at various altitudes based on a percentage through a time range
+    using precomputed data for efficiency.
 
-    :param t: is a time in years from start date
-    :type t: _type_
-    :param x: is the equation state
-    :type x: _type_
-    :param obj: is the simulation object
-    :type obj: _type_
-    Returns: the rate of change in the species in each shell at the specified time due to drag
+    :param t: Percentage of the way through the simulation (0-100).
+    :param h: List of altitudes for which densities are required.
+    :param density_data: Preloaded density data.
+    :param date_mapping: Precomputed date mapping.
+    :param nearest_altitude_mapping: Precomputed nearest altitude mapping.
+    :return: List of densities corresponding to each altitude in h.
     """
+    num_dates = len(date_mapping)
+    t_normalized = min(max(t / 100 * (num_dates - 1), 0), num_dates - 1)
+    
+    # Find the two nearest indices and their corresponding dates
+    t_index_floor = int(np.floor(t_normalized))
+    t_index_ceil = int(np.ceil(t_normalized))
 
-    # need to continue closer to the time
-    obj.scen_properties.X = x
-    obj.scen_properties.t = t
+    if t_index_ceil >= num_dates:
+        t_index_ceil = num_dates - 1
 
+    date_floor = date_mapping[t_index_floor]
+    date_ceil = date_mapping[t_index_ceil]
+    
+    # Interpolation weight
+    if t_index_floor == t_index_ceil:
+        weight = 1
+    else:
+        weight = (t_normalized - t_index_floor) / (t_index_ceil - t_index_floor)
 
+    # Get density values for the floor and ceil dates
+    density_values_floor = []
+    density_values_ceil = []
 
+    for alt in h:
+        query_alt = round(min(alt, max(nearest_altitude_mapping.keys())), 0) # wont index if a decimal
+        nearest_alt = nearest_altitude_mapping[query_alt]
+
+        try:
+            density_floor = density_data[date_floor][str(nearest_alt)]
+            density_ceil = density_data[date_ceil][str(nearest_alt)]
+        except KeyError as e:
+            print(f"KeyError: {e} for date_floor: {date_floor}, date_ceil: {date_ceil}, nearest_alt: {nearest_alt}")
+            return None
+
+        density_values_floor.append(density_floor)
+        density_values_ceil.append(density_ceil)
+
+    # Ensure that the interpolated values correctly capture the cyclical variations
+    density_values_floor = np.array(density_values_floor)
+    density_values_ceil = np.array(density_values_ceil)
+    
+    density_values = density_values_floor * (1 - weight) + density_values_ceil * weight
+
+    return density_values
