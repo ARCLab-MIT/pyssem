@@ -1,6 +1,6 @@
-from pyssem.utils.simulation.scen_properties import ScenarioProperties
-from pyssem.utils.simulation.species import Species
-from pyssem.utils.collisions.collisions import create_collision_pairs
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
@@ -10,8 +10,7 @@ import numpy as np
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp,
-                        launchfile=None):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -67,8 +66,7 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp,
-                launchfile=launchfile
+                v_imp=v_imp
             )
 
 
@@ -237,9 +235,6 @@ if __name__ == "__main__":
 
     scenario_props = simulation_data["scenario_properties"]
 
-    # I have put this in the data file
-    launchfile = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-
     # Create an instance of the pySSEM_model with the simulation parameters
     model = Model(
         start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
@@ -252,8 +247,7 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp=scenario_props["v_imp"],
-        launchfile=launchfile
+        v_imp=scenario_props["v_imp"]
     )
 
     species = simulation_data["species"]
@@ -263,3 +257,4 @@ if __name__ == "__main__":
     results = model.run_model()
 
     model.create_plots()
+
