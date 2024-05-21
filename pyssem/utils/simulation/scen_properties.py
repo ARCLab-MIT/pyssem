@@ -6,6 +6,7 @@ from scipy.spatial import KDTree
 import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model
+from ..handlers.handlers import download_file_from_google_drive
 from pkg_resources import resource_filename
 import pandas as pd
 import os
@@ -13,7 +14,7 @@ import os
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
-                 max_altitude: float, n_shells: int, launch_function: str, launchfile: str, 
+                 max_altitude: float, n_shells: int, launch_function: str,
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = 10.0,
                  ):
         """
@@ -44,7 +45,6 @@ class ScenarioProperties:
         self.integrator = integrator
         self.LC = LC
         self.v_imp = v_imp
-        self.launch_file = launchfile
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
@@ -204,25 +204,36 @@ class ScenarioProperties:
                         species.lambda_funs.append(None)  
                     else:
                         species.lambda_funs.append(np.array(y))
+
                          
     def initial_pop_and_launch(self):
         """
-        Generate the initial population and the launch rates. The Launch File path should be included in the scenario properties instantiation.
+        Generate the initial population and the launch rates. 
+        The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
         
         Returns: None
         """
 
-        # Load the launch file
-        if self.launch_file is not None:
-            print('Using provided launch file:')
-            filepath = self.launch_file
+        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+
+        if os.path.exists(launch_file_path):
+            filepath = launch_file_path
         else:
-            print('Using default launch file:')            
-            resource_path = 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv'
-            filespath = os.path.join(os.path.dirname(__file__), resource_path)
-            if not os.path.exists(filespath):
-                raise ValueError("Default launch file not found. Please provide a launch file")
-                   
+            print('As no file is provided. Downloading a launch file...:')
+            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
+            
+            download_file_from_google_drive(file_id, launch_file_path)
+
+            # Check to see if the file has been downloaded
+            if os.path.exists(launch_file_path):
+                filepath = launch_file_path
+                print('File downloaded successfully.')
+            else:
+                print('Failed to download the file.')
+
+        # Example usage: print the filepath to verify
+        print("Filepath:", filepath)
+              
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # Store as part of the class, as it is needed for the run_model()
