@@ -52,14 +52,10 @@ class ScenarioProperties:
         elif self.density_model == "JB2008_dens_func":
             self.density_model = JB2008_dens_func
             self.time_dep_density = True
-            # if not self.density_filepath:
-            #     self.density_filepath = "./Atmosphere Model/JB2008/Precomputed/dens_highvar_2000.mat"
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
             self.density_model = static_exp_dens_func
 
-        # FILL OUT THE INTEGRATOR FIXED STEPS WHEN REQUIRED
-            
         # Parameters
         self.scen_times = np.linspace(0, self.simulation_duration, self.steps) 
         self.scen_times_dates = self.calculate_scen_times_dates()
@@ -300,9 +296,8 @@ class ScenarioProperties:
             self.equations += self.full_drag
             self.sym_drag = True 
         
+        # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
-            # Don't apply rho as this will occur at integration
-            # Dont add to full equations either
             self.full_drag = self.drag_term_upper + self.drag_term_cur
             
         return
@@ -352,7 +347,6 @@ class ScenarioProperties:
         self.output = output
 
         return 
-
 
 def population_shell_time_varying_density(t, N, full_lambda, equations, times, density_model, R0_km, scen_times_dates, start_date, end_date, steps):
     """
