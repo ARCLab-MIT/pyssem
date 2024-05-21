@@ -1,6 +1,6 @@
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
+from pyssem.utils.simulation.scen_properties import ScenarioProperties
+from pyssem.utils.simulation.species import Species
+from pyssem.utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
