@@ -9,7 +9,7 @@ from ..launch.launch import ADEPT_traffic_model
 from pkg_resources import resource_filename
 import pandas as pd
 import os
-import json
+
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -351,6 +351,10 @@ class ScenarioProperties:
 
             self.nearest_altitude_mapping = precompute_nearest_altitudes(available_altitudes)
 
+            self.prev_t = -1  # Initialize to an invalid time
+            self.prev_rho = None
+
+
             print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
@@ -392,31 +396,41 @@ class ScenarioProperties:
         """
         print(f"Time: {t}")
         dN_dt = np.zeros_like(N)
-        
-        if self.time_dep_density:
-            # Get density values for the current time step
-            rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
 
-            # Extend rho for each species within each shell
+        if self.time_dep_density:
+            # Cache management logic for rho
+            current_t_step = int(t)
+            if current_t_step > self.prev_t:
+                rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+                self.prev_rho = rho
+                self.prev_t = current_t_step
+            else:
+                rho = self.prev_rho  # Use cached rho
+
             rho_full = np.repeat(rho, self.species_length)
 
             num_shells = len(rho)
             species_per_shell = self.species_length
-            
+
+            # Apply drag computations
             for i in range(len(N)):
                 shell_index = i // species_per_shell
-                
-                current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
-                upper_drag = self.drag_upper_lamd[i](*N) * rho_full[shell_index + 1] if shell_index < num_shells - 1 else 0
 
-                dN_dt[i] += current_drag
-                if shell_index < num_shells - 1:
-                    dN_dt[i] += upper_drag
+                # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
+                if i < len(N) - 1:
+                    current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
+                    upper_drag = self.drag_upper_lamd[i](*N) * rho_full[shell_index + 1]
+                    dN_dt[i] += current_drag + upper_drag
+                else:
+                    current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
+                    dN_dt[i] += current_drag
 
+                # Handle incoming new species
                 if full_lambda[i] is not None:
                     increase = np.interp(t, times, full_lambda[i])
                     dN_dt[i] += 0 if np.isnan(increase) else increase
 
+                # Apply general equation dynamics
                 dN_dt[i] += equations[i](*N)
 
         return dN_dt
