@@ -409,7 +409,6 @@ class ScenarioProperties:
 
             rho_full = np.repeat(rho, self.species_length)
 
-            num_shells = len(rho)
             species_per_shell = self.species_length
 
             # Apply drag computations
