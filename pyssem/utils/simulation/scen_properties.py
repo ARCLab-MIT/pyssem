@@ -216,6 +216,10 @@ class ScenarioProperties:
 
         launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
+        # Check to see if the data folder exists, if not, create it
+        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
+            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
+
         if os.path.exists(launch_file_path):
             filepath = launch_file_path
         else:

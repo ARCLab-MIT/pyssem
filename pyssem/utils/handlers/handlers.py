@@ -21,17 +21,16 @@ def download_file_from_google_drive(file_id, output_file):
         # Construct the final download URL with GET parameters
         download_url_with_params = f"{download_url}?id={payload['id']}&export={payload['export']}&confirm={payload['confirm']}"
         
-        # Step 2: Make a GET request to download the file
+        # download the file
         download_response = session.get(download_url_with_params, stream=True)
         print("Download URL Response Status Code:", download_response.status_code)
         
         if download_response.status_code == 200:
-            # Step 3: Verify the content length
+            # verify the file exists and has content
             content_length = download_response.headers.get('Content-Length')
             print("Content-Length:", content_length)
 
-            if content_length and int(content_length) > 0:
-                # Step 4: Write the file content to disk
+            if content_length and int(content_length) > 0:                
                 with open(output_file, 'wb') as file:
                     for chunk in download_response.iter_content(chunk_size=8192):
                         if chunk:  # filter out keep-alive new chunks
