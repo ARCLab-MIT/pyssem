@@ -19,7 +19,6 @@ class SpeciesProperties:
         self.amr = None  # m^2/kg
         self.beta = None  # m^2/kg, ballistic coefficient (Cd * A / mass)
         self.B = None # 
-        self.density_filepath = None  # For drag
 
         # Orbit Properties
         self.slotted = False  # bool
