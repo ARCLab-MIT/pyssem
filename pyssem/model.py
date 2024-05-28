@@ -1,6 +1,7 @@
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
+from utils.indicators.indicators import Indicators
 from datetime import datetime
 import json
 import os
@@ -10,7 +11,7 @@ import numpy as np
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp, indicator_variables):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -53,6 +54,8 @@ class Model:
                 raise ValueError("LC must be a numeric type.")
             if not isinstance(v_imp, (int, float)):
                 raise ValueError("v_imp must be a numeric type.")
+            if not isinstance(indicator_variables, list):
+                raise ValueError("indicator_variables must be a list of indicator variables.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -66,7 +69,8 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp
+                v_imp=v_imp,
+                indicator_variables=indicator_variables
             )
 
 
@@ -104,6 +108,18 @@ class Model:
             # Create Collision Pairs
             #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
+            # Initial Population and Launch
+            self.scenario_properties.initial_pop_and_launch()
+
+            # Indicator Variables if length > 0
+            try:
+                if len(self.scenario_properties.indicator_variables) > 0:
+                    self.scenario_properties.create_indicator_variables()
+                else:
+                    print("No indicator variables provided.")
+            except Exception as e:
+                print(f"Failed to create indicator variables: {str(e)}")
+
             return species_list
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
@@ -123,8 +139,6 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-
-            self.scenario_properties.initial_pop_and_launch()
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
@@ -247,7 +261,8 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp=scenario_props["v_imp"]
+        v_imp=scenario_props["v_imp"], 
+        indicator_variables = scenario_props["indicator_variables"]
     )
 
     species = simulation_data["species"]

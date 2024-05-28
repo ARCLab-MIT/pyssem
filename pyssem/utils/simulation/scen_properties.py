@@ -7,6 +7,7 @@ import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
+from ..indicators.indicators import *
 from pkg_resources import resource_filename
 import pandas as pd
 import os
@@ -15,7 +16,7 @@ import os
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str,
-                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = 10.0,
+                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = 10.0, indicator_variables: list = None, 
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -56,6 +57,10 @@ class ScenarioProperties:
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
             self.density_model = static_exp_dens_func
+
+        # Indicator Variables
+        self.indicator_variables = indicator_variables
+        self.indicator_variables_list = []
 
         # Parameters
         self.scen_times = np.linspace(0, self.simulation_duration, self.steps) 
@@ -213,7 +218,6 @@ class ScenarioProperties:
         
         Returns: None
         """
-
         launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
         # Check to see if the data folder exists, if not, create it
@@ -224,7 +228,7 @@ class ScenarioProperties:
             filepath = launch_file_path
         else:
             print('As no file is provided. Downloading a launch file...:')
-            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
+            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE' # This is a google docs link - eventually should be added as a .env
             
             download_file_from_google_drive(file_id, launch_file_path)
 
@@ -236,7 +240,7 @@ class ScenarioProperties:
                 print('Failed to download the file.')
 
         # Example usage: print the filepath to verify
-        print("Filepath:", filepath)
+        print("File used for launch model:", filepath)
               
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
@@ -244,8 +248,21 @@ class ScenarioProperties:
         self.x0 = x0
         self.FLM_steps = FLM_steps
 
-        #self.future_launch_model(FLM_steps)
-    
+        self.future_launch_model(FLM_steps)
+
+    def create_indicator_variables(self):
+        """
+        Create the indicator variables for the simulation. This will be used to calculate the indicators for the simulation. 
+
+        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species and create the indicator variables for each species. 
+
+        :return: None
+        """
+        for indicator in self.indicator_variables:
+            if indicator == 'orbital_volume':
+                self.indicator_variables_list.append(make_intrinsic_cap_indicator(self, sep_dist_method='angle', sep_angle=0.2, sep_dist=25.0, shell_sep=5, inc=45.0, graph=True))
+            if indicator == 'ca_man_struct_agg':
+                self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", per_species=False, per_spacecraft=False))
     def build_model(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
@@ -255,7 +272,6 @@ class ScenarioProperties:
 
         :return: None
         """
-
         t = sp.symbols('t')
 
         species_list = [species for group in self.species.values() for species in group]
@@ -292,7 +308,7 @@ class ScenarioProperties:
 
 
         # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: # static density
+        if not self.time_dep_density: 
             # Take the shell altitudes, this will be n_shells + 1
             rho = self.density_model(0, self.R0_km, self.species, self)
             rho_reshape = rho.reshape(-1, 1) # Convert to column vector
@@ -317,7 +333,7 @@ class ScenarioProperties:
             
         return
 
-    def run_model(self):
+    def  run_model(self):
         """
         For each species, integrate the equations of population change for each shell and species.
 

@@ -145,7 +145,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
-
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
 
