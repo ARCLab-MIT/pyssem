@@ -14,7 +14,7 @@
     "n_shells": 10,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
-    "density_model": "static_exp_dens_func", 
+    "density_model": "JB2008_dens_func", 
     "LC": 0.1,                             
     "v_imp": 10.0,
     "indicator_variables": ["orbital_volume", "ca_man_struct_agg"]                                                 
@@ -29,7 +29,7 @@
       "active": true,
       "maneuverable": true,
       "trackable": true,
-      "deltat": [8],
+      "deltat": 8,
       "Pm": 0.90,
       "alpha": 1e-5,
       "alpha_active": 1e-5,

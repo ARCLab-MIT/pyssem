@@ -110,7 +110,10 @@ def make_intrinsic_cap_indicator(scen_properties, sep_dist_method, sep_angle=0.2
     return ind_struct
 
 def make_ca_counter(scen_properties, primary_species_list, secondary_species_list, per_species=False, ind_name="", per_spacecraft=False):
-    """_summary_
+    """
+    This method makes an indicator variable structure corresponding to the number of collision avoidance maneuvers performed in a given year by the primary species. 
+    It assumes that collision avoidance burden is divided evenly if two active species have a conjunction. Slotting effectivenss is not considered, bnut should be
+    handled through inclusion of Gamma. 
 
     :param scen_properties: _description_
     :type scen_properties: _type_
@@ -168,9 +171,9 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
         if per_spacecraft:
             ind_name += "_per_spacecraft"
     
-    ind_eqs = sp.zeros(scen_properties.n_shells, 1)
     full_spec_list = primary_species_list + secondary_species_list
     
+    ind_eqs = {}
     for species in full_spec_list:
         species_name = species.sym_name
         if species.maneuverable and species.active:
@@ -178,7 +181,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
     
     for primary_species in primary_species_list:
         primary_species_name = primary_species.sym_name
-        for pair in scen_properties.species_pairs:
+        for pair in scen_properties.collision_pairs:
             pair_primary_name = pair.species1.sym_name
             pair_secondary_name = pair.species2.sym_name
             s1_prim = primary_species_name == pair_primary_name
@@ -192,7 +195,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
                 secondary_species_name = pair_primary_name
                 
             if (s1_prim or s2_prim) and sec_in_sec_list:
-                intrinsic_collisions = pair.phi * pair.species1.sym * pair.species2.sym
+                intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))
                 both_man = pair.species1.maneuverable and pair.species2.maneuverable
                 both_act = pair.species1.active and pair.species2.active
                 s1_man_act = pair.species1.maneuverable and pair.species1.active
@@ -216,11 +219,11 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
                         ind_eqs[pair_secondary_name] += (1 + pair.gammas[0]) * intrinsic_collisions
     
     if not per_species:
-        ag_man_counts = sp.zeros(scen_properties.N_shell, 1)
+        ag_man_counts = sp.zeros(scen_properties.n_shells, 1)
         for eq in ind_eqs.values():
             ag_man_counts += eq
         if per_spacecraft:
-            ag_man_sat_totals = sp.zeros(scen_properties.N_shell, 1)
+            ag_man_sat_totals = sp.zeros(scen_properties.n_shells, 1)
             for species in scen_properties.species:
                 if species.maneuverable:
                     ag_man_sat_totals += species.sym

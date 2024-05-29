@@ -106,7 +106,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Initial Population and Launch
             self.scenario_properties.initial_pop_and_launch()
@@ -117,6 +117,7 @@ class Model:
                     self.scenario_properties.create_indicator_variables()
                 else:
                     print("No indicator variables provided.")
+                
             except Exception as e:
                 print(f"Failed to create indicator variables: {str(e)}")
 
