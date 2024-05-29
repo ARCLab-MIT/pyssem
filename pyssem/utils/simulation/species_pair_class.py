@@ -93,13 +93,14 @@ class SpeciesPairClass:
 
     def is_catastrophic(self, mass1, mass2, vels):
         """
-        Determiins if a collision is catastropic or non-catastrophic.
-        40 j/g threshold from Johnson et al. 2001
+        Determines if a collision is catastropic or non-catastrophic by calculating the 
+        relative kinetic energy. If the energy is greater than 40 J/g, the collision is
+        catastrophic from Johnson et al. 2001 (Collision Section)
 
         Args:
             mass1 (float): mass of species 1, kg
             mass2 (float): mass of species 2, kg
-            vels (np.ndarray): array of the relative velocities
+            vels (np.ndarray): array of the relative velocities (km/s) for each shell
         
         Returns:
             shell-wise list of bools (true if catastrophic, false if not catastrophic)
@@ -111,7 +112,7 @@ class SpeciesPairClass:
             smaller_mass = mass2
         
         smaller_mass_g = smaller_mass * (1000) # kg to g
-        energy = [0.5 * smaller_mass * v**2 for v in vels]
+        energy = [0.5 * smaller_mass * (v * 1000)**2 for v in vels] # Need to also convert km/s to m/s
         is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
 
         return is_catastrophic

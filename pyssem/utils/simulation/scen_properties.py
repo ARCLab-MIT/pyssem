@@ -15,7 +15,7 @@ import os
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str,
-                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = 10.0,
+                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None,
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -70,7 +70,11 @@ class ScenarioProperties:
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
         R0 = (self.re + R0) * 1000  # Convert to meters and the radius of the earth
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
-        self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
+        if self.v_imp is not None:
+            self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
+        else: 
+            # Calculate v_imp for each orbital shell using the vis viva equation
+            self.v_imp2 = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
         self.v_imp2 * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
         self.Dhl = self.deltaH * 1000 # thickness of the shell [m]
         self.Dhu = -self.deltaH * 1000 # thickness of the shell [m]
@@ -244,7 +248,7 @@ class ScenarioProperties:
         self.x0 = x0
         self.FLM_steps = FLM_steps
 
-        #self.future_launch_model(FLM_steps)
+        self.future_launch_model(FLM_steps)
     
     def build_model(self):
         """

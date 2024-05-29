@@ -3,6 +3,7 @@ from sympy import symbols, Matrix
 import numpy as np
 from ..simulation.species_pair_class import SpeciesPairClass
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 import numpy as np
 
@@ -212,9 +213,11 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     # Only up to 1m, then randomly sample larger objects as quoted above
     dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
     dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
+    
     # Cumulative distribution
     nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  
     ndd = np.maximum(0, -np.diff(nddcdf))
+    
     # Make sure int
     repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
     d_pdf = np.repeat(dd_means, repeat_counts)
@@ -283,6 +286,21 @@ def create_collision_pairs(scen_properties):
         binW[index] = debris.mass_ub - debris.mass_lb
 
     binE = np.unique(binE)
+
+    # data = np.repeat(binC, 1)
+
+    # Plotting the histogram with varying bin widths
+    # plt.figure(figsize=(16, 8))
+    # plt.hist(data, bins=binE, edgecolor='black', alpha=0.7, linewidth=2)
+    # plt.xlabel('Mass')
+    # plt.ylabel('Frequency')
+    # plt.title('Histogram with Varying Bin Widths for Debris Species')
+    # # plt.yscale('log')  # Log scale for y-axis
+    # # plt.xscale('log')  # Log scale for x-axis
+    # plt.grid(False)  # Remove grid lines
+    # plt.savefig('figures/debris_mass_bins_histogram.png')
+    # plt.show()
+
     
     for i, (s1, s2) in tqdm(enumerate(species_pairs), total=len(species_pairs), desc="Creating collision pairs"):
         m1, m2 = s1.mass, s2.mass
@@ -326,7 +344,6 @@ def create_collision_pairs(scen_properties):
 
         ####  Calculate the number of fragments made for each debris species
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-        isCatastrophic = np.zeros(len(scen_properties.v_imp2))
 
         # This will tell you the number of fragments in each debris bin
         for dv_index, dv in enumerate(scen_properties.v_imp2):

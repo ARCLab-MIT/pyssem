@@ -10,7 +10,7 @@ import numpy as np
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -51,8 +51,6 @@ class Model:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
-            if not isinstance(v_imp, (int, float)):
-                raise ValueError("v_imp must be a numeric type.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -66,7 +64,7 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp
+                v_imp=scenario_props.get("v_imp", None)
             )
 
 
@@ -102,7 +100,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             return species_list
         except json.JSONDecodeError:
@@ -230,7 +228,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'example-sim-simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -247,7 +245,7 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp=scenario_props["v_imp"]
+        v_imp = scenario_props.get("v_imp", None)
     )
 
     species = simulation_data["species"]
