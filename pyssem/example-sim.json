@@ -14,7 +14,7 @@
     "n_shells": 10,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
-    "density_model": "JB2008_dens_func", 
+    "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
     "v_imp": 10.0,
     "indicator_variables": ["orbital_volume", "ca_man_struct_agg"]                                                 
