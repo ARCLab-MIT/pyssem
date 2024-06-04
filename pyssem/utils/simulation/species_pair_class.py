@@ -1,9 +1,9 @@
-from sympy import symbols, Matrix, pi, S, Expr, zeros
+from sympy import symbols, Matrix, pi, S, Expr, zeros, transpose
 import matplotlib.pyplot as plt
 import numpy as np
 
 class SpeciesPairClass:
-    def __init__(self, species1, species2, gammas, source_sinks, scen_properties):
+    def __init__(self, species1, species2, gammas, source_sinks, scen_properties, fragsMadeDV=None):
         """
         This makes the species pair class associated with a collision between species1
         and species2. It will then create equations for the collision probability modifiers
@@ -88,35 +88,37 @@ class SpeciesPairClass:
             n_f = symbols(f'n_f:{scen_properties.n_shells}')
             
             if scen_properties.collision_spread:
-                if scen_properties.collision_spread:
-                    if i < 2:  # As first two columns are the reduction of the species in the collision (i.e -1)
-                        eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
-                    else:  # Debris generated from collision                    
-                        fragsMadeDVcurrentDeb = Matrix(gammas[:, i-2])
-                        fragsMade2D = zeros(scen_properties.n_shells, scen_properties.n_shells)
-                        
-                        for j in range(scen_properties.n_shells):
-                            fragsMade2D[j, :] = self.roll(fragsMadeDVcurrentDeb, j)
-                        
-                        fragsMade2D = fragsMade2D[scen_properties.n_shells-1:, :scen_properties.n_shells]
-                        eq = -Matrix(gammas[:, 0]) * phi_matrix.multiply_elementwise(fragsMade2D.multiply_elementwise(species1.sym).multiply_elementwise(species2.sym).sum(axis=1))
-                        # DEBUG
-                        plt.figure(100)
-                        plt.clf()
-                        plt.imshow(fragsMade2D)
-                        plt.colorbar()
-                        plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=12)
-                        plt.show()
-                    self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq
-                else:
+                if i < 2:  # As first two columns are the reduction of the species in the collision (i.e -1)
                     eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
-            else:
-                eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+                else:  # Debris generated from collision
+                    # Convert fragsMadeDV[:, i-2] to a numpy array and shift rows
+                    fragsMadeDVcurrentDeb = fragsMadeDV[:, i-2]
+
+                    fragsMade2D_list = [np.roll(fragsMadeDVcurrentDeb, shift) for shift in range(scen_properties.n_shells)]
+                    fragsMade2D = np.vstack(fragsMade2D_list)
+                    fragsMade2D = fragsMade2D[scen_properties.n_shells-1:, :scen_properties.n_shells]
+
+                    # Convert fragsMade2D to a sympy Matrix
+                    fragsMade2D = Matrix(fragsMade2D)
+
+                    # Create species product matrix
+                    t_sym = transpose(species1.sym.multiply_elementwise(species2.sym))
+                    species_product_matrix = Matrix(np.tile(t_sym, (scen_properties.n_shells, 1)))
+
+                    # Perform element-wise multiplication and summation
+                    multiplied_matrix = fragsMade2D.multiply_elementwise(species_product_matrix)
+                    sum_matrix = Matrix([multiplied_matrix[:, col].sum() for col in range(multiplied_matrix.shape[1])])
+
+                    # Multiply gammas, phi, and the sum_matrix element-wise
+                    eq = -gamma.multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
+
+                
+                self.eqs[:, eq_index] += eq
 
                 for j, val in enumerate(self.nf):
                     eq = eq.subs(n_f[j], val)
 
-                self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
+            self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
 
     def roll(self, matrix, shift):
         return matrix[-shift:] + matrix[:-shift]

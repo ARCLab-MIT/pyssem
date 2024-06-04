@@ -274,7 +274,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
         dAlt = np.median(np.diff(R02))
         nShell = len(np.diff(R02))
 
-        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2050, 50))) * 1000)))
+        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000)))
 
         dv_values = func_dv(Am, 'col') / 1000
         u = np.random.rand(len(dv_values)) * 2 - 1
@@ -423,7 +423,10 @@ def create_collision_pairs(scen_properties):
             else:
                 source_sinks.append(species)
 
-        species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
+        if scen_properties.collision_spread:
+            species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, alt_nums))
+        else:
+            species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
 
     return species_pairs_classes
         
