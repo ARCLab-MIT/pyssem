@@ -104,6 +104,9 @@ class ScenarioProperties:
         # Outputs
         self.output = None
 
+        # Varying collision shells 
+        self.collision_spread = True
+
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
         months_per_step = self.simulation_duration / self.steps

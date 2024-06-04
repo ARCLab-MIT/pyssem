@@ -4,8 +4,9 @@ import numpy as np
 from ..simulation.species_pair_class import SpeciesPairClass
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-
+import math
 import numpy as np
+import random
 
 def func_Am(d, ObjClass):
     """
@@ -40,6 +41,30 @@ def func_Am(d, ObjClass):
     out = 10 ** (amsms[:, 0] * N1 + (1 - amsms[:, 0]) * N2)
 
     return out
+
+def func_dv(Am, mode):
+    """
+    Calculate the change in velocity (delta-v) for debris fragments based on their area-to-mass ratio.
+
+    This will tell you velocity based off H. Kilnkrad - "Space Debris: Models and Risk Analysis" (2006).
+    Equation 3.42 (Coefficients) and 3.44 (Full Equation)
+
+    Args:
+        Am (np.ndarray): Area-to-mass ratio of fragments.
+        mode (str): Mode of calculation, e.g., 'col' for collision-induced delta-v or 'exp' for explosions
+
+    Returns:
+        np.ndarray: Calculated delta-v values for each fragment.
+    """
+    if mode == 'col':
+       mu = 0.2 * np.log10(Am) + 1.85 # Explosion
+    elif mode == 'exp':
+        mu = 0.9 * np.log10(Am) + 2.9
+
+    sigma = 0.4
+    N = mu + sigma * np.random.randn()
+    z = 10 ** N # m/s
+    return z 
 
 def calculate_amsms_for_rocket_body(logd):
     """
@@ -123,7 +148,7 @@ def calculate_amsms_not_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
-def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1): # eventually add stochastic ability
+def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collision_spread=False, n_shells=0, R02 = None): # eventually add stochastic ability
     """
     Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
     Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
@@ -157,6 +182,8 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     """
     # Super sampling ratio
     SS = 10
+    MU = 398600.4418  # km^3/s^2
+    RE = 6378.1  # km
 
     # Bin Center is given
     if len(binC) > 0 and len(binE) == 0 and len(binW) == 0: 
@@ -182,7 +209,6 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     else:
         raise ValueError(f"Wrong setup for bins given (binC empty: {len(binC) == 0}; binE empty: {len(binE) == 0}; binW empty: {len(binW) == 0})")
 
-
     LB = LBdiam
     objclass = 5 if RBflag == 0 else 0
 
@@ -201,7 +227,6 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
         M = m1 + m2
         isCatastrophic = 1
 
-    
     num = (0.1 * M ** 0.75 * LB ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
     numSS = SS * num
 
@@ -244,8 +269,27 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, sto=1)
     elif binE is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
         binOut = binE[:-1] + np.diff(binE) / 2
 
-    # return nums, isCatastrophic, binOut
-    return nums
+    # Assing delta-V to spherically random directions
+    if collision_spread:
+        dAlt = np.median(np.diff(R02))
+        nShell = len(np.diff(R02))
+
+        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2050, 50))) * 1000)))
+
+        dv_values = func_dv(Am, 'col') / 1000
+        u = np.random.rand(len(dv_values)) * 2 - 1
+        theta = np.random.rand(len(dv_values)) * 2 * np.pi
+
+        v = np.sqrt(1 - u**2)
+        p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
+        dv_vec = p * dv_values[:, np.newaxis]
+
+        hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
+        altNums = hc / (SS * 3)
+
+        return nums, isCatastrophic, binOut, altNums
+
+    return nums, isCatastrophic, binOut
 
 def create_collision_pairs(scen_properties):
     """
@@ -286,21 +330,6 @@ def create_collision_pairs(scen_properties):
         binW[index] = debris.mass_ub - debris.mass_lb
 
     binE = np.unique(binE)
-
-    # data = np.repeat(binC, 1)
-
-    # Plotting the histogram with varying bin widths
-    # plt.figure(figsize=(16, 8))
-    # plt.hist(data, bins=binE, edgecolor='black', alpha=0.7, linewidth=2)
-    # plt.xlabel('Mass')
-    # plt.ylabel('Frequency')
-    # plt.title('Histogram with Varying Bin Widths for Debris Species')
-    # # plt.yscale('log')  # Log scale for y-axis
-    # # plt.xscale('log')  # Log scale for x-axis
-    # plt.grid(False)  # Remove grid lines
-    # plt.savefig('figures/debris_mass_bins_histogram.png')
-    # plt.show()
-
     
     for i, (s1, s2) in tqdm(enumerate(species_pairs), total=len(species_pairs), desc="Creating collision pairs"):
         m1, m2 = s1.mass, s2.mass
@@ -344,14 +373,41 @@ def create_collision_pairs(scen_properties):
 
         ####  Calculate the number of fragments made for each debris species
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
+        is_catastrophic = np.zeros((1, scen_properties.species_length))
 
         # This will tell you the number of fragments in each debris bin
         for dv_index, dv in enumerate(scen_properties.v_imp2):
+            # If using the collision spreading function             
             # Temp will be a 1D array of the number of fragments in each debris bin. E.g if there are 8 debris species, there will be 8 elements
-            temp = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
-            frags_made[dv_index, :] = temp
-        
+
+            if scen_properties.collision_spread:
+                nums, is_catastrophic, binOut, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
+       
+            else:
+                frags_made[dv_index, :], is_catastrophic[0, dv_index], _ = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+
         # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
+        
+        if i == 0:
+            range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
+
+            # Check lengths of range_values and alt_nums
+            print("Length of range_values:", len(range_values))
+            print("Shape of alt_nums:", alt_nums.shape)
+
+            # Plot the stacked bar chart
+            plt.figure()
+            for i in range(alt_nums.shape[1]):
+                if i == 0:
+                    plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
+                else:
+                    plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
+
+            plt.legend(title='Bin Edges')
+            plt.xlabel('Shell offset')
+            plt.ylabel('Count')
+            plt.show()
+        
         for i, species in enumerate(debris_species):
             frags_made_sym = Matrix(frags_made[:, i]) 
 
@@ -372,5 +428,33 @@ def create_collision_pairs(scen_properties):
     return species_pairs_classes
         
 
+if __name__ == "__main__":
+    # Testing evolve_bins
+    m1 = 1000
+    m2 = 250
+    r1 = 2
+    r2 = 0.7
+    dv = 10
+    binE = np.array([1.4137200e-03, 2.8420686e-01, 1.3028350e+02, 3.6650000e+02,
+       6.1150000e+02, 1.0000000e+05])
+    R02 = np.arange(200, 2050, 50)
+    nums, is_catastrophic, bin_out, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], 0.1, RBflag=0, collision_spread=True, n_shells=10, R02=R02)
 
+    range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
 
+    # Check lengths of range_values and alt_nums
+    print("Length of range_values:", len(range_values))
+    print("Shape of alt_nums:", alt_nums.shape)
+
+    # Plot the stacked bar chart
+    plt.figure()
+    for i in range(alt_nums.shape[1]):
+        if i == 0:
+            plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
+        else:
+            plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
+
+    plt.legend(title='Bin Edges')
+    plt.xlabel('Shell offset')
+    plt.ylabel('Count')
+    plt.show()
