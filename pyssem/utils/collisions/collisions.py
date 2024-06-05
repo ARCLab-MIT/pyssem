@@ -184,6 +184,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
     SS = 10
     MU = 398600.4418  # km^3/s^2
     RE = 6378.1  # km
+    altNums = None
 
     # Bin Center is given
     if len(binC) > 0 and len(binE) == 0 and len(binW) == 0: 
@@ -287,9 +288,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
         hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
         altNums = hc / (SS * 3)
 
-        return nums, isCatastrophic, binOut, altNums
-
-    return nums, isCatastrophic, binOut
+    return nums, isCatastrophic, binOut, altNums
 
 def create_collision_pairs(scen_properties):
     """
@@ -374,6 +373,7 @@ def create_collision_pairs(scen_properties):
         ####  Calculate the number of fragments made for each debris species
         frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
         is_catastrophic = np.zeros((1, scen_properties.species_length))
+        alt_nums = np.zeros((scen_properties.n_shells*2, len(debris_species)))
 
         # This will tell you the number of fragments in each debris bin
         for dv_index, dv in enumerate(scen_properties.v_imp2):
@@ -381,32 +381,35 @@ def create_collision_pairs(scen_properties):
             # Temp will be a 1D array of the number of fragments in each debris bin. E.g if there are 8 debris species, there will be 8 elements
 
             if scen_properties.collision_spread:
-                nums, is_catastrophic, binOut, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
-       
+                try:
+                    results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)   
+                except ValueError as e:
+                    print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.collision_spread}, {scen_properties.n_shells}, {scen_properties.R0_km}")
+                    continue
             else:
                 frags_made[dv_index, :], is_catastrophic[0, dv_index], _ = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
 
         # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
         
-        if i == 0:
-            range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
+        # if i == 0:
+        #     range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
 
-            # Check lengths of range_values and alt_nums
-            print("Length of range_values:", len(range_values))
-            print("Shape of alt_nums:", alt_nums.shape)
+        #     # Check lengths of range_values and alt_nums
+        #     print("Length of range_values:", len(range_values))
+        #     print("Shape of alt_nums:", alt_nums.shape)
 
-            # Plot the stacked bar chart
-            plt.figure()
-            for i in range(alt_nums.shape[1]):
-                if i == 0:
-                    plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
-                else:
-                    plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
+        #     # Plot the stacked bar chart
+        #     plt.figure()
+        #     for i in range(alt_nums.shape[1]):
+        #         if i == 0:
+        #             plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
+        #         else:
+        #             plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
 
-            plt.legend(title='Bin Edges')
-            plt.xlabel('Shell offset')
-            plt.ylabel('Count')
-            plt.show()
+        #     plt.legend(title='Bin Edges')
+        #     plt.xlabel('Shell offset')
+        #     plt.ylabel('Count')
+        #     plt.show()
         
         for i, species in enumerate(debris_species):
             frags_made_sym = Matrix(frags_made[:, i]) 
