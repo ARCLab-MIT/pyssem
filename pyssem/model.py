@@ -89,8 +89,6 @@ class Model:
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Apply Launch Rates and create symbolic variables
-            species_list.apply_launch_rates(self.scenario_properties.n_shells)
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -228,7 +226,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example-sim-simple.json')) as f:
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -255,4 +253,3 @@ if __name__ == "__main__":
     results = model.run_model()
 
     model.create_plots()
-

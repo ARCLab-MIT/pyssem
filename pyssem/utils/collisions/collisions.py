@@ -181,7 +181,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
     :rtype: _type_
     """
     # Super sampling ratio
-    SS = 10
+    SS = 20
     MU = 398600.4418  # km^3/s^2
     RE = 6378.1  # km
     altNums = None
@@ -237,25 +237,25 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
     
     # Create PDF of power law distribution, then sample 'num' selections
     # Only up to 1m, then randomly sample larger objects as quoted above
-    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
-    dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
+    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500) # logg space, up to either 1m or diameter of the larger object
+    dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2) # Log 10 of diameter edge bins, then mean values of each diameter edge bin (linear as bins are log-spaced)
     
     # Cumulative distribution
-    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  
-    ndd = np.maximum(0, -np.diff(nddcdf))
+    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  #eq 2.68
+    ndd = np.maximum(0, -np.diff(nddcdf)) # diff to get the PDF count for the bins (dd_edges), if negative, set to 0
     
-    # Make sure int
+    # Make sure int, 0 to 1, random number for stochastic sampling of fragment diameters
     repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
-    d_pdf = np.repeat(dd_means, repeat_counts)
+    d_pdf = np.repeat(dd_means, repeat_counts) # PDF of debris objects between LB and 1m.
 
     try:
         dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
-    except ValueError:
+    except ValueError: # This is when the probability breaks as the objects are too small
         dss = 0
         return np.zeros(len(binEd) - 1)
 
     # Calculate the mass of objects
-    A = 0.556945 * dss ** 2.0047077
+    A = 0.556945 * dss ** 2.0047077 # Equation 2.72
     Am = func_Am(dss, objclass) # use Am conversion of the larger object
     m = A/Am
 
@@ -275,9 +275,10 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
         dAlt = np.median(np.diff(R02))
         nShell = len(np.diff(R02))
 
-        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000)))
-
-        dv_values = func_dv(Am, 'col') / 1000
+        # find difference in orbital velocity for shells
+        # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
+        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+        dv_values = func_dv(Am, 'col') / 1000 # km/s
         u = np.random.rand(len(dv_values)) * 2 - 1
         theta = np.random.rand(len(dv_values)) * 2 * np.pi
 
@@ -382,13 +383,15 @@ def create_collision_pairs(scen_properties):
 
             if scen_properties.collision_spread:
                 try:
-                    results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)   
+                    results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
+                    frags_made[dv_index, :] = results[0]
+                    alt_nums[:, :] = results[3]   
                 except ValueError as e:
                     print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.collision_spread}, {scen_properties.n_shells}, {scen_properties.R0_km}")
                     continue
             else:
-                frags_made[dv_index, :], is_catastrophic[0, dv_index], _ = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
-
+                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+                frags_made[dv_index, :] = results[0]
         # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
         
         # if i == 0:

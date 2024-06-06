@@ -54,9 +54,11 @@ class SpeciesPairClass:
 
         for i, dv in enumerate(scen_properties.v_imp2):
             if self.catastrophic[i]:
+                # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
                 n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
                 nf[i] = n_f_catastrophic
             else:
+                # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
                 n_f_damaging = 0.1 * LC**(-S(1.71)) * (min(M1, M2) * dv**2)**(S(0.75))
                 nf[i] = n_f_damaging
 
@@ -69,7 +71,7 @@ class SpeciesPairClass:
         if isinstance(self.phi, (int, float, Expr)):
             phi_matrix = Matrix([self.phi] * len(gamma))
         else:
-            phi_matrix = Matrix(self.phi)  # Assuming self.phi is already a list or a column vector
+            phi_matrix = Matrix(self.phi)
 
         # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 
         # derelicsts, etc.) We increment the eqs matrix with the gamma * phi * species1 * species2.
@@ -95,22 +97,29 @@ class SpeciesPairClass:
 
                         # Create the 2D fragment matrix with circular shifts
                         fragsMade2D_list = [np.roll(fragsMadeDVcurrentDeb, shift) for shift in range(scen_properties.n_shells)] # len 40
-                        fragsMade2D = np.vstack(fragsMade2D_list) # 40, 1
-                        fragsMade2D = fragsMade2D[:scen_properties.n_shells, :scen_properties.n_shells] # 40, 1
-                        fragsMade2D_sym = Matrix(fragsMade2D) # 40, 1
+                        fragsMade2D = np.vstack(fragsMade2D_list)
+                        fragsMade2D = fragsMade2D[:scen_properties.n_shells, :scen_properties.n_shells] 
+                        fragsMade2D_sym = Matrix(fragsMade2D) 
+
+                        #print(f"fragsMade2D_sym: {fragsMade2D_sym}")
 
                         # Create species product matrix
                         product_sym = species1.sym.multiply_elementwise(species2.sym).T
+                        #print(f"product_sym: {product_sym}")
                         rep_mat_sym = Matrix.vstack(*[product_sym for _ in range(scen_properties.n_shells)])
+                        #print(f"rep_mat_sym: {rep_mat_sym}")
 
                         # Perform element-wise multiplication
                         temp = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
+                        #print(temp)
                         
                         # Sum the columns of the multiplied_matrix
                         sum_matrix = Matrix([sum(temp[:, col]) for col in range(temp.shape[1])])
+                        #print(f"sum_matrix: {sum_matrix}")
 
                         # Multiply gammas, phi, and the sum_matrix element-wise
                         eq = -gamma.multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
+                        #print(f"eq: {eq}")
                     except Exception as e:
                         print(f"Error in creating debris matrix: {e}")
             else:
@@ -143,7 +152,7 @@ class SpeciesPairClass:
             smaller_mass = mass2
         
         smaller_mass_g = smaller_mass * (1000) # kg to g
-        energy = [0.5 * smaller_mass * (v * 1000)**2 for v in vels] # Need to also convert km/s to m/s
+        energy = [0.5 * smaller_mass * (v)**2 for v in vels] # Need to also convert km/s to m/s
         is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
 
         return is_catastrophic

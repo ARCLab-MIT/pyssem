@@ -269,27 +269,12 @@ class Species:
                 else:                 
                     species.drag_func = drag_func_exp
 
-                species.launch_func = launch_func_lambda_fun    
+                if species.launch_func == "launch_func_constant":
+                    species.launch_func = launch_func_constant
+                else:
+                    species.launch_func = launch_func_lambda_fun    
 
         return
-        
-
-    def apply_launch_rates(self, n_shells: int):
-        """
-        This will loop through each of the species, if launch rate is constant, it will create a launch array. 
-        This should be edited in the future to be more dynamic for the user. 
-
-        """
-        for species_group in self.species.values():
-            for species in species_group:
-                if species.launch_func == "launch_func_constant":
-                    # probably should remove for the constant launch_rate 
-                    # they should provide a scalar or a vector, this would have to be called if you want a time varying function for the ODE
-                    # if you provide something that is non-constant, then a user should have to provide a vector 
-                    # time not alt
-                    species.lambda_constant = [20 for _ in range(n_shells)]
-                    # Direct copy from MATLAB
-                    #species.lambda_constant = (500 * np.random.rand(scen_properties.N_shell, 1)).tolist()
 
     def create_symbolic_variables(self, n_shells: int):
         """

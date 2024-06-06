@@ -5,7 +5,7 @@ from scipy.integrate import solve_ivp
 from scipy.spatial import KDTree
 import sympy as sp
 from ..drag.drag import *
-from ..launch.launch import ADEPT_traffic_model
+from ..launch.launch import ADEPT_traffic_model, launch_func_constant
 from ..handlers.handlers import download_file_from_google_drive
 from pkg_resources import resource_filename
 import pandas as pd
@@ -275,6 +275,7 @@ class ScenarioProperties:
         # Equations are going to be a matrix of symbolic expressions
         # Each row corresponds to a shell, and each column corresponds to a species
         for i, species in enumerate(species_list):
+
             lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
             self.full_lambda.append(lambda_expr)
 
@@ -468,6 +469,7 @@ class ScenarioProperties:
 
         :return: Rate of change of population at the given timestep, t. 
         """
+        print(t)
 
         # Initialize the rate of change array
         dN_dt = np.zeros_like(N)
