@@ -353,7 +353,3 @@ def create_collision_pairs(scen_properties):
         species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
 
     return species_pairs_classes
-        
-
-
-
