@@ -102,7 +102,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             return species_list
         except json.JSONDecodeError:
@@ -129,7 +129,7 @@ class Model:
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties.pkl', 'wb') as f:
+            with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties

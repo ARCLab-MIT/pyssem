@@ -244,7 +244,7 @@ class ScenarioProperties:
         self.x0 = x0
         self.FLM_steps = FLM_steps
 
-        #self.future_launch_model(FLM_steps)
+        self.future_launch_model(FLM_steps)
     
     def build_model(self):
         """
