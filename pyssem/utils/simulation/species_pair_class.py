@@ -102,11 +102,13 @@ class SpeciesPairClass:
                         # Adjust the slicing to match MATLAB's slicing
                         fragsMade2D = fragsMade2D[scen_properties.n_shells:, :scen_properties.n_shells]  # from N_shell:end for rows, 1:N_shell for columns
                         fragsMade2D_sym = Matrix(fragsMade2D)
+                        # print(fragsMade2D_sym)
+                        # print('-------------------')
 
                         # Create species product matrix
                         product_sym = species1.sym.multiply_elementwise(species2.sym).T
                         rep_mat_sym = Matrix.vstack(*[product_sym for _ in range(scen_properties.n_shells)])
-                        
+
                         # # Perform element-wise multiplication with fragsMade2D_sym
                         # temp = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
 
@@ -118,16 +120,20 @@ class SpeciesPairClass:
                         
                         # Perform element-wise multiplication
                         sum_ = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
+                        # print(sum_)
+                        # print(sum_.shape)
                                           
                         # Sum the columns of the multiplied_matrix
-                        sum_matrix = Matrix([sum(sum_[:, col]) for col in range(sum_.shape[1])])
+                        sum_matrix = Matrix([sum(sum_[row, :]) for row in range(sum_.shape[0])])
+
+                        # print('-------------------')
+                        # print(sum_matrix)
 
                         # Multiply gammas, phi, and the sum_matrix element-wise
-                        eq = -gamma.multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
+                        # eq = -gamma.multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
+                        eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
 
-                        if "0.567" in self.name:
-                            print(f"eq: {eq}")
-                         # Plotting (similar to MATLAB's imagesc)
+                        # Plotting (similar to MATLAB's imagesc)
                         # plt.figure(100)
                         # plt.clf()
                         # plt.imshow(fragsMade2D, aspect='auto', interpolation='none')

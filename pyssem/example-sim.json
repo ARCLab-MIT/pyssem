@@ -8,7 +8,7 @@
   "scenario_properties": {
     "start_date": "01/03/2022",   
     "simulation_duration": 100,              
-    "steps": 200,                            
+    "steps": 100,                            
     "min_altitude": 200,                   
     "max_altitude": 1400,                   
     "n_shells": 40,                         
