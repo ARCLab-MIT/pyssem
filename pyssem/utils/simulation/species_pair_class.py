@@ -92,7 +92,7 @@ class SpeciesPairClass:
                 if i < 2:  # As first two columns are the reduction of the species in the collision (i.e -1)
                     eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 else:  # Debris generated from collision
-                    try: 
+                    try:                         
                         fragsMadeDVcurrentDeb = fragsMadeDV[:, i-2] # First two rows are the reduction of the species in the collision (i.e -1)
 
                         # Create the 2D fragment matrix with circular shifts
@@ -102,35 +102,18 @@ class SpeciesPairClass:
                         # Adjust the slicing to match MATLAB's slicing
                         fragsMade2D = fragsMade2D[scen_properties.n_shells:, :scen_properties.n_shells]  # from N_shell:end for rows, 1:N_shell for columns
                         fragsMade2D_sym = Matrix(fragsMade2D)
-                        # print(fragsMade2D_sym)
-                        # print('-------------------')
 
                         # Create species product matrix
                         product_sym = species1.sym.multiply_elementwise(species2.sym).T
                         rep_mat_sym = Matrix.vstack(*[product_sym for _ in range(scen_properties.n_shells)])
 
-                        # # Perform element-wise multiplication with fragsMade2D_sym
-                        # temp = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
-
-                        # # Sum the rows of the element-wise multiplied matrix
-                        # sum_ = Matrix([Sum(temp[row, :]) for row in range(temp.shape[0])])
-
-                        # # Multiply gammas, phi (transposed), and the sum_ element-wise to form the final equation
-                        # eq = -gamma[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_)     
-                        
                         # Perform element-wise multiplication
                         sum_ = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
-                        # print(sum_)
-                        # print(sum_.shape)
                                           
                         # Sum the columns of the multiplied_matrix
                         sum_matrix = Matrix([sum(sum_[row, :]) for row in range(sum_.shape[0])])
 
-                        # print('-------------------')
-                        # print(sum_matrix)
-
                         # Multiply gammas, phi, and the sum_matrix element-wise
-                        # eq = -gamma.multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
                         eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
 
                         # Plotting (similar to MATLAB's imagesc)
@@ -143,6 +126,9 @@ class SpeciesPairClass:
                         # plt.show()
                         # print(f"eq: {eq}")
                     except Exception as e:
+                        if fragsMadeDV == 0:
+                            eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+                            continue
                         print(f"Error in creating debris matrix: {e}")
             else:
                 eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
