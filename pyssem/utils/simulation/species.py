@@ -43,6 +43,7 @@ class SpeciesProperties:
         self.epsilon = None  # lt_mag
         self.e_mean = None
 
+        # For Launch Functions
         self.lambda_multiplier = None  # only for launch_func_fixed_multiplier
         self.lambda_funs = None  # only for launch_func_gauss
         self.lambda_constant = None  # only for launch_func_constant

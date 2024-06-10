@@ -89,6 +89,7 @@ class Model:
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
+            # Create symbolic variables for the species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling

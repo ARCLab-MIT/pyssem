@@ -1,4 +1,4 @@
-from sympy import symbols, Matrix, pi, S, Expr, zeros, transpose
+from sympy import symbols, Matrix, pi, S, Expr, zeros, transpose, Sum
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -93,33 +93,49 @@ class SpeciesPairClass:
                     eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 else:  # Debris generated from collision
                     try: 
-                        fragsMadeDVcurrentDeb = np.array(fragsMadeDV[:, i-2]) # this is 1, 80
+                        fragsMadeDVcurrentDeb = fragsMadeDV[:, i-2] # First two rows are the reduction of the species in the collision (i.e -1)
 
                         # Create the 2D fragment matrix with circular shifts
-                        fragsMade2D_list = [np.roll(fragsMadeDVcurrentDeb, shift) for shift in range(scen_properties.n_shells)] # len 40
-                        fragsMade2D = np.vstack(fragsMade2D_list)
-                        fragsMade2D = fragsMade2D[:scen_properties.n_shells, :scen_properties.n_shells] 
-                        fragsMade2D_sym = Matrix(fragsMade2D) 
+                        fragsMade2D_list = [np.roll(fragsMadeDVcurrentDeb, shift) for shift in range(scen_properties.n_shells + 1)]
+                        fragsMade2D = np.column_stack(fragsMade2D_list)
 
-                        #print(f"fragsMade2D_sym: {fragsMade2D_sym}")
+                        # Adjust the slicing to match MATLAB's slicing
+                        fragsMade2D = fragsMade2D[scen_properties.n_shells:, :scen_properties.n_shells]  # from N_shell:end for rows, 1:N_shell for columns
+                        fragsMade2D_sym = Matrix(fragsMade2D)
 
                         # Create species product matrix
                         product_sym = species1.sym.multiply_elementwise(species2.sym).T
-                        #print(f"product_sym: {product_sym}")
                         rep_mat_sym = Matrix.vstack(*[product_sym for _ in range(scen_properties.n_shells)])
-                        #print(f"rep_mat_sym: {rep_mat_sym}")
-
-                        # Perform element-wise multiplication
-                        temp = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
-                        #print(temp)
                         
+                        # # Perform element-wise multiplication with fragsMade2D_sym
+                        # temp = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
+
+                        # # Sum the rows of the element-wise multiplied matrix
+                        # sum_ = Matrix([Sum(temp[row, :]) for row in range(temp.shape[0])])
+
+                        # # Multiply gammas, phi (transposed), and the sum_ element-wise to form the final equation
+                        # eq = -gamma[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_)     
+                        
+                        # Perform element-wise multiplication
+                        sum_ = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
+                                          
                         # Sum the columns of the multiplied_matrix
-                        sum_matrix = Matrix([sum(temp[:, col]) for col in range(temp.shape[1])])
-                        #print(f"sum_matrix: {sum_matrix}")
+                        sum_matrix = Matrix([sum(sum_[:, col]) for col in range(sum_.shape[1])])
 
                         # Multiply gammas, phi, and the sum_matrix element-wise
                         eq = -gamma.multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
-                        #print(f"eq: {eq}")
+
+                        if "0.567" in self.name:
+                            print(f"eq: {eq}")
+                         # Plotting (similar to MATLAB's imagesc)
+                        # plt.figure(100)
+                        # plt.clf()
+                        # plt.imshow(fragsMade2D, aspect='auto', interpolation='none')
+                        # plt.colorbar()
+                        # plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=10)
+                        # plt.gca().invert_yaxis()
+                        # plt.show()
+                        # print(f"eq: {eq}")
                     except Exception as e:
                         print(f"Error in creating debris matrix: {e}")
             else:

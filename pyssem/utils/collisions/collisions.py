@@ -62,7 +62,7 @@ def func_dv(Am, mode):
         mu = 0.9 * np.log10(Am) + 2.9
 
     sigma = 0.4
-    N = mu + sigma * np.random.randn()
+    N = mu + sigma * np.random.randn(*np.shape(mu))
     z = 10 ** N # m/s
     return z 
 
@@ -385,7 +385,7 @@ def create_collision_pairs(scen_properties):
                 try:
                     results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
                     frags_made[dv_index, :] = results[0]
-                    alt_nums[:, :] = results[3]   
+                    alt_nums = results[3]   
                 except ValueError as e:
                     print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.collision_spread}, {scen_properties.n_shells}, {scen_properties.R0_km}")
                     continue
@@ -394,25 +394,25 @@ def create_collision_pairs(scen_properties):
                 frags_made[dv_index, :] = results[0]
         # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
         
-        # if i == 0:
-        #     range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
+        if i == 0:
+            range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
 
-        #     # Check lengths of range_values and alt_nums
-        #     print("Length of range_values:", len(range_values))
-        #     print("Shape of alt_nums:", alt_nums.shape)
+            # Check lengths of range_values and alt_nums
+            print("Length of range_values:", len(range_values))
+            print("Shape of alt_nums:", alt_nums.shape)
 
-        #     # Plot the stacked bar chart
-        #     plt.figure()
-        #     for i in range(alt_nums.shape[1]):
-        #         if i == 0:
-        #             plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
-        #         else:
-        #             plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
+            # # Plot the stacked bar chart
+            # plt.figure()
+            # for i in range(alt_nums.shape[1]):
+            #     if i == 0:
+            #         plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
+            #     else:
+            #         plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
 
-        #     plt.legend(title='Bin Edges')
-        #     plt.xlabel('Shell offset')
-        #     plt.ylabel('Count')
-        #     plt.show()
+            # plt.legend(title='Bin Edges')
+            # plt.xlabel('Shell offset')
+            # plt.ylabel('Count')
+            # plt.show()
         
         for i, species in enumerate(debris_species):
             frags_made_sym = Matrix(frags_made[:, i]) 
