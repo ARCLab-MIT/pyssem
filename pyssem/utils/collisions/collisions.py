@@ -392,8 +392,8 @@ def create_collision_pairs(scen_properties):
             else:
                 results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
                 frags_made[dv_index, :] = results[0]
-        # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
         
+        # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
         if i == 0:
             range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
 
