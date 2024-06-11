@@ -10,7 +10,24 @@ from ..handlers.handlers import download_file_from_google_drive
 from pkg_resources import resource_filename
 import pandas as pd
 import os
+import multiprocessing as mp
 
+import concurrent.futures
+
+def lambdify_equation(all_symbolic_vars, eq):
+    return sp.lambdify(all_symbolic_vars, eq, 'numpy')
+
+# Function to parallelize lambdification using concurrent.futures
+def parallel_lambdify(equations_flattened, all_symbolic_vars):
+    # Prepare arguments for parallel processing
+    args = [(all_symbolic_vars, eq) for eq in equations_flattened]
+    
+    # Use ProcessPoolExecutor for parallel processing
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [executor.submit(lambdify_equation, all_symbolic_vars, eq) for all_symbolic_vars, eq in args]
+        equations = [future.result() for future in concurrent.futures.as_completed(futures)]
+    
+    return equations
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
@@ -105,7 +122,7 @@ class ScenarioProperties:
         self.output = None
 
         # Varying collision shells 
-        self.collision_spread = False
+        self.collision_spread = True
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
@@ -325,6 +342,7 @@ class ScenarioProperties:
             
         return
 
+
     def run_model(self):
         """
         For each species, integrate the equations of population change for each shell and species.
@@ -344,6 +362,7 @@ class ScenarioProperties:
 
         # Convert the equations to lambda functions
         equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+        #equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
 
         # Launch rates
         full_lambda_flattened = []
@@ -469,7 +488,7 @@ class ScenarioProperties:
 
         :return: Rate of change of population at the given timestep, t. 
         """
-        print(t)
+        #print(t)
 
         # Initialize the rate of change array
         dN_dt = np.zeros_like(N)

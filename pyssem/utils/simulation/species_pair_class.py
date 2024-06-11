@@ -1,4 +1,4 @@
-from sympy import symbols, Matrix, pi, S, Expr, zeros, transpose, Sum
+from sympy import symbols, Matrix, pi, S, Expr, zeros
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -73,6 +73,10 @@ class SpeciesPairClass:
         else:
             phi_matrix = Matrix(self.phi)
 
+        if scen_properties.collision_spread:
+            product_sym = species1.sym.multiply_elementwise(species2.sym).T
+
+
         # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 
         # derelicsts, etc.) We increment the eqs matrix with the gamma * phi * species1 * species2.
         for i in range(gammas.shape[1]):
@@ -87,7 +91,7 @@ class SpeciesPairClass:
                 raise ValueError(f"Equation index not found for {source_sinks[i].sym_name}")
             
             n_f = symbols(f'n_f:{scen_properties.n_shells}')
-            
+
             if scen_properties.collision_spread:
                 if i < 2:  # As first two columns are the reduction of the species in the collision (i.e -1)
                     eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
@@ -103,8 +107,7 @@ class SpeciesPairClass:
                         fragsMade2D = fragsMade2D[scen_properties.n_shells:, :scen_properties.n_shells]  # from N_shell:end for rows, 1:N_shell for columns
                         fragsMade2D_sym = Matrix(fragsMade2D)
 
-                        # Create species product matrix
-                        product_sym = species1.sym.multiply_elementwise(species2.sym).T
+                        # Use the species product matrix and repeat it for each shell, this will allow all symbolic variables to be affected across all shells
                         rep_mat_sym = Matrix.vstack(*[product_sym for _ in range(scen_properties.n_shells)])
 
                         # Perform element-wise multiplication

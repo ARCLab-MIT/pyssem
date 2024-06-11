@@ -4,9 +4,9 @@ import numpy as np
 from ..simulation.species_pair_class import SpeciesPairClass
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import math
 import numpy as np
-import random
+import multiprocessing as mp
+
 
 def func_Am(d, ObjClass):
     """
@@ -291,6 +291,87 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
 
     return nums, isCatastrophic, binOut, altNums
 
+def process_species_pair(args):
+    
+    i, (s1, s2), scen_properties, debris_species, binE, LBgiven = args
+    m1, m2 = s1.mass, s2.mass
+    r1, r2 = s1.radius, s2.radius
+
+    # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
+    gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
+
+    # Create a list of source sinks, first two are the active species
+    source_sinks = [s1, s2]
+
+    # Implementing logic for gammas calculations based on species properties
+    if s1.maneuverable and s2.maneuverable:
+        # Multiplying each element in the first column of gammas by the product of alpha_active values
+        gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
+        if s1.slotted and s2.slotted:
+            # Applying the minimum slotting effectiveness if both are slotted
+            gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+
+    elif (s1.maneuverable and not s2.maneuverable) or (s2.maneuverable and not s1.maneuverable):
+        if s1.trackable and s2.maneuverable:
+            gammas[:, 0] = gammas[:, 0] * s2.alpha
+        elif s2.trackable and s1.maneuverable:
+            gammas[:, 0] = gammas[:, 0] * s1.alpha
+
+    # Applying symmetric loss to both colliding species
+    gammas[:, 1] = gammas[:, 0]
+
+    # Rocket Body Flag - 1: RB; 0: not RB
+    # Will be 0 if both are None type
+    if s1.RBflag is None and s2.RBflag is None:
+        RBflag = 0
+    elif s1.RBflag is None:
+        RBflag = s2.RBflag
+    elif s2.RBflag is None:
+        RBflag = s1.RBflag
+    else:
+        RBflag = max(s1.RBflag, s2.RBflag)
+
+    # Calculate the number of fragments made for each debris species
+    frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
+    is_catastrophic = np.zeros((1, scen_properties.species_length))
+    alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
+
+    # This will tell you the number of fragments in each debris bin
+    for dv_index, dv in enumerate(scen_properties.v_imp2):
+        # If using the collision spreading function             
+        if scen_properties.collision_spread:
+            try:
+                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
+                frags_made[dv_index, :] = results[0]
+                alt_nums = results[3]   
+            except ValueError as e:
+                print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.collision_spread}, {scen_properties.n_shells}, {scen_properties.R0_km}")
+                continue
+        else:
+            results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
+            frags_made[dv_index, :] = results[0]
+
+    for i, species in enumerate(debris_species):
+        frags_made_sym = Matrix(frags_made[:, i]) 
+
+        # Multiply it by the likelihood of collision (gammas) to get the number of fragments made for each shell
+        new_column = -gammas[:, 1].multiply_elementwise(frags_made_sym)
+        new_column = new_column.reshape(gammas.rows, 1)  # Ensure it's a column vector
+
+        # Use col_insert to add the new column. Insert at index 2+i
+        gammas = gammas.col_insert(2 + i, new_column)
+
+        if 2 + i < len(source_sinks):
+            source_sinks[2 + i] = species
+        else:
+            source_sinks.append(species)
+
+    if scen_properties.collision_spread:
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, alt_nums)
+    else:
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties)
+        
+
 def create_collision_pairs(scen_properties):
     """
     Function takes a scen_properties object with a list of species and the same species organised in species_cells into 
@@ -330,112 +411,18 @@ def create_collision_pairs(scen_properties):
         binW[index] = debris.mass_ub - debris.mass_lb
 
     binE = np.unique(binE)
+
+    args = [(i, species_pair, scen_properties, debris_species, binE, LBgiven) for i, species_pair in enumerate(species_pairs)]
     
-    for i, (s1, s2) in tqdm(enumerate(species_pairs), total=len(species_pairs), desc="Creating collision pairs"):
-        m1, m2 = s1.mass, s2.mass
-        r1, r2 = s1.radius, s2.radius
+    # Use multiprocessing Pool for parallel processing
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
 
-        # # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
-        gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
-
-        # # Create a list of source sinks, first two are the active species
-        source_sinks = [s1, s2]
-
-        # Implementing logic for gammas calculations based on species properties
-        if s1.maneuverable and s2.maneuverable:
-            # Multiplying each element in the first column of gammas by the product of alpha_active values
-            gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
-            if s1.slotted and s2.slotted:
-                # Applying the minimum slotting effectiveness if both are slotted
-                gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
-
-        elif (s1.maneuverable and not s2.maneuverable) or \
-            (s2.maneuverable and not s1.maneuverable):
-            if s1.trackable and s2.maneuverable:
-                gammas[:, 0] = gammas[:, 0] * s2.alpha
-            elif s2.trackable and s1.maneuverable:
-                gammas[:, 0] = gammas[:, 0] * s1.alpha
-
-        # Applying symmetric loss to both colliding species
-        gammas[:, 1] = gammas[:, 0]
-
-        # Rocket Body Flag - 1: RB; 0: not RB
-        # Will be 0 if both are None type
-        if s1.RBflag is None and s2.RBflag is None:
-            RBflag = 0
-        elif s1.RBflag is None:
-            RBflag = s2.RBflag
-        elif s2.RBflag is None:
-            RBflag = s1.RBflag
-        else:
-            RBflag = max(s1.RBflag, s2.RBflag)
-        
-
-        ####  Calculate the number of fragments made for each debris species
-        frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-        is_catastrophic = np.zeros((1, scen_properties.species_length))
-        alt_nums = np.zeros((scen_properties.n_shells*2, len(debris_species)))
-
-        # This will tell you the number of fragments in each debris bin
-        for dv_index, dv in enumerate(scen_properties.v_imp2):
-            # If using the collision spreading function             
-            # Temp will be a 1D array of the number of fragments in each debris bin. E.g if there are 8 debris species, there will be 8 elements
-
-            if scen_properties.collision_spread:
-                try:
-                    results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
-                    frags_made[dv_index, :] = results[0]
-                    alt_nums = results[3]   
-                except ValueError as e:
-                    print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.collision_spread}, {scen_properties.n_shells}, {scen_properties.R0_km}")
-                    continue
-            else:
-                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
-                frags_made[dv_index, :] = results[0]
-        
-        # The gammas matrix will be first 2 columns of gammas, then the number of fragments made for each debris species
-        if i == 0:
-            range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
-
-            # Check lengths of range_values and alt_nums
-            print("Length of range_values:", len(range_values))
-            print("Shape of alt_nums:", alt_nums.shape)
-
-            # # Plot the stacked bar chart
-            # plt.figure()
-            # for i in range(alt_nums.shape[1]):
-            #     if i == 0:
-            #         plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
-            #     else:
-            #         plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
-
-            # plt.legend(title='Bin Edges')
-            # plt.xlabel('Shell offset')
-            # plt.ylabel('Count')
-            # plt.show()
-        
-        for i, species in enumerate(debris_species):
-            frags_made_sym = Matrix(frags_made[:, i]) 
-
-            # Multiply it by the likelihood of collision (gammas) to get the number of fragments made for each shell
-            new_column = -gammas[:, 1].multiply_elementwise(frags_made_sym)
-            new_column = new_column.reshape(gammas.rows, 1)  # Ensure it's a column vector
-
-            # Use col_insert to add the new column. Insert at index 2+i
-            gammas = gammas.col_insert(2+i, new_column)
-
-            if 2+i < len(source_sinks):
-                source_sinks[2+i] = species
-            else:
-                source_sinks.append(species)
-
-        if scen_properties.collision_spread:
-            species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, alt_nums))
-        else:
-            species_pairs_classes.append(SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties))
+    # Collect results
+    species_pairs_classes.extend(results)
 
     return species_pairs_classes
-        
+
 
 if __name__ == "__main__":
     # Testing evolve_bins

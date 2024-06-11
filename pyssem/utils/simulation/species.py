@@ -270,10 +270,11 @@ class Species:
                 else:                 
                     species.drag_func = drag_func_exp
 
-                if species.launch_func == "launch_func_constant":
-                    species.launch_func = launch_func_constant
-                else:
-                    species.launch_func = launch_func_lambda_fun    
+                # if species.launch_func == "launch_func_constant":
+                #     species.launch_func = launch_func_constant
+                # else:
+                #     species.launch_func = launch_func_lambda_fun   
+                species.launch_func = launch_func_lambda_fun 
 
         return
 

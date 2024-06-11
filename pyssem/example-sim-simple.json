@@ -36,7 +36,7 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_constant",
-        "lambda_constant" : 500, 
+        "lambda_constant" : 1000, 
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
@@ -57,7 +57,7 @@
       "slotting_effectiveness": 1.0,
       "drag_effected": true,
       "launch_func": "launch_func_constant",
-      "lambda_constant" : 100, 
+      "lambda_constant" : 500, 
       "pmd_func": "pmd_func_sat",
       "drag_func": "drag_func_exp"
   },
