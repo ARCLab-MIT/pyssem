@@ -46,6 +46,7 @@ def launch_func_null(t, h, species_properties, scen_properties):
 def launch_func_constant(t, h, species_properties, scen_properties):
     """
     Adds a constant launch rate from species_properties.lambda_constant.
+    Given a certain altitude, this will return the rate of change in the species in each shell at the specified time due to launch.
 
     Args:
         t (float): Time from scenario start in years.
@@ -54,8 +55,33 @@ def launch_func_constant(t, h, species_properties, scen_properties):
         scen_properties (dict): Properties for the scenario, including 'N_shell'.
 
     Returns:
-        list: Lambdadot, a list of symbolic expressions representing the rate of change in the species in each shell due to launch.
+        list: np., a list of symbolic expressions representing the rate of change in the species in each shell due to launch.
     """
+    # if len(h) != scen_properties.n_shells:
+    #     raise ValueError("Constant launch rate must be specified per altitude shell.")
+
+    # n_shells = scen_properties.n_shells
+    # scen_times = scen_properties.scen_times
+    # simulation_duration = scen_properties.simulation_duration
+    # # Calculate the number of time steps per year
+    # time_steps_per_year = len(scen_times) / simulation_duration
+
+    # # Create a matrix filled with zeros
+    # launch_rate_matrix = np.zeros((n_shells, len(scen_times)))
+
+    # # Find the index of the shell closest to the specified altitude
+    # alt = 500  # km
+    # h_inds = np.argmin(np.abs(h - alt))
+
+    # # Calculate the number of satellites per time step
+    # launch_rate_per_year = species_properties.lambda_constant  # satellites/year
+    # launch_rate_per_time_step = launch_rate_per_year / time_steps_per_year
+
+    # # Fill the row corresponding to the nearest altitude with the launch rate per time step
+    # launch_rate_matrix[h_inds, :] = launch_rate_per_time_step
+
+    # return launch_rate_matrix
+
     if len(h) != scen_properties.n_shells:
         raise ValueError("Constant launch rate must be specified per altitude shell.")
 
@@ -69,6 +95,30 @@ def launch_func_constant(t, h, species_properties, scen_properties):
     Lambdadot_list = [Lambdadot[i] for i in range(scen_properties.n_shells)]
 
     return Lambdadot_list
+
+def launch_func_lambda_fun(t, h, species_properties, scen_properties):
+    """
+    This function will return the lambda function for a required species. 
+
+    :param t: The time from the scenario start in years
+    :type t: int
+    :param h: The altitude above the ellipsoid in km of shell lower edge
+    :type h: int
+    :param species_properties: Species properties
+    :type species_properties: Species
+    :param scen_properties: Scenario properties
+    :type scen_properties: ScenarioProperties
+    :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
+    :rtype: SciPy interp1d function
+    """
+    # # Find the index for the given altitude
+    # h_inds = np.where(scen_properties.HMid == h)
+    # print(species_properties.sym_name)
+
+    # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
+    Lambdadot = species_properties.lambda_funs
+    return Lambdadot
+
 
 def julian_to_datetime(julian_date):
     # Julian Date for Unix epoch (1970-01-01)
@@ -268,27 +318,3 @@ def define_object_class(T):
         print(f'\t{unclassed_rows} Unclassified rows remain.')
 
     return T
-
-def launch_func_lambda_fun(t, h, species_properties, scen_properties):
-    """
-    This function will return the lambda function for a required species. 
-
-    :param t: The time from the scenario start in years
-    :type t: int
-    :param h: The altitude above the ellipsoid in km of shell lower edge
-    :type h: int
-    :param species_properties: Species properties
-    :type species_properties: Species
-    :param scen_properties: Scenario properties
-    :type scen_properties: ScenarioProperties
-    :return: Lambdadot is the rate of change in the species in each sheel at the specified time due to launch
-    :rtype: SciPy interp1d function
-    """
-    # # Find the index for the given altitude
-    # h_inds = np.where(scen_properties.HMid == h)
-    # print(species_properties.sym_name)
-
-    # Retrieve the appropriate lambda function for the altitude and evaluate it at time t
-    Lambdadot = species_properties.lambda_funs
-    return Lambdadot
-

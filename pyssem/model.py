@@ -10,7 +10,7 @@ import numpy as np
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -51,8 +51,6 @@ class Model:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
-            if not isinstance(v_imp, (int, float)):
-                raise ValueError("v_imp must be a numeric type.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -66,7 +64,7 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp
+                v_imp=scenario_props.get("v_imp", None)
             )
 
 
@@ -91,8 +89,7 @@ class Model:
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Apply Launch Rates and create symbolic variables
-            species_list.apply_launch_rates(self.scenario_properties.n_shells)
+            # Create symbolic variables for the species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -247,7 +244,7 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp=scenario_props["v_imp"]
+        v_imp = scenario_props.get("v_imp", None)
     )
 
     species = simulation_data["species"]
@@ -257,4 +254,3 @@ if __name__ == "__main__":
     results = model.run_model()
 
     model.create_plots()
-
