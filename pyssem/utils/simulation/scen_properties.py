@@ -5,18 +5,39 @@ from scipy.integrate import solve_ivp
 from scipy.spatial import KDTree
 import sympy as sp
 from ..drag.drag import *
-from ..launch.launch import ADEPT_traffic_model
+from ..launch.launch import ADEPT_traffic_model, launch_func_constant
 from ..handlers.handlers import download_file_from_google_drive
 from ..indicators.indicators import *
 from pkg_resources import resource_filename
 import pandas as pd
 import os
+import multiprocessing as mp
+from loky import get_reusable_executor
+import concurrent.futures
+import multiprocessing
 
+def lambdify_equation(all_symbolic_vars, eq):
+    return sp.lambdify(all_symbolic_vars, eq, 'numpy')
+
+# Function to parallelize lambdification using loky
+def parallel_lambdify(equations_flattened, all_symbolic_vars):
+    # Prepare arguments for parallel processing
+    args = [(all_symbolic_vars, eq) for eq in equations_flattened]
+    
+    # Determine the number of available CPU cores
+    num_cores = multiprocessing.cpu_count()
+    print('Number of cores:', num_cores)
+    # Use loky's reusable executor for parallel processing with all available cores
+    with get_reusable_executor(max_workers=num_cores) as executor:
+        futures = [executor.submit(lambdify_equation, all_symbolic_vars, eq) for all_symbolic_vars, eq in args]
+        equations = [future.result() for future in futures]
+    
+    return equations
 
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str,
-                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = 10.0, indicator_variables: list = None, 
+                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, indicator_variables: list = None, 
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -75,7 +96,11 @@ class ScenarioProperties:
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
         R0 = (self.re + R0) * 1000  # Convert to meters and the radius of the earth
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
-        self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
+        if self.v_imp is not None:
+            self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
+        else: 
+            # Calculate v_imp for each orbital shell using the vis viva equation
+            self.v_imp2 = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
         self.v_imp2 * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
         self.Dhl = self.deltaH * 1000 # thickness of the shell [m]
         self.Dhu = -self.deltaH * 1000 # thickness of the shell [m]
@@ -104,6 +129,9 @@ class ScenarioProperties:
         
         # Outputs
         self.output = None
+
+        # Varying collision shells 
+        self.collision_spread = True
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
@@ -211,7 +239,7 @@ class ScenarioProperties:
                         species.lambda_funs.append(np.array(y))
 
                          
-    def initial_pop_and_launch(self):
+    def initial_pop_and_launch(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
         The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
@@ -248,21 +276,9 @@ class ScenarioProperties:
         self.x0 = x0
         self.FLM_steps = FLM_steps
 
-        self.future_launch_model(FLM_steps)
-
-    def create_indicator_variables(self):
-        """
-        Create the indicator variables for the simulation. This will be used to calculate the indicators for the simulation. 
-
-        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species and create the indicator variables for each species. 
-
-        :return: None
-        """
-        for indicator in self.indicator_variables:
-            if indicator == 'orbital_volume':
-                self.indicator_variables_list.append(make_intrinsic_cap_indicator(self, sep_dist_method='angle', sep_angle=0.2, sep_dist=25.0, shell_sep=5, inc=45.0, graph=True))
-            if indicator == 'ca_man_struct_agg':
-                self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", per_species=False, per_spacecraft=False))
+        if not baseline:
+            self.future_launch_model(FLM_steps)
+    
     def build_model(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
@@ -284,6 +300,7 @@ class ScenarioProperties:
         # Equations are going to be a matrix of symbolic expressions
         # Each row corresponds to a shell, and each column corresponds to a species
         for i, species in enumerate(species_list):
+
             lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
             self.full_lambda.append(lambda_expr)
 
@@ -333,7 +350,7 @@ class ScenarioProperties:
             
         return
 
-    def  run_model(self):
+    def run_model(self):
         """
         For each species, integrate the equations of population change for each shell and species.
 
@@ -351,7 +368,8 @@ class ScenarioProperties:
         equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
 
         # Convert the equations to lambda functions
-        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+        #equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+        equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
 
         # Launch rates
         full_lambda_flattened = []
@@ -391,7 +409,6 @@ class ScenarioProperties:
                             args=(full_lambda_flattened, equations, self.scen_times),
                             t_eval=self.scen_times, method='BDF')
             
-            # Convert lambdify files back to None as they cannot be pickled
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
 
@@ -477,6 +494,7 @@ class ScenarioProperties:
 
         :return: Rate of change of population at the given timestep, t. 
         """
+        print(t)
 
         # Initialize the rate of change array
         dN_dt = np.zeros_like(N)
