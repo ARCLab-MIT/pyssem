@@ -11,21 +11,25 @@ from pkg_resources import resource_filename
 import pandas as pd
 import os
 import multiprocessing as mp
-
+from loky import get_reusable_executor
 import concurrent.futures
+import multiprocessing
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
 
-# Function to parallelize lambdification using concurrent.futures
+# Function to parallelize lambdification using loky
 def parallel_lambdify(equations_flattened, all_symbolic_vars):
     # Prepare arguments for parallel processing
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
-    # Use ProcessPoolExecutor for parallel processing
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    # Determine the number of available CPU cores
+    num_cores = multiprocessing.cpu_count()
+    print('Number of cores:', num_cores)
+    # Use loky's reusable executor for parallel processing with all available cores
+    with get_reusable_executor(max_workers=num_cores) as executor:
         futures = [executor.submit(lambdify_equation, all_symbolic_vars, eq) for all_symbolic_vars, eq in args]
-        equations = [future.result() for future in concurrent.futures.as_completed(futures)]
+        equations = [future.result() for future in futures]
     
     return equations
 
@@ -230,7 +234,7 @@ class ScenarioProperties:
                         species.lambda_funs.append(np.array(y))
 
                          
-    def initial_pop_and_launch(self):
+    def initial_pop_and_launch(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
         The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
@@ -268,7 +272,8 @@ class ScenarioProperties:
         self.x0 = x0
         self.FLM_steps = FLM_steps
 
-        self.future_launch_model(FLM_steps)
+        if not baseline:
+            self.future_launch_model(FLM_steps)
     
     def build_model(self):
         """
@@ -361,8 +366,8 @@ class ScenarioProperties:
         equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
 
         # Convert the equations to lambda functions
-        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
-        #equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
+        #equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+        equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
 
         # Launch rates
         full_lambda_flattened = []
@@ -402,7 +407,6 @@ class ScenarioProperties:
                             args=(full_lambda_flattened, equations, self.scen_times),
                             t_eval=self.scen_times, method='BDF')
             
-            # Convert lambdify files back to None as they cannot be pickled
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
 
@@ -488,7 +492,7 @@ class ScenarioProperties:
 
         :return: Rate of change of population at the given timestep, t. 
         """
-        #print(t)
+        print(t)
 
         # Initialize the rate of change array
         dN_dt = np.zeros_like(N)
