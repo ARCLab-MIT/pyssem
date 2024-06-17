@@ -1,16 +1,18 @@
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
+from .simulation.scen_properties import ScenarioProperties
+from .simulation.species import Species
+from .collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
 import pickle
 import matplotlib.pyplot as plt
+import imageio
 import numpy as np
+
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -51,8 +53,6 @@ class Model:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
-            if not isinstance(v_imp, (int, float)):
-                raise ValueError("v_imp must be a numeric type.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -66,7 +66,11 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
+<<<<<<< HEAD
                 v_imp=v_imp
+=======
+                v_imp=scenario_props.get("v_imp", None)
+>>>>>>> main
             )
 
 
@@ -91,8 +95,7 @@ class Model:
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Apply Launch Rates and create symbolic variables
-            species_list.apply_launch_rates(self.scenario_properties.n_shells)
+            # Create symbolic variables for the species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -124,12 +127,12 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch()
+            self.scenario_properties.initial_pop_and_launch(baseline=True) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties.pkl', 'wb') as f:
+            with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties
@@ -141,7 +144,7 @@ class Model:
         """
         Generates a number of plots and diposits them into the figures folder:
         """
-
+        print('Making plots')
         scenario_properties = self.scenario_properties
         output = scenario_properties.output
         os.makedirs('figures', exist_ok=True)
@@ -227,10 +230,108 @@ class Model:
         plt.savefig('figures/heatmaps_species.png')
         plt.close(fig)
 
+        time_points = output.t
+
+        n_species = scenario_properties.species_length
+        shells_per_species = scenario_properties.n_shells
+
+        # Get the species names
+        species_names = scenario_properties.species_names
+
+        # Extract the unique base species names (part before the underscore)
+        base_species_names = [name.split('_')[0] for name in species_names]
+        unique_base_species = list(set(base_species_names))
+
+        # Extract weights from species names
+        def extract_weight(name):
+            try:
+                return float(name.split('_')[1].replace('kg', ''))
+            except (IndexError, ValueError):
+                return 0
+
+        weights = [extract_weight(name) for name in species_names]
+
+        # Normalize weights to range [0, 1] for color shading and invert to make lower weights darker
+        max_weight = max(weights)
+        min_weight = min(weights)
+        normalized_weights = [(w - min_weight) / (max_weight - min_weight) for w in weights]
+        inverted_weights = [1 - nw for nw in normalized_weights]
+
+        # Create a color map for the base species
+        color_map = plt.cm.get_cmap('tab20', len(unique_base_species))
+
+        # Reshape the data to separate species and shells
+        n_time_points = len(time_points)
+        data_reshaped = output.y.reshape(n_species, shells_per_species, n_time_points)
+
+        # Get the x-axis labels from scenario_properties.R0_km and slice to match shells_per_species
+        orbital_shell_labels = scenario_properties.R0_km[:shells_per_species]
+
+        # Define markers for each species (reuse if more species than markers)
+        markers = ['o', 's', '^', 'D', 'v', '>', '<', 'p', '*', 'h']
+
+        # Directory to save the frames
+        frames_dir = 'frames'
+        if not os.path.exists(frames_dir):
+            os.makedirs(frames_dir)
+
+        # Generate frames for each timestep
+        for t_idx, t in enumerate(time_points):
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 8))  # Adjust the size as needed
+            
+            # Plot species names that begin with 'S' on the left plot
+            for species_index in range(n_species):
+                if base_species_names[species_index].startswith('S'):
+                    base_color = color_map(unique_base_species.index(base_species_names[species_index]))
+                    color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])  # Adjust alpha based on inverted weight
+                    marker = markers[species_index % len(markers)]
+                    ax1.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
+            
+            # Setting titles and labels for the left plot
+            ax1.set_title('Final Timestep: Species Starting with S')
+            ax1.set_xlabel('Orbital Shell (R0_km)')
+            ax1.set_ylabel('Count of Objects')
+            ax1.legend(title='Species')
+            
+            # Plot the rest of the species on the right plot
+            for species_index in range(n_species):
+                if not base_species_names[species_index].startswith('S'):
+                    base_color = color_map(unique_base_species.index(base_species_names[species_index]))
+                    color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])  # Adjust alpha based on inverted weight
+                    marker = markers[species_index % len(markers)]
+                    ax2.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
+            
+            # Setting titles and labels for the right plot
+            ax2.set_title('Final Timestep: Other Species')
+            ax2.set_xlabel('Orbital Shell (R0_km)')
+            ax2.set_ylabel('Count of Objects')
+            ax2.legend(title='Species')
+            
+            plt.tight_layout()
+            
+            # Save the frame
+            frame_path = os.path.join(frames_dir, f'frame_{t_idx:04d}.png')
+            plt.savefig(frame_path)
+            plt.close(fig)
+
+        # Create the GIF
+        images = []
+        for t_idx in range(len(time_points)):
+            frame_path = os.path.join(frames_dir, f'frame_{t_idx:04d}.png')
+            images.append(imageio.imread(frame_path))
+        gif_path = 'figures/species_shells_evolution_side_by_side.gif'
+        imageio.mimsave(gif_path, images, duration=0.5)  # Adjust the duration as needed
+
+        # Cleanup frames
+        import shutil
+        shutil.rmtree(frames_dir)
+
+
+
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -247,7 +348,7 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp=scenario_props["v_imp"]
+        v_imp = scenario_props.get("v_imp", None)
     )
 
     species = simulation_data["species"]
@@ -257,4 +358,3 @@ if __name__ == "__main__":
     results = model.run_model()
 
     model.create_plots()
-
