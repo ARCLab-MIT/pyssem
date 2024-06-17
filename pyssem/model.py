@@ -1,6 +1,7 @@
-from .simulation.scen_properties import ScenarioProperties
-from .simulation.species import Species
-from .collisions.collisions import create_collision_pairs
+# For pypi release it needs to be from .utils
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
@@ -12,7 +13,8 @@ import numpy as np
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp=None):
+                        n_shells, launch_function, integrator, density_model, LC, v_imp=None,
+                        fragment_spreading=False, parallel_processing=False, baseline=False):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -66,13 +68,11 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-<<<<<<< HEAD
-                v_imp=v_imp
-=======
-                v_imp=scenario_props.get("v_imp", None)
->>>>>>> main
+                v_imp=v_imp,
+                fragment_spreading=fragment_spreading,
+                parallel_processing=parallel_processing,
+                baseline=baseline     
             )
-
 
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
@@ -331,7 +331,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'example-sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -348,7 +348,10 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None)
+        v_imp = scenario_props.get("v_imp", None),
+        fragment_spreading=scenario_props.get("fragment_spreading", False),
+        parallel_processing=scenario_props.get("parallel_processing", False),
+        baseline = scenario_props.get("baseline", False)
     )
 
     species = simulation_data["species"]

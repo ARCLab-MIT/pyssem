@@ -148,7 +148,7 @@ def calculate_amsms_not_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
-def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collision_spread=False, n_shells=0, R02 = None): # eventually add stochastic ability
+def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
     """
     Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
     Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
@@ -271,7 +271,7 @@ def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, collis
         binOut = binE[:-1] + np.diff(binE) / 2
 
     # Assing delta-V to spherically random directions
-    if collision_spread:
+    if fragment_spreading:
         dAlt = np.median(np.diff(R02))
         nShell = len(np.diff(R02))
 
@@ -339,13 +339,13 @@ def process_species_pair(args):
     # This will tell you the number of fragments in each debris bin
     for dv_index, dv in enumerate(scen_properties.v_imp2):
         # If using the collision spreading function             
-        if scen_properties.collision_spread:
+        if scen_properties.fragment_spreading:
             try:
-                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.collision_spread, scen_properties.n_shells, scen_properties.R0_km)
+                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
                 frags_made[dv_index, :] = results[0]
                 alt_nums = results[3]   
             except ValueError as e:
-                print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.collision_spread}, {scen_properties.n_shells}, {scen_properties.R0_km}")
+                print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.fragment_spreading}, {scen_properties.n_shells}, {scen_properties.R0_km}")
                 continue
         else:
             results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
@@ -366,7 +366,7 @@ def process_species_pair(args):
         else:
             source_sinks.append(species)
 
-    if scen_properties.collision_spread:
+    if scen_properties.fragment_spreading:
         return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, alt_nums)
     else:
         return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties)
@@ -415,8 +415,11 @@ def create_collision_pairs(scen_properties):
     args = [(i, species_pair, scen_properties, debris_species, binE, LBgiven) for i, species_pair in enumerate(species_pairs)]
     
     # Use multiprocessing Pool for parallel processing
-    with mp.Pool(processes=mp.cpu_count()) as pool:
-        results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+    if scen_properties.parallel_processing:
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+    else:
+        results = [process_species_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
 
     # Collect results
     species_pairs_classes.extend(results)
@@ -434,7 +437,7 @@ if __name__ == "__main__":
     binE = np.array([1.4137200e-03, 2.8420686e-01, 1.3028350e+02, 3.6650000e+02,
        6.1150000e+02, 1.0000000e+05])
     R02 = np.arange(200, 2050, 50)
-    nums, is_catastrophic, bin_out, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], 0.1, RBflag=0, collision_spread=True, n_shells=10, R02=R02)
+    nums, is_catastrophic, bin_out, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], 0.1, RBflag=0, fragment_spreading=True, n_shells=10, R02=R02)
 
     range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
 

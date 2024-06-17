@@ -73,7 +73,7 @@ class SpeciesPairClass:
         else:
             phi_matrix = Matrix(self.phi)
 
-        if scen_properties.collision_spread:
+        if scen_properties.fragment_spreading:
             product_sym = species1.sym.multiply_elementwise(species2.sym).T
 
 
@@ -92,7 +92,7 @@ class SpeciesPairClass:
             
             n_f = symbols(f'n_f:{scen_properties.n_shells}')
 
-            if scen_properties.collision_spread:
+            if scen_properties.fragment_spreading:
                 if i < 2:  # As first two columns are the reduction of the species in the collision (i.e -1)
                     eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 else:  # Debris generated from collision
