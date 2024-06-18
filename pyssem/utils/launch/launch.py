@@ -57,30 +57,6 @@ def launch_func_constant(t, h, species_properties, scen_properties):
     Returns:
         list: np., a list of symbolic expressions representing the rate of change in the species in each shell due to launch.
     """
-    # if len(h) != scen_properties.n_shells:
-    #     raise ValueError("Constant launch rate must be specified per altitude shell.")
-
-    # n_shells = scen_properties.n_shells
-    # scen_times = scen_properties.scen_times
-    # simulation_duration = scen_properties.simulation_duration
-    # # Calculate the number of time steps per year
-    # time_steps_per_year = len(scen_times) / simulation_duration
-
-    # # Create a matrix filled with zeros
-    # launch_rate_matrix = np.zeros((n_shells, len(scen_times)))
-
-    # # Find the index of the shell closest to the specified altitude
-    # alt = 500  # km
-    # h_inds = np.argmin(np.abs(h - alt))
-
-    # # Calculate the number of satellites per time step
-    # launch_rate_per_year = species_properties.lambda_constant  # satellites/year
-    # launch_rate_per_time_step = launch_rate_per_year / time_steps_per_year
-
-    # # Fill the row corresponding to the nearest altitude with the launch rate per time step
-    # launch_rate_matrix[h_inds, :] = launch_rate_per_time_step
-
-    # return launch_rate_matrix
 
     if len(h) != scen_properties.n_shells:
         raise ValueError("Constant launch rate must be specified per altitude shell.")
