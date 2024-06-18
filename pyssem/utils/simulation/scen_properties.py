@@ -33,10 +33,12 @@ def parallel_lambdify(equations_flattened, all_symbolic_vars):
     
     return equations
 
+
 class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str,
-                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None,
+                 integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
+                 fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -126,7 +128,13 @@ class ScenarioProperties:
         self.output = None
 
         # Varying collision shells 
-        self.collision_spread = True
+        self.fragment_spreading = fragment_spreading
+
+        # Parallel Processing
+        self.parallel_processing = parallel_processing
+
+        # Baseline Scenario
+        self.baseline = baseline    
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
@@ -366,8 +374,10 @@ class ScenarioProperties:
         equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
 
         # Convert the equations to lambda functions
-        #equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
-        equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
+        if self.parallel_processing:
+            equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
+        else:
+            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
 
         # Launch rates
         full_lambda_flattened = []
