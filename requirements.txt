@@ -1,7 +1,7 @@
 setuptools>=68.0.0 
-numpy>=1.22
+numpy>=1.2
 pandas>=2.0
 scipy>=1.10
 sympy>=1.11
-tqdm>=4.66.3
+tqdm>=4.65
 gdown>=4.0.0

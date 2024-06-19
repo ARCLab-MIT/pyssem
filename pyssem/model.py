@@ -1,8 +1,10 @@
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.indicators.indicators import Indicators
-from utils.plotting.plotting import create_plots
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
+# if testing locally, use the following import statements
+# from utils.simulation.scen_properties import ScenarioProperties
+# from utils.simulation.species import Species
+# from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
@@ -15,7 +17,9 @@ import numpy as np
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
                         n_shells, launch_function, integrator, density_model, LC, 
-                        v_imp=None, indicator_variables=None):
+                        v_imp=None,
+                        fragment_spreading=True, parallel_processing=False, baseline=False, 
+                        indicator_variables=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -71,10 +75,12 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp
+                v_imp=scenario_props.get("v_imp", None)
             )
 
-
+            # Define parameters needed at Model level
+            self.baseline = baseline
+            
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
         
@@ -128,7 +134,7 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch()
+            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
@@ -143,7 +149,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -160,7 +166,7 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp=scenario_props["v_imp"]
+        v_imp = scenario_props.get("v_imp", None)
     )
 
     species = simulation_data["species"]
@@ -169,5 +175,4 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    create_plots(model)
-
+    model.create_plots()
