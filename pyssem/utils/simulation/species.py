@@ -204,9 +204,13 @@ class Species:
 
             # Active
             if properties['active'] == True:
-                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                    multiple_species = self.add_multi_property_species(properties)
-                    self.species['active'].extend(multiple_species)
+                if isinstance(properties['mass'], list):
+                    if len(properties['mass']) > 1:
+                        multiple_species = self.add_multi_property_species(properties)
+                        self.species['active'].extend(multiple_species)     
+                    else:
+                        species_object = SpeciesProperties(properties)
+                        self.species['active'].append(species_object)      
                 else:
                     species_object = SpeciesProperties(properties)
                     self.species['active'].append(species_object)
@@ -214,9 +218,13 @@ class Species:
             # Debris and Rocket Body
             rb_flag = properties.get('RBflag', 0)  # Defaults to 0 if 'RBflag' is not found
             if rb_flag == 1:
-                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                    multiple_species = self.add_multi_property_species(properties)
-                    self.species['rocket_body'].extend(multiple_species)
+                if isinstance(properties['mass'], list):
+                    if len(properties['mass']) > 1:
+                        multiple_species = self.add_multi_property_species(properties)
+                        self.species['rocket_body'].extend(multiple_species)
+                    else:
+                        species_object = SpeciesProperties(properties)
+                        self.species['rocket_body'].append(species_object)
                 else:
                     species_object = SpeciesProperties(properties)
                     self.species['rocket_body'].append(species_object)
@@ -231,17 +239,26 @@ class Species:
             if properties['active'] == False:
                 if properties['RBflag'] == 0:
                     debris_species = properties
-                    if isinstance(debris_species['mass'], list) and len(debris_species['mass']) > 1:
-                        debris_species['mass'].extend(active_masses)
-                        debris_species['radius'].extend(active_radii)
+
+                    if isinstance(debris_species['mass'], list):
+                        if len(debris_species['mass']) > 1:
+                            debris_species['mass'].extend(active_masses)
+                            debris_species['radius'].extend(active_radii)
+                        else:
+                            debris_species['mass'] = active_masses
+                            debris_species['radius'] = active_radii
                     else: # Just take the one value
-                        debris_species['mass'].append(active_masses[0])
-                        debris_species['radius'].append(active_radii[0])
+                        debris_species['mass'] = active_masses[0]
+                        debris_species['radius'] = active_radii[0]
 
                     # Create species objects for non-active species
-                    if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                        multiple_species = self.add_multi_property_species(properties)
-                        self.species['debris'].extend(multiple_species)
+                    if isinstance(properties['mass'], list):
+                        if len(properties['mass']) > 1:
+                            multiple_species = self.add_multi_property_species(properties)
+                            self.species['debris'].extend(multiple_species)
+                        else:
+                            species_object = SpeciesProperties(properties)
+                            self.species['debris'].append(species_object)
                     else:
                         species_object = SpeciesProperties(properties)
                         self.species['debris'].append(species_object)

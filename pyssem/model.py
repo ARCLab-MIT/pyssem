@@ -1,17 +1,15 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.plotting.plotting import create_plots
 from datetime import datetime
 import json
 import os
 import pickle
-import matplotlib.pyplot as plt
-import imageio
-import numpy as np
 
 
 class Model:
@@ -75,11 +73,16 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=scenario_props.get("v_imp", None)
+                v_imp=scenario_props.get("v_imp", None),
+                fragment_spreading=fragment_spreading,
+                parallel_processing=parallel_processing,
+                baseline=baseline,
+                indicator_variables=indicator_variables
             )
 
             # Define parameters needed at Model level
             self.baseline = baseline
+            self.indicator_variables = indicator_variables
             
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
@@ -112,7 +115,11 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+
+            # Create Indicator Variables if provided
+            if self.indicator_variables is not None:
+                self.scenario_properties.build_indicator_variables()
 
             return species_list
         except json.JSONDecodeError:
@@ -134,7 +141,7 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # If baseline, initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
@@ -146,33 +153,67 @@ class Model:
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
+        
+    def calculate_indexes(self):
+        self.scenario_properties.calculate_csi()
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
-        simulation_data = json.load(f)
+    # with open(os.path.join('pyssem', 'example-sim.json')) as f:
+    #     simulation_data = json.load(f)
 
-    scenario_props = simulation_data["scenario_properties"]
+    # scenario_props = simulation_data["scenario_properties"]
 
-    # Create an instance of the pySSEM_model with the simulation parameters
-    model = Model(
-        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
-        simulation_duration=scenario_props["simulation_duration"],
-        steps=scenario_props["steps"],
-        min_altitude=scenario_props["min_altitude"],
-        max_altitude=scenario_props["max_altitude"],
-        n_shells=scenario_props["n_shells"],
-        launch_function=scenario_props["launch_function"],
-        integrator=scenario_props["integrator"],
-        density_model=scenario_props["density_model"],
-        LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None)
-    )
+    # # Create an instance of the pySSEM_model with the simulation parameters
+    # model = Model(
+    #     start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+    #     simulation_duration=scenario_props["simulation_duration"],
+    #     steps=scenario_props["steps"],
+    #     min_altitude=scenario_props["min_altitude"],
+    #     max_altitude=scenario_props["max_altitude"],
+    #     n_shells=scenario_props["n_shells"],
+    #     launch_function=scenario_props["launch_function"],
+    #     integrator=scenario_props["integrator"],
+    #     density_model=scenario_props["density_model"],
+    #     LC=scenario_props["LC"],
+    #     v_imp = scenario_props.get("v_imp", None), 
+    #     fragment_spreading=scenario_props.get("fragment_spreading", True),
+    #     parallel_processing=scenario_props.get("parallel_processing", False),
+    #     baseline=scenario_props.get("baseline", False),
+    #     indicator_variables=scenario_props.get("indicator_variables", None)
+    # )
 
-    species = simulation_data["species"]
+    # species = simulation_data["species"]
 
-    species_list = model.configure_species(species)
+    # species_list = model.configure_species(species)
 
-    results = model.run_model()
+    # results = model.run_model()
 
-    model.create_plots()
+    # create_plots(model)
+
+    # Open the simulation pickle file
+    with open('scenario-properties-baseline.pkl', 'rb') as f:
+        scenario_properties = pickle.load(f)
+
+    species_list = [species for group in scenario_properties.species.values() for species in group]
+
+    species_array = scenario_properties.output.y.reshape((scenario_properties.output.y.shape[0], 
+                                        int(scenario_properties.output.y.shape[1] / len(species_list)), 
+                                        len(species_list)))
+
+    # Create a list to store the species results dictionary
+    species_results_dict = []
+
+    # Populate the species_results_dict with keys and values
+    for i, species in enumerate(scenario_properties.species_list):
+        name = species.species_properties.sym_name
+        species_results_dict.append({
+            'key': name,
+            'value': species_array[:, :, i]
+        })
+
+    # Store the results in the appropriate attributes
+    scenario_properties.results.species_array = species_array
+    scenario_properties.results.species_results_dict = species_results_dict
+
+    scenario_properties.cum_CSI()

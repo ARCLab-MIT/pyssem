@@ -17,7 +17,9 @@
     "density_model": "static_exp_dens_func", 
     "LC": 0.1,
     "v_imp": 10,
-    "indicator_variables": ["orbital_volume", "ca_man_struct_agg"]                                                   
+    "fragment_spreading": false,
+    "parallel_processing": false,
+    "baseline" : false
   },
   "species": {
       "S": {
@@ -44,13 +46,13 @@
     "Su": {
       "sym_name": "Su",
       "Cd": 2.2,
-      "mass": [260, 473],
-      "A": [1.6652, 13.5615],
-      "radius": [0.728045069, 2.077681285],
+      "mass": 473,
+      "A": 13.5615,
+      "radius": 2.077681285,
       "active": true,
       "maneuverable": true,
       "trackable": true,
-      "deltat": [8, 8],
+      "deltat": 8,
       "Pm": 0.65,
       "alpha": 1e-5,
       "alpha_active": 1e-5,
@@ -65,8 +67,8 @@
   "N": {
       "sym_name": "N",
       "Cd": 2.2,
-      "mass": [0.00141372, 0.5670],
-      "radius": [0.01, 0.1321],
+      "mass": 0.5670,
+      "radius": 0.1321,
       "A": "Calculated based on radius",
       "active": false,
       "maneuverable": false,
@@ -81,23 +83,6 @@
       "launch_func": "launch_func_null",
       "pmd_func": "pmd_func_derelict",
       "drag_func": "drag_func_exp"
-  },
-  "B": {
-      "sym_name": "B",
-      "RBflag" : 1,
-      "Cd": 2.2,
-      "mass": 1783.94,
-      "radius": 2.687936011,
-      "A": 22.6980069221863,
-      "active": false,
-      "slotted": false,
-      "slotting_effectiveness": 1,
-      "drag_effected": true,
-      "Pm": 0,
-      "alpha": 0,
-      "alpha_active": 0, 
-      "trackable": true,
-      "pmd_func": "pmd_func_none",
-      "drag_func": "drag_func_exp"
-  }}
+  }
+  }
 }

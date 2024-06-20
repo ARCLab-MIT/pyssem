@@ -2,18 +2,14 @@ import numpy as np
 from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
-from scipy.spatial import KDTree
 import sympy as sp
 from ..drag.drag import *
-from ..launch.launch import ADEPT_traffic_model, launch_func_constant
+from ..launch.launch import ADEPT_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
 from ..indicators.indicators import *
-from pkg_resources import resource_filename
 import pandas as pd
 import os
-import multiprocessing as mp
 from loky import get_reusable_executor
-import concurrent.futures
 import multiprocessing
 
 def lambdify_equation(all_symbolic_vars, eq):
@@ -247,7 +243,41 @@ class ScenarioProperties:
                     else:
                         species.lambda_funs.append(np.array(y))
 
-                         
+    def build_indicator_variables(self):
+        """
+            This will create the indicator variables for the simulation. The different indicators will be provided by the user. 
+            As new indicators are added, they will need to be included first here to pass from the input JSON. 
+        """
+        if self.indicator_variables is None:
+            return
+        try:
+            for indicator in self.indicator_variables:
+                if indicator == "orbital_volume":
+                    self.indicator_variables_list.append(make_intrinsic_cap_indicator(self, sep_dist_method="distance", 
+                                                                                        sep_dist=60, 
+                                                                                        inc = 40, 
+                                                                                        shell_sep=5,
+                                                                                        graph=False))
+                elif indicator == "ca_man_struct":
+                    self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", 
+                                                                            per_species=True, per_spacecraft=True))
+                elif indicator == "ca_man_struct_agg":
+                    self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", 
+                                                                            per_species=True, per_spacecraft=False))
+                elif indicator == "active_loss_per_shell":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = True, 
+                                                                                    per_species = False))
+                elif indicator == "all_col_indicators":
+                    self.indicator_variables_list.append(make_all_col_indicators(self))
+        
+        except Exception as e:
+            print(f"An error occurred creating the indicator variables: {str(e)}")
+            print("Continuing without indicator variables.")
+            self.indicator_variables = None
+            self.indicator_variables_list = []
+            return
+
     def initial_pop_and_launch(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
@@ -352,6 +382,37 @@ class ScenarioProperties:
             self.full_drag = drag_upper_with_density + drag_cur_with_density
             self.equations += self.full_drag
             self.sym_drag = True 
+
+        # Make Integrated Indicator Variables if passed
+        if hasattr(self, 'integrated_indicator_var_list'):
+            integrated_indicator_var_list = self.integrated_indicator_var_list
+            for ind_var in integrated_indicator_var_list:
+                if not ind_var.eqs:
+                    ind_var = self.make_indicator_eqs(ind_var)
+
+            self.num_integrated_indicator_vars = 0
+            end_indicator_idxs = len(self.xdot_eqs)
+
+            for ind_var in integrated_indicator_var_list:
+                num_add_indicator_vars = len(ind_var.eqs)
+                self.num_integrated_indicator_vars += num_add_indicator_vars
+
+                start_indicator_idxs = end_indicator_idxs + 1
+                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
+                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
+
+                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
+
+            if not self.sym_lambda:
+                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
+                self.full_lambda.extend(indicator_pad)
+
+        # # Make Non-Integrated Indicator Variables if passed
+        # if hasattr(self, 'indicator_variables_list'):
+        #     indicator_var_list = self.indicator_variables_list
+        #     for ind_var in indicator_var_list:
+        #         if not ind_var.eqs:
+        #             ind_var = self.make_indicator_eqs(ind_var)
         
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
@@ -527,5 +588,95 @@ class ScenarioProperties:
             dN_dt[i] += equations[i](*N)
 
         return dN_dt
+    
+    def cum_CSI(self):
+        """
+        Computes and displays cumulative Criticality of Space Index (CSI).
+        """
+        k = 0.6
+        life = lambda h: np.exp(14.18 * h**0.1831 - 42.94)  # lifetime from power law fitting
+        
+        M_ref = 10000  # [kg]
+        h_ref = 1000  # [km]
+        life_h_ref = 1468  # [years] it corresponds to life0 = life(1000)
+        
+        D_ref = np.max(np.sum(self.output.y, axis=1) / self.V[:, np.newaxis])
 
+        den = M_ref * D_ref * life_h_ref * (1 + k)
+        
+        cos_i_av = 2 / np.pi  # average value of cosine of inclination in the range -pi/2 pi/2 calculated using integral average
+        Gamma_av = (1 - cos_i_av) / 2
 
+        rgb_c = [
+            [0, 0.4470, 0.7410], [0.8500, 0.3250, 0.0980], [0.9290, 0.6940, 0.1250], [0.4940, 0.1840, 0.5560],
+            [0.4660, 0.6740, 0.1880], [0.3010, 0.7450, 0.9330], [0.6350, 0.0780, 0.1840]
+        ]
+
+        if hasattr(self, "output"):
+            print("Producing two visuals of CSI.")
+            plt.figure()
+            plt.grid(True)
+
+            CSI_S_sum_array = np.zeros(len(self.output.t))
+            CSI_D_sum_array = np.zeros(len(self.output.t))
+            
+            for i2, species_result in enumerate(self.results.species_results_dict):
+                if i2 >= len(rgb_c):
+                    colorset = np.random.rand(3)
+                else:
+                    colorset = rgb_c[i2]
+                
+                CSI_X_mat = np.zeros((len(self.output.t), self.scen_properties.n_shells))
+                name = species_result["key"]
+                
+                if 'S' in name or 'D' in name:
+                    for i in range(self.scen_properties.n_shells):
+                        life_i = life((self.scen_properties.R0[i] + self.scen_properties.R0[i + 1]) / 2)
+                        num = life_i * (1 + k * Gamma_av)
+                        mass = self.species_list[i2].species_properties.mass
+                        dum_X = mass * num
+                        D_X = self.output.y[:, i2] / self.scen_properties.V[i2]
+                        CSI_X_mat[:, i] = D_X * dum_X
+                    
+                    CSI_X_mat = CSI_X_mat / den
+                    CSI_X = np.sum(CSI_X_mat, axis=1)
+                    plt.plot(self.output.t, CSI_X, label=f'CSI for {name.replace("p", ".")}', linewidth=2, color=colorset)
+                    
+                    if 'S' in name and 'D' not in name:
+                        CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
+                    elif 'D' in name:
+                        CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
+            
+            CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
+            CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
+            
+            plt.plot(self.output.t, CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2)
+            plt.xlabel('Time (years)')
+            plt.ylabel('CSI')
+            plt.title('CSI per Species Type')
+            plt.xlim([0, np.max(self.output.t)])
+            plt.legend(loc='best', frameon=False)
+
+            plt.figure()
+            plt.grid(True)
+            plt.plot(self.output.t, CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2)
+            plt.plot(self.output.t, CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2)
+            plt.plot(self.output.t, CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2)
+            plt.xlabel('Time (years)')
+            plt.ylabel('Cumulative CSI')
+            plt.xlim([0, np.max(self.output.t)])
+            plt.title('CSI for Active and Derelict Species')
+            plt.legend(loc='best', frameon=False)
+
+            plt.show()
+        else:
+            raise ValueError("Simulation does not contain results. Please run the function run_model(obj, x0) to produce simulation results required for CSI computation.")
+
+if __name__ == "__main__":
+        # Open the simulation pickle file
+    import pickle
+
+    with open('scenario-properties-baseline.pkl', 'rb') as f:
+        scenario_properties = pickle.load(f)
+
+    scenario_properties.cum_CSI()

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import os
 import sympy as sp
 
-class Indicators:
+class Indicator:
     """
     This is a class to crate indicator variables. 
 
@@ -20,24 +20,103 @@ class Indicators:
             self.indicator_idxs = None
             self.indicators = []  
 
+def make_indicator_struct(obj, name, ind_type, species, eqs=None):
+    """
+    Helper function that creates an indicator variable structure.
+    This is intended to be called during the build_model method
+    for each indicator variable intended to be added to the simulation.
+
+    :param obj: The main simulation object containing scenario properties.
+    :param name: The name for the indicator variable.
+    :param ind_type: The type of the indicator variable.
+    :param species: The species involved in the indicator variable.
+    :param eqs: Symbolic value corresponding to the equations (only for manual type).
+    :return: An Indicator object.
+    """
+    valid_types = ["collision", "successful PMD", "failed PMD", "mitigated conjunctions", "manual"]
+
+    # Error checking for manual type
+    if ind_type == "manual" and eqs is None:
+        raise ValueError("Argument eqs must be passed for indicator variable with type 'manual'.")
+    
+    if ind_type != "manual" and eqs is not None:
+        raise Warning("Argument eqs passed for indicator with non-manual type. Overriding equations to use passed value. To remove this error, use type 'manual'.")
+
+    # Check if ind_type is a supported type
+    if ind_type not in valid_types:
+        raise ValueError(f"Passed type {ind_type} is not a supported type. Please use values from {valid_types}.")
+
+    if ind_type == "collision":
+        if len(species) != 2:
+            raise ValueError("Exactly two species must be provided for collision indicator variables.")
+        
+        # Find the correct pair
+        pair = None
+        for test_pair in obj.collision_pairs:
+            species1match = test_pair.species1.sym_name == species[0]
+            species2match = test_pair.species2.sym_name == species[1]
+            if species1match and species2match:
+                pair = test_pair
+                break
+        
+        if pair is None:
+            raise ValueError(f"No matching species pair has been found for: '{species[0]}', '{species[1]}'.")
+
+        # Non-Gamma
+        intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))
+        
+        # Make Eqs
+        eqs = -1 * pair.gammas[0] * intrinsic_collisions  # Negative 1 to counteract decrease to quantity to provide positive number of collisions
+
+    elif ind_type == "mitigated conjunction":
+        if len(species) != 2:
+            raise ValueError("Exactly two species must be provided for mitigated conjunction indicator variables.")
+        
+        # Find the correct pair
+        pair = None
+        for test_pair in obj.collision_pairs:
+            species1match = test_pair.species1.sym_name == species[0]
+            species2match = test_pair.species2.sym_name == species[1]
+            if species1match and species2match:
+                pair = test_pair
+                break
+        
+        if pair is None:
+            raise ValueError(f"No matching species pair has been found for: '{species[0]}', '{species[1]}'.")
+
+        # Non-Gamma
+        intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))
+        
+        # Make Eqs
+        eqs = (1 - pair.gammas[0]) * intrinsic_collisions
+
+    elif ind_type == "manual":
+        # Already handled above
+        pass
+
+    # Create the Indicator object
+    return Indicator(name, ind_type, species, eqs)
+
 def make_intrinsic_cap_indicator(scen_properties, sep_dist_method, sep_angle=0.2, sep_dist=25.0, shell_sep=5, inc=45.0, graph=False):
     """
     This looks at the estimated number of slotted spacraft that fit in LEO subject to certain assumptions.
 
-    :param scen_properties: _description_
-    :type scen_properties: _type_
-    :param sep_dist_method: _description_
-    :type sep_dist_method: _type_
-    :param sep_angle: _description_, defaults to 0.2
+    :param scen_properties: Scenario properties object
+    :type scen_properties: object
+    :param sep_dist_method: Separation distance method ('angle' or 'distance')
+    :type sep_dist_method: str
+    :param sep_angle: Separation angle in degrees, defaults to 0.2
     :type sep_angle: float, optional
-    :param sep_dist: _description_, defaults to 25.0
+    :param sep_dist: Separation distance in km, defaults to 25.0
     :type sep_dist: float, optional
-    :param shell_sep: _description_, defaults to 5
+    :param shell_sep: Shell separation in km, defaults to 5
     :type shell_sep: int, optional
-    :param inc: _description_, defaults to 45.0
+    :param inc: Inclination in degrees, defaults to 45.0
     :type inc: float, optional
-    :param graph: _description_, defaults to False
+    :param graph: Whether to plot the graph, defaults to False
     :type graph: bool, optional
+    :return: Indicator object
+    :rtype: Indicator
     """
     def inc_validation(x):
         return isinstance(x, (int, float)) and 0 < x <= 90
@@ -84,19 +163,19 @@ def make_intrinsic_cap_indicator(scen_properties, sep_dist_method, sep_angle=0.2
         shells_per_bin = np.diff(scen_properties.R0) / shell_sep
         N_sat = N_sat_eq_ang(c_mat[ind_intrinsic], b_mat[ind_intrinsic]) * shells_per_bin
     else:
-        N_sat_eq = lambda h, c, b: (sep_dist / (scen_properties.re + h) / rad / c) ** (1 / b)
+        N_sat_eq = lambda h, c, b: (sep_dist / ((scen_properties.re + h) * rad * c)) ** (1 / b)
         shells_per_bin = np.diff(scen_properties.R0) / shell_sep
         N_sat = N_sat_eq(scen_properties.R0[1:], c_mat[ind_intrinsic], b_mat[ind_intrinsic]) * shells_per_bin
 
     slotted_sats_eqs = sp.Matrix([sp.zeros(scen_properties.n_shells, 1)])
     for species_group in scen_properties.species.values():
-            for species in species_group:
-                if species.slotted:
-                    slotted_sats_eqs += species.sym
-        
+        for species in species_group:
+            if species.slotted:
+                slotted_sats_eqs += species.sym
+
     N_sat = sp.Matrix(N_sat)
     unconsumed_intrinsic_capacity = N_sat - slotted_sats_eqs
-    ind_struct = Indicators("unconsumed_intrinsic_capacity", "manual", None, unconsumed_intrinsic_capacity)
+    ind_struct = Indicator("unconsumed_intrinsic_capacity", "manual", None, unconsumed_intrinsic_capacity)
 
     if graph:
         # create a plot and save in the figures folder at root
@@ -112,76 +191,50 @@ def make_intrinsic_cap_indicator(scen_properties, sep_dist_method, sep_angle=0.2
 
     return ind_struct
 
+
 def make_ca_counter(scen_properties, primary_species_list, secondary_species_list, per_species=False, ind_name="", per_spacecraft=False):
     """
     This method makes an indicator variable structure corresponding to the number of collision avoidance maneuvers performed in a given year by the primary species. 
-    It assumes that collision avoidance burden is divided evenly if two active species have a conjunction. Slotting effectivenss is not considered, bnut should be
+    It assumes that collision avoidance burden is divided evenly if two active species have a conjunction. Slotting effectiveness is not considered, but should be
     handled through inclusion of Gamma. 
 
-    :param scen_properties: _description_
-    :type scen_properties: _type_
-    :param primary_species_list: _description_
-    :type primary_species_list: _type_
-    :param secondary_species_list: _description_
-    :type secondary_species_list: _type_
-    :param per_species: _description_, defaults to False
+    :param scen_properties: Simulation Object
+    :type scen_properties: ScenarioProperties
+    :param primary_species_list: List of primary species
+    :type primary_species_list: list
+    :param secondary_species_list: List of secondary species
+    :type secondary_species_list: list
+    :param per_species: Whether to return values for each species as independent indicators, defaults to False
     :type per_species: bool, optional
-    :param ind_name: _description_, defaults to ""
+    :param ind_name: Name of the indicator, defaults to ""
     :type ind_name: str, optional
-    :param per_spacecraft: _description_, defaults to False
+    :param per_spacecraft: Whether to normalize by the number of spacecraft, defaults to False
     :type per_spacecraft: bool, optional
-    :return: _description_
-    :rtype: _type_
+    :return: Indicator variables
+    :rtype: list or Indicator
     """
     primary_species_list_attribute = ""
     secondary_species_list_attribute = ""
-    
+
     if isinstance(primary_species_list, str):
         primary_species_list_attribute = primary_species_list
-        primary_species_list = []
-        for species_group in scen_properties.species.values():
-            for species in species_group:
-                if primary_species_list_attribute == "all":
-                    primary_species_list = scen_properties.species
-                    break
-                if getattr(species, primary_species_list_attribute):
-                    primary_species_list.append(species)
-                
+        primary_species_list = [species for group in scen_properties.species.values() for species in group if primary_species_list_attribute == "all" or getattr(species, primary_species_list_attribute)]
+        
     if isinstance(secondary_species_list, str):
         secondary_species_list_attribute = secondary_species_list
-        secondary_species_list = []
-        for species_group in scen_properties.species.values():
-            for species in species_group:
-                if secondary_species_list_attribute == "all":
-                    secondary_species_list = scen_properties.species
-                    break
-                if getattr(species, secondary_species_list_attribute):
-                    secondary_species_list.append(species)
-                
+        secondary_species_list = [species for group in scen_properties.species.values() for species in group if secondary_species_list_attribute == "all" or getattr(species, secondary_species_list_attribute)]
+
     primary_species_names = [species.sym_name for species in primary_species_list]
     secondary_species_names = [species.sym_name for species in secondary_species_list]
-    
+
     if ind_name == "":
-        ind_name = "col_avoidance_maneuvers_pri_"
-        if primary_species_list_attribute:
-            ind_name += primary_species_list_attribute
-        else:
-            ind_name += '_'.join(primary_species_names)
-        if secondary_species_list_attribute:
-            ind_name += "_sec_" + secondary_species_list_attribute
-        else:
-            ind_name += "_sec_" + '_'.join(secondary_species_names)
+        ind_name = "col_avoidance_maneuvers_pri_" + ('_'.join(primary_species_names) if primary_species_list_attribute == "" else primary_species_list_attribute)
+        ind_name += "_sec_" + ('_'.join(secondary_species_names) if secondary_species_list_attribute == "" else secondary_species_list_attribute)
         if per_spacecraft:
             ind_name += "_per_spacecraft"
-    
-    full_spec_list = primary_species_list + secondary_species_list
-    
-    ind_eqs = {}
-    for species in full_spec_list:
-        species_name = species.sym_name
-        if species.maneuverable and species.active:
-            ind_eqs[species_name] = sp.zeros(scen_properties.n_shells, 1)
-    
+
+    ind_eqs = {species.sym_name: sp.zeros(scen_properties.n_shells, 1) for species in primary_species_list + secondary_species_list if species.maneuverable and species.active}
+
     for primary_species in primary_species_list:
         primary_species_name = primary_species.sym_name
         for pair in scen_properties.collision_pairs:
@@ -189,57 +242,162 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
             pair_secondary_name = pair.species2.sym_name
             s1_prim = primary_species_name == pair_primary_name
             s2_prim = primary_species_name == pair_secondary_name
-            
-            if s1_prim:
-                sec_in_sec_list = pair_secondary_name in secondary_species_names
-                secondary_species_name = pair_secondary_name
-            if s2_prim:
-                sec_in_sec_list = pair_primary_name in secondary_species_names
-                secondary_species_name = pair_primary_name
-                
-            if (s1_prim or s2_prim) and sec_in_sec_list:
-                intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))
-                both_man = pair.species1.maneuverable and pair.species2.maneuverable
-                both_act = pair.species1.active and pair.species2.active
-                s1_man_act = pair.species1.maneuverable and pair.species1.active
-                s2_man_act = pair.species2.maneuverable and pair.species2.active
-                s1_trackable = pair.species1.trackable
-                s2_trackable = pair.species2.trackable
-                one_man_act = s1_man_act != s2_man_act
-                
-                if both_man and both_act:
-                    if pair.species1.slotted and pair.species2.slotted:
-                        slotting_effectiveness = min(pair.species1.slotting_effectiveness, pair.species2.slotting_effectiveness)
-                        ind_eqs[primary_species_name] += 0.5 * (1 + pair.gammas[0]) * (1 / slotting_effectiveness) * intrinsic_collisions
-                        ind_eqs[secondary_species_name] += 0.5 * (1 + pair.gammas[0]) * (1 / slotting_effectiveness) * intrinsic_collisions
-                    else:
-                        ind_eqs[primary_species_name] += 0.5 * (1 + pair.gammas[0]) * intrinsic_collisions
-                        ind_eqs[secondary_species_name] += 0.5 * (1 + pair.gammas[0]) * intrinsic_collisions
-                elif one_man_act:
-                    if s1_man_act and s2_trackable:
-                        ind_eqs[pair_primary_name] += (1 + pair.gammas[0]) * intrinsic_collisions
-                    elif s2_man_act and s1_trackable:
-                        ind_eqs[pair_secondary_name] += (1 + pair.gammas[0]) * intrinsic_collisions
-    
+
+            if s1_prim or s2_prim:
+                secondary_species_name = pair_secondary_name if s1_prim else pair_primary_name
+                if secondary_species_name in secondary_species_names:
+                    intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))
+                    both_man = pair.species1.maneuverable and pair.species2.maneuverable
+                    both_act = pair.species1.active and pair.species2.active
+                    s1_man_act = pair.species1.maneuverable and pair.species1.active
+                    s2_man_act = pair.species2.maneuverable and pair.species2.active
+                    s1_trackable = pair.species1.trackable
+                    s2_trackable = pair.species2.trackable
+                    one_man_act = s1_man_act != s2_man_act
+
+                    if both_man and both_act:
+                        if pair.species1.slotted and pair.species2.slotted:
+                            slotting_effectiveness = min(pair.species1.slotting_effectiveness, pair.species2.slotting_effectiveness)
+                            maneuver_amount = 0.5 * (1 + pair.gammas[0]) * (1 / slotting_effectiveness) * intrinsic_collisions
+                        else:
+                            maneuver_amount = 0.5 * (1 + pair.gammas[0]) * intrinsic_collisions
+                        ind_eqs[primary_species_name] += maneuver_amount
+                        ind_eqs[secondary_species_name] += maneuver_amount
+                    elif one_man_act:
+                        if s1_man_act and s2_trackable:
+                            ind_eqs[pair_primary_name] += (1 + pair.gammas[0]) * intrinsic_collisions
+                        elif s2_man_act and s1_trackable:
+                            ind_eqs[pair_secondary_name] += (1 + pair.gammas[0]) * intrinsic_collisions
+
     if not per_species:
         ag_man_counts = sp.zeros(scen_properties.n_shells, 1)
         for eq in ind_eqs.values():
             ag_man_counts += eq
         if per_spacecraft:
             ag_man_sat_totals = sp.zeros(scen_properties.n_shells, 1)
-            for species in scen_properties.species:
-                if species.maneuverable:
-                    ag_man_sat_totals += species.sym
-            ag_man_counts /= ag_man_sat_totals
-        ind_struct = Indicators(ind_name, "manual", None, ag_man_counts)
+            for species_group in scen_properties.species.values():
+                for species in species_group:
+                    if species.maneuverable:
+                        ag_man_sat_totals += sp.Matrix(species.sym)
+            ag_man_counts = ag_man_counts.multiply_elementwise(1 / ag_man_sat_totals)
+        spec_man_indc = make_indicator_struct(scen_properties, ind_name, "manual", None, ag_man_counts)
     else:
-        ind_struct = []
+        spec_man_indc = []
         for species_name, eq in ind_eqs.items():
             if per_spacecraft:
-                spec_index = next(i for i, species in enumerate(scen_properties.species) if species.sym_name == species_name)
-                spec_man_indc = Indicators(f"{species_name}_maneuvers_per_spacecraft", "manual", None, eq / scen_properties.species[spec_index].sym)
+                for species_group in scen_properties.species.values():
+                    for species in species_group:
+                        if species.sym_name == species_name:
+                            inverse_sym = sp.Matrix(species.sym).applyfunc(lambda x: 1 / x)
+                            spec_man_indc.append(make_indicator_struct(scen_properties, f"{species_name}_maneuvers_per_spacecraft", "manual", [species_name], eq.multiply_elementwise(inverse_sym)))
             else:
-                spec_man_indc = Indicators(f"{species_name}_maneuvers", "manual", None, eq)
-            ind_struct.append(spec_man_indc)
+                spec_man_indc.append(make_indicator_struct(scen_properties, f"{species_name}_maneuvers", "manual", [species_name], eq))        
+
+    return spec_man_indc
+
+def make_active_loss_per_shell(scen_properties, percentage, per_species):
+    """
+    Calculates the indicator variable for number of active spacecraft lost in each orbit shell
+    to collision events in a given year. 
+
+    :param scen_properties: Simulation Object
+    :type scen_properties: ScenarioProperties
+    :param percentage: False uses absolute number, true gives the percentage
+    :type percentage: Boolean
+    :param per_species: True returns values for each species as independent, false sums by shell
+    :type per_species: Boolean
+    """
+
+    dummy_obj = scen_properties
+    species_pairs_classes = scen_properties.collision_pairs
+    all_col_indicators = []
+
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            species_1_name = species.sym_name
+        
+            spec_col_indicators = []
+
+            for pair in species_pairs_classes:
+                if (species_1_name == pair.species1.sym_name or
+                    species_1_name == pair.species2.sym_name):
+                    
+                    species_2_name = pair.species2.sym_name
+                    ind_name = f"collisions_{species_1_name}_{species_2_name}"
+                    spec_pair = [pair.species1.sym_name, pair.species2.sym_name]
+                    col_indicator = make_indicator_struct(dummy_obj, ind_name, "collision", spec_pair)
+                    spec_col_indicators.append(col_indicator)
+            
+            ag_col_eqs = sp.zeros(scen_properties.n_shells, 1)
+            for col_ind in spec_col_indicators:
+                ag_col_eqs += col_ind.eqs
+            
+            spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_1_name}_aggregate_collisions", "manual", [species], ag_col_eqs)
+            all_col_indicators.append(spec_ag_col_indc)
+
+    if per_species:
+        if not percentage:
+            indicator_var = all_col_indicators
+        else:
+            for col_ind in all_col_indicators:
+                species_1_name = col_ind.species[0].sym_name
+                species_1_totals = col_ind.species[0].sym
+                col_ind.eqs = 100 * col_ind.eqs.multiply_elementwise(sp.Matrix(species_1_totals).applyfunc(lambda x: 1 / x))
+            indicator_var = all_col_indicators
+    else:
+        ag_active_col_eqs = sp.zeros(scen_properties.n_shells, 1)
+        for col_ind in all_col_indicators:
+            if col_ind.species[0].active:
+                ag_active_col_eqs += col_ind.eqs
+
+        if not percentage:
+            indicator_var = make_indicator_struct(dummy_obj, "active_aggregate_collisions", "manual", None, ag_active_col_eqs)
+        else:
+            ag_active_sat_totals = sp.zeros(scen_properties.n_shells, 1)
+            for species_group in scen_properties.species.values():
+                for species in species_group:
+                    if species.active:
+                        ag_active_sat_totals += species.sym
+            
+            perc_eqs = 100 * ag_active_col_eqs.multiply_elementwise(sp.Matrix(ag_active_sat_totals).applyfunc(lambda x: 1 / x))
+            indicator_var = make_indicator_struct(dummy_obj, "active_aggregate_collisions_percentage", "manual", None, perc_eqs)
     
-    return ind_struct
+    return indicator_var
+
+
+def make_all_col_indicators(scen_properties):
+    """
+    This function returns an array with a list of indicators
+    corresponding to the collisions per year for each species.
+
+    :param scen_properties: Simulation Object
+    :type scen_properties: ScenarioProperties
+    :return: List of indicators for collisions per species
+    :rtype: list
+    """
+    
+    dummy_obj = scen_properties
+    all_col_indicators = []
+
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            species_name = species.sym_name
+            spec_col_indicators = []
+
+            for pair in scen_properties.collision_pairs:
+                species_1_name = pair.species1.sym_name
+                species_2_name = pair.species2.sym_name
+                if species_name == species_1_name or species_name == species_2_name:
+                    ind_name = f"collisions_{species_1_name}_{species_2_name}"
+                    spec_pair = [species_1_name, species_2_name]
+                    col_indicator = make_indicator_struct(dummy_obj, ind_name, "collision", spec_pair)
+                    spec_col_indicators.append(col_indicator)
+            
+            ag_col_eqs = sp.zeros(scen_properties.n_shells, 1)
+            for col_ind in spec_col_indicators:
+                ag_col_eqs += col_ind.eqs
+            
+            spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_name}_aggregate_collisions", "manual", [species], ag_col_eqs)
+            all_col_indicators.append(spec_ag_col_indc)
+    
+    return all_col_indicators
