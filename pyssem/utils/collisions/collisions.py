@@ -345,7 +345,6 @@ def process_species_pair(args):
                 frags_made[dv_index, :] = results[0]
                 alt_nums = results[3]   
             except ValueError as e:
-                print(f"Inputs to evolve_bins: {m1}, {m2}, {r1}, {r2}, {dv}, [], {binE}, [], {LBgiven}, {RBflag}, {scen_properties.fragment_spreading}, {scen_properties.n_shells}, {scen_properties.R0_km}")
                 continue
         else:
             results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
