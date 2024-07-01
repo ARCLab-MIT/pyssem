@@ -77,7 +77,9 @@ class Model:
                 baseline=baseline
             )
 
-
+            # Define parameters needed at Model level
+            self.baseline = baseline
+            
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
         
@@ -131,7 +133,7 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch(baseline=self) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
@@ -333,7 +335,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -362,4 +364,3 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    model.create_plots()
