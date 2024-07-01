@@ -197,13 +197,16 @@ class Species:
         """
 
         # Loop through the json and pass create and instance of species properties for each species
-        for species_name, properties in species_json.items():         
-            # This will add pass the Json Species to the SpeciesProperties class. 
-            # If the mass is a list, then we need to create multiple species with the same properties
+
+        if isinstance(species_json, dict):
+            # convert to list
+            raise ValueError("Species JSON must be a list.")
+            
+        for properties in species_json:      
             species_object = None
 
             # Active
-            if properties['active'] == True:
+            if properties.get('active', False):
                 if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
                     multiple_species = self.add_multi_property_species(properties)
                     self.species['active'].extend(multiple_species)
@@ -221,25 +224,28 @@ class Species:
                     species_object = SpeciesProperties(properties)
                     self.species['rocket_body'].append(species_object)
 
-
         # The debris species (N) will need to be created for the active species. 
         # Therefore you have to re-loop after the active satellites have been created.
         active_masses = [i.mass for i in self.species['active']]
         active_radii = [i.radius for i in self.species['active']]
 
-        for species_name, properties in species_json.items():
-            if properties['active'] == False:
-                if properties['RBflag'] == 0:
+        for item in species_json:
+            properties = item  # Now item itself is the properties dictionary
+
+            if not properties.get('active', True):
+                if properties.get('RBflag', 0) == 0:
                     debris_species = properties
-                    if isinstance(debris_species['mass'], list) and len(debris_species['mass']) > 1:
+                    if isinstance(debris_species.get('mass', []), list) and len(debris_species['mass']) > 1:
                         debris_species['mass'].extend(active_masses)
                         debris_species['radius'].extend(active_radii)
-                    else: # Just take the one value
-                        debris_species['mass'].append(active_masses[0])
-                        debris_species['radius'].append(active_radii[0])
+                    else:  # Just take the one value
+                        if active_masses:
+                            debris_species['mass'] = debris_species.get('mass', []) + [active_masses[0]]
+                        if active_radii:
+                            debris_species['radius'] = debris_species.get('radius', []) + [active_radii[0]]
 
                     # Create species objects for non-active species
-                    if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
+                    if isinstance(properties.get('mass', []), list) and len(properties['mass']) > 1:
                         multiple_species = self.add_multi_property_species(properties)
                         self.species['debris'].extend(multiple_species)
                     else:
