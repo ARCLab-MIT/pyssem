@@ -21,8 +21,8 @@
       "parallel_processing" : true,
       "baseline": false                          
     },
-    "species": {
-      "S": {
+    "species": [
+      {
         "sym_name": "S",
         "Cd": 2.2,
         "mass": [1250, 750, 148],
@@ -43,7 +43,7 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "Su": {
+    {
         "sym_name": "Su",
         "Cd": 2.2,
         "mass": [260, 473],
@@ -64,7 +64,7 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "N": {
+    {
         "sym_name": "N",
         "Cd": 2.2,
         "mass": [0.00141372, 0.5670],
@@ -84,7 +84,7 @@
         "pmd_func": "pmd_func_derelict",
         "drag_func": "drag_func_exp"
     },
-    "Sns": {
+    {
         "sym_name": "Sns",
         "Cd": 2.2,
         "mass": 6,
@@ -104,7 +104,7 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "B": {
+    {
         "sym_name": "B",
         "RBflag" : 1,
         "Cd": 2.2,
@@ -121,5 +121,6 @@
         "trackable": true,
         "pmd_func": "pmd_func_none",
         "drag_func": "drag_func_exp"
-    }}
-  }
+    }
+  ]
+}

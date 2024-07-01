@@ -1,10 +1,10 @@
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
+# from utils.simulation.scen_properties import ScenarioProperties
+# from utils.simulation.species import Species
+# from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
@@ -145,6 +145,42 @@ class Model:
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
+    
+    def results_to_json(self):
+        """
+        Converts the output of solve_ivp (integrator) to a JSON format. 
+        
+        :return: JSON string representation of the solve_ivp output.
+        """
+        # Initialize the data dictionary
+        data = {
+            "times": self.scenario_properties.output.t.tolist(),
+            "population_data": []
+        }
+
+        # Calculate the number of species
+        num_species = len(self.scenario_properties.species_names)
+        
+        # Iterate over each species
+        for i in range(num_species):
+            species = self.scenario_properties.species_names[i]
+            
+            # Iterate over each shell for the current species
+            for j in range(self.scenario_properties.n_shells):
+                shell_index = i * self.scenario_properties.n_shells + j
+                shell_name = f"{species}_shell_{j + 1}"
+                shell_data = {
+                    "name": shell_name,
+                    "populations": self.scenario_properties.output.y[shell_index, :].tolist()
+                }
+                data["population_data"].append(shell_data)
+        
+        # Convert the dictionary to a JSON string
+        json_output = json.dumps(data, indent=4)
+        
+        return json_output
+
+
         
     def create_plots(self):
         """
@@ -335,7 +371,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -364,3 +400,6 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
+    #model.create_plots()
+
+    print(model.results_to_json())
