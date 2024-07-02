@@ -173,15 +173,9 @@ class Model:
             # Iterate over each shell for the current species
             for j in range(self.scenario_properties.n_shells):
                 shell_index = i * self.scenario_properties.n_shells + j
-<<<<<<< HEAD
-                shell_name = f"{species}_shell_{j + 1}"
                 shell_data = {
-                    "name": shell_name,
-=======
-                shell_data = {
-                    "spcies": species,
+                    "species": species,
                     "shell": j + 1,
->>>>>>> pypi-release
                     "populations": self.scenario_properties.output.y[shell_index, :].tolist()
                 }
                 data["population_data"].append(shell_data)
