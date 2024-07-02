@@ -11,6 +11,7 @@ import pandas as pd
 import os
 from loky import get_reusable_executor
 import multiprocessing
+from collections import defaultdict
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
@@ -588,90 +589,23 @@ class ScenarioProperties:
             dN_dt[i] += equations[i](*N)
 
         return dN_dt
-    
+
     def cum_CSI(self):
-        """
-        Computes and displays cumulative Criticality of Space Index (CSI).
-        """
         k = 0.6
-        life = lambda h: np.exp(14.18 * h**0.1831 - 42.94)  # lifetime from power law fitting
-        
-        M_ref = 10000  # [kg]
-        h_ref = 1000  # [km]
-        life_h_ref = 1468  # [years] it corresponds to life0 = life(1000)
-        
-        D_ref = np.max(np.sum(self.output.y, axis=1) / self.V[:, np.newaxis])
+        def life(h):
+            return np.exp(14.18 * h ** 0.1831 - 42.94)
 
-        den = M_ref * D_ref * life_h_ref * (1 + k)
-        
-        cos_i_av = 2 / np.pi  # average value of cosine of inclination in the range -pi/2 pi/2 calculated using integral average
-        Gamma_av = (1 - cos_i_av) / 2
+        M_ref = 10000 # kg
+        h_ref = 1000 # km
+        life_h_ref = 1468 # years, it corresponds to life0 = life(1000)
 
-        rgb_c = [
-            [0, 0.4470, 0.7410], [0.8500, 0.3250, 0.0980], [0.9290, 0.6940, 0.1250], [0.4940, 0.1840, 0.5560],
-            [0.4660, 0.6740, 0.1880], [0.3010, 0.7450, 0.9330], [0.6350, 0.0780, 0.1840]
-        ]
+        if isinstance(self.results, str):
+            self.results = json.loads(self.results)
 
-        if hasattr(self, "output"):
-            print("Producing two visuals of CSI.")
-            plt.figure()
-            plt.grid(True)
+        D_ref = sum(species['populations'][0] for species in self.results['population_data']) / self.V)
 
-            CSI_S_sum_array = np.zeros(len(self.output.t))
-            CSI_D_sum_array = np.zeros(len(self.output.t))
-            
-            for i2, species_result in enumerate(self.results.species_results_dict):
-                if i2 >= len(rgb_c):
-                    colorset = np.random.rand(3)
-                else:
-                    colorset = rgb_c[i2]
-                
-                CSI_X_mat = np.zeros((len(self.output.t), self.scen_properties.n_shells))
-                name = species_result["key"]
-                
-                if 'S' in name or 'D' in name:
-                    for i in range(self.scen_properties.n_shells):
-                        life_i = life((self.scen_properties.R0[i] + self.scen_properties.R0[i + 1]) / 2)
-                        num = life_i * (1 + k * Gamma_av)
-                        mass = self.species_list[i2].species_properties.mass
-                        dum_X = mass * num
-                        D_X = self.output.y[:, i2] / self.scen_properties.V[i2]
-                        CSI_X_mat[:, i] = D_X * dum_X
-                    
-                    CSI_X_mat = CSI_X_mat / den
-                    CSI_X = np.sum(CSI_X_mat, axis=1)
-                    plt.plot(self.output.t, CSI_X, label=f'CSI for {name.replace("p", ".")}', linewidth=2, color=colorset)
-                    
-                    if 'S' in name and 'D' not in name:
-                        CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
-                    elif 'D' in name:
-                        CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
-            
-            CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
-            CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
-            
-            plt.plot(self.output.t, CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2)
-            plt.xlabel('Time (years)')
-            plt.ylabel('CSI')
-            plt.title('CSI per Species Type')
-            plt.xlim([0, np.max(self.output.t)])
-            plt.legend(loc='best', frameon=False)
-
-            plt.figure()
-            plt.grid(True)
-            plt.plot(self.output.t, CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2)
-            plt.plot(self.output.t, CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2)
-            plt.plot(self.output.t, CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2)
-            plt.xlabel('Time (years)')
-            plt.ylabel('Cumulative CSI')
-            plt.xlim([0, np.max(self.output.t)])
-            plt.title('CSI for Active and Derelict Species')
-            plt.legend(loc='best', frameon=False)
-
-            plt.show()
-        else:
-            raise ValueError("Simulation does not contain results. Please run the function run_model(obj, x0) to produce simulation results required for CSI computation.")
-
+        return
+    
 if __name__ == "__main__":
         # Open the simulation pickle file
     import pickle

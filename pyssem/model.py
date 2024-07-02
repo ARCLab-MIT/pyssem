@@ -1,16 +1,18 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import create_plots
 from datetime import datetime
 import json
 import os
 import pickle
-
+import matplotlib.pyplot as plt
+import numpy as np
+import imageio
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
@@ -115,7 +117,7 @@ class Model:
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
-            if self.indicator_variables is not None:
+            if self.scenario_properties.indicator_variables is not None:
                 self.scenario_properties.build_indicator_variables()
 
             return species_list
@@ -138,15 +140,9 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch(baseline=True) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
-
-            # save the scenario properties to a pickle file
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
-            
-            return self.scenario_properties
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -173,15 +169,18 @@ class Model:
             # Iterate over each shell for the current species
             for j in range(self.scenario_properties.n_shells):
                 shell_index = i * self.scenario_properties.n_shells + j
-                shell_name = f"{species}_shell_{j + 1}"
+                shell = j + 1
                 shell_data = {
-                    "name": shell_name,
+                    "species": species,
+                    "shell": shell,
                     "populations": self.scenario_properties.output.y[shell_index, :].tolist()
                 }
                 data["population_data"].append(shell_data)
         
         # Convert the dictionary to a JSON string
         json_output = json.dumps(data, indent=4)
+
+        self.scenario_properties.results = json_output
         
         return json_output
 
@@ -378,34 +377,49 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
-        simulation_data = json.load(f)
+    # with open(os.path.join('pyssem', 'three_species.json')) as f:
+    #     simulation_data = json.load(f)
 
-    scenario_props = simulation_data["scenario_properties"]
+    # scenario_props = simulation_data["scenario_properties"]
 
-    # Create an instance of the pySSEM_model with the simulation parameters
-    model = Model(
-        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
-        simulation_duration=scenario_props["simulation_duration"],
-        steps=scenario_props["steps"],
-        min_altitude=scenario_props["min_altitude"],
-        max_altitude=scenario_props["max_altitude"],
-        n_shells=scenario_props["n_shells"],
-        launch_function=scenario_props["launch_function"],
-        integrator=scenario_props["integrator"],
-        density_model=scenario_props["density_model"],
-        LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None), 
-        fragment_spreading=scenario_props.get("fragment_spreading", True),
-        parallel_processing=scenario_props.get("parallel_processing", False),
-        baseline=scenario_props.get("baseline", False),
-        indicator_variables=scenario_props.get("indicator_variables", None)
-    )
+    # # Create an instance of the pySSEM_model with the simulation parameters
+    # model = Model(
+    #     start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+    #     simulation_duration=scenario_props["simulation_duration"],
+    #     steps=scenario_props["steps"],
+    #     min_altitude=scenario_props["min_altitude"],
+    #     max_altitude=scenario_props["max_altitude"],
+    #     n_shells=scenario_props["n_shells"],
+    #     launch_function=scenario_props["launch_function"],
+    #     integrator=scenario_props["integrator"],
+    #     density_model=scenario_props["density_model"],
+    #     LC=scenario_props["LC"],
+    #     v_imp = scenario_props.get("v_imp", None), 
+    #     fragment_spreading=scenario_props.get("fragment_spreading", True),
+    #     parallel_processing=scenario_props.get("parallel_processing", False),
+    #     baseline=scenario_props.get("baseline", False),
+    #     indicator_variables=scenario_props.get("indicator_variables", None)
+    # )
 
-    species = simulation_data["species"]
+    # species = simulation_data["species"]
 
-    species_list = model.configure_species(species)
+    # species_list = model.configure_species(species)
 
-    results = model.run_model()
+    # results = model.run_model()
 
-    #model.create_plots()
+    # results_json = model.results_to_json()
+
+    # # save the scenario properties to a pickle file
+    # with open('scenario-properties-baseline.pkl', 'wb') as f:
+    #     pickle.dump(model.scenario_properties, f)
+    
+    # model.create_plots()
+
+    with open('scenario-properties-baseline.pkl', 'rb') as f:
+        scenario_properties = pickle.load(f)
+
+    scenario_properties.cum_CSI()
+
+    # # export the results to a JSON file
+    # with open('results.json', 'w') as f:
+    #     f.write(scenario_properties.results)
