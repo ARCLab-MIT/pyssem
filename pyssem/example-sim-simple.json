@@ -21,8 +21,8 @@
     "parallel_processing": false,
     "baseline" : false
   },
-  "species": {
-      "S": {
+  "species": [
+    {
         "sym_name": "S",
         "Cd": 2.2,
         "mass": 750,
@@ -43,7 +43,7 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "Su": {
+   {
       "sym_name": "Su",
       "Cd": 2.2,
       "mass": 473,
@@ -64,7 +64,7 @@
       "pmd_func": "pmd_func_sat",
       "drag_func": "drag_func_exp"
   },
-  "N": {
+  {
       "sym_name": "N",
       "Cd": 2.2,
       "mass": 0.5670,
@@ -84,5 +84,5 @@
       "pmd_func": "pmd_func_derelict",
       "drag_func": "drag_func_exp"
   }
-  }
+]
 }
