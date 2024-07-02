@@ -155,6 +155,11 @@ class Model:
         # Initialize the data dictionary
         data = {
             "times": self.scenario_properties.output.t.tolist(),
+            "n_shells": self.scenario_properties.n_shells,
+            "species" : self.scenario_properties.species_names,
+            "Hmid": self.scenario_properties.HMid.tolist(),
+            "max_altitude": self.scenario_properties.max_altitude,
+            "min_altitude": self.scenario_properties.min_altitude,
             "population_data": []
         }
 
@@ -168,9 +173,15 @@ class Model:
             # Iterate over each shell for the current species
             for j in range(self.scenario_properties.n_shells):
                 shell_index = i * self.scenario_properties.n_shells + j
+<<<<<<< HEAD
                 shell_name = f"{species}_shell_{j + 1}"
                 shell_data = {
                     "name": shell_name,
+=======
+                shell_data = {
+                    "spcies": species,
+                    "shell": j + 1,
+>>>>>>> pypi-release
                     "populations": self.scenario_properties.output.y[shell_index, :].tolist()
                 }
                 data["population_data"].append(shell_data)
@@ -402,4 +413,11 @@ if __name__ == "__main__":
 
     #model.create_plots()
 
+<<<<<<< HEAD
     print(model.results_to_json())
+=======
+    ouput = model.results_to_json()
+    # convert to json file
+    with open('output.json', 'w') as f:
+        f.write(ouput)
+>>>>>>> pypi-release

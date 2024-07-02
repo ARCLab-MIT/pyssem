@@ -240,9 +240,17 @@ class Species:
                         debris_species['radius'].extend(active_radii)
                     else:  # Just take the one value
                         if active_masses:
-                            debris_species['mass'] = debris_species.get('mass', []) + [active_masses[0]]
+                            # Ensure debris_species['mass'] is a list
+                            current_mass = debris_species.get('mass', [])
+                            if not isinstance(current_mass, list):
+                                current_mass = [current_mass]
+                            debris_species['mass'] = current_mass + [active_masses[0]]
                         if active_radii:
-                            debris_species['radius'] = debris_species.get('radius', []) + [active_radii[0]]
+                            # Ensure debris_species['radius'] is a list
+                            current_radius = debris_species.get('radius', [])
+                            if not isinstance(current_radius, list):
+                                current_radius = [current_radius]
+                            debris_species['radius'] = current_radius + [active_radii[0]]
 
                     # Create species objects for non-active species
                     if isinstance(properties.get('mass', []), list) and len(properties['mass']) > 1:
@@ -251,6 +259,7 @@ class Species:
                     else:
                         species_object = SpeciesProperties(properties)
                         self.species['debris'].append(species_object)
+
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
         
