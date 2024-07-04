@@ -12,6 +12,7 @@ import pickle
 import matplotlib.pyplot as plt
 import imageio
 import numpy as np
+import pandas as pd
 
 
 class Model:
@@ -156,35 +157,65 @@ class Model:
         data = {
             "times": self.scenario_properties.output.t.tolist(),
             "n_shells": self.scenario_properties.n_shells,
-            "species" : self.scenario_properties.species_names,
+            "species": [species for species in self.scenario_properties.species_names if species.startswith('S')],
             "Hmid": self.scenario_properties.HMid.tolist(),
             "max_altitude": self.scenario_properties.max_altitude,
             "min_altitude": self.scenario_properties.min_altitude,
-            "population_data": []
+            "population_data": [],
+            "launch": []
         }
 
-        # Calculate the number of species
+        # Extract relevant parts from the scenario properties for population data
         num_species = len(self.scenario_properties.species_names)
-        
-        # Iterate over each species
+        num_time_steps = len(self.scenario_properties.output.t)
+
+        # Create a DataFrame to mimic the structure of FLM_steps
+        df_data = {
+            'epoch_start_date': self.scenario_properties.output.t.tolist()
+        }
+
+        # Initialize population data structure
+        population_data_dict = {species: [[0] * num_time_steps for _ in range(self.scenario_properties.n_shells)]
+                                for species in self.scenario_properties.species_names}
+
+        # Populate population data
         for i in range(num_species):
             species = self.scenario_properties.species_names[i]
-            
-            # Iterate over each shell for the current species
             for j in range(self.scenario_properties.n_shells):
                 shell_index = i * self.scenario_properties.n_shells + j
+                population_data_dict[species][j] = self.scenario_properties.output.y[shell_index, :].tolist()
                 shell_data = {
                     "spcies": species,
                     "shell": j + 1,
                     "populations": self.scenario_properties.output.y[shell_index, :].tolist()
                 }
                 data["population_data"].append(shell_data)
-        
-        # Convert the dictionary to a JSON string
-        json_output = json.dumps(data, indent=4)
-        
-        return json_output
 
+        # Add species columns data to DataFrame
+        for species, population_by_shell in population_data_dict.items():
+            df_data[species] = [sum(x) for x in zip(*population_by_shell)]
+
+        # Create DataFrame
+        df = pd.DataFrame(df_data)
+        df['epoch_start_date'] = pd.to_datetime(df['epoch_start_date'], unit='s')
+
+        # Filter species columns starting with 'S'
+        species_columns = [col for col in df.columns if col.startswith('S')]
+
+        # Group by 'epoch_start_date' and sum the values for each species across all alt_bins
+        grouped_data = df.groupby('epoch_start_date')[species_columns].sum().reset_index()
+
+        # Append launch counts for each species
+        for species in species_columns:
+            data["launch"].append({
+                "species": species,
+                "counts": grouped_data[species].tolist()
+            })
+
+        # Convert the dictionary to a JSON string
+        json_output = json.dumps(data, indent=4, default=str)  # Use default=str to handle datetime serialization
+
+        return json_output
 
         
     def create_plots(self):
@@ -411,3 +442,12 @@ if __name__ == "__main__":
     # convert to json file
     with open('output.json', 'w') as f:
         f.write(ouput)
+
+    # # open pickle file
+    # with open('scenario-properties-baseline.pkl', 'rb') as f:
+    #     scenario_properties = pickle.load(f)
+
+    # output = scenario_properties.results_to_json() 
+    # # # convert to json file
+    # with open('output.json', 'w') as f:
+    #     f.write(output)
