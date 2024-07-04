@@ -436,22 +436,9 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    #model.create_plots()
+    model.create_plots()
 
     ouput = model.results_to_json()
     # convert to json file
     with open('output.json', 'w') as f:
         f.write(ouput)
-
-    ouput = json.loads(ouput)
-
-    print(ouput['launch'])
-
-    # # open pickle file
-    # with open('scenario-properties-baseline.pkl', 'rb') as f:
-    #     scenario_properties = pickle.load(f)
-
-    # output = scenario_properties.results_to_json() 
-    # # # convert to json file
-    # with open('output.json', 'w') as f:
-    #     f.write(output)
