@@ -185,7 +185,7 @@ class Model:
                 shell_index = i * self.scenario_properties.n_shells + j
                 population_data_dict[species][j] = self.scenario_properties.output.y[shell_index, :].tolist()
                 shell_data = {
-                    "spcies": species,
+                    "species": species,
                     "shell": j + 1,
                     "populations": self.scenario_properties.output.y[shell_index, :].tolist()
                 }
@@ -442,6 +442,10 @@ if __name__ == "__main__":
     # convert to json file
     with open('output.json', 'w') as f:
         f.write(ouput)
+
+    ouput = json.loads(ouput)
+
+    print(ouput['launch'])
 
     # # open pickle file
     # with open('scenario-properties-baseline.pkl', 'rb') as f:
