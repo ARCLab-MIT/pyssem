@@ -74,6 +74,10 @@ class SpeciesProperties:
 
         self.trackable_radius_threshold = 0.05  # m
 
+        self.elliptical_orbit = False
+        self.semi_major_axis_bins = None
+        self.eccentricity_bins = None
+
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
             for key, value in properties_json.items():
@@ -355,4 +359,20 @@ class Species:
             for spec in self.species['active']:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
+
+    def set_elliptical_orbits(self, R0_km, Hmid):
+        """
+        Set the semi-major axis and eccentricity bins for the species.
+
+        Args:
+            semi_major_axis_bins (list): List of semi-major axis bins.
+            eccentricity_bins (list): List of eccentricity bins.
+        """
+        EARTH_RADIUS_KM = 6371
+
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.elliptical_orbit:
+                    species.semi_major_axis_bins = [EARTH_RADIUS_KM + alt for alt in R0_km]
+                    species.eccentricity_bins = [0.0, 0.1, 0.2, 0.3, 0.5, 0.9]
     

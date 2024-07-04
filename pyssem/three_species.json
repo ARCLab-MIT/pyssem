@@ -58,7 +58,8 @@
             "slotted": false,
             "slotting_effectiveness": 1,
             "sym_name": "B",
-            "trackable": true
+            "trackable": true,
+            "elliptical_orbit" : true
         },    
         {
             "sym_name": "N",

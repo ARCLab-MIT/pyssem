@@ -1,10 +1,10 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
 import json
 import os
@@ -101,6 +101,9 @@ class Model:
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
+
+            # Set up elliptical orbits for species
+            species_list.set_elliptical_orbits(self.scenario_properties.R0_km, self.scenario_properties.HMid)
 
             # Create symbolic variables for the species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
