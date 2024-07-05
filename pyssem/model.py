@@ -157,7 +157,7 @@ class Model:
         data = {
             "times": self.scenario_properties.output.t.tolist(),
             "n_shells": self.scenario_properties.n_shells,
-            "species": [species for species in self.scenario_properties.species_names if species.startswith('S')],
+            "species": [species for species in self.scenario_properties.species_names],
             "Hmid": self.scenario_properties.HMid.tolist(),
             "max_altitude": self.scenario_properties.max_altitude,
             "min_altitude": self.scenario_properties.min_altitude,
