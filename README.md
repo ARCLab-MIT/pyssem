@@ -22,7 +22,7 @@ To create a Model you need the following properties:
 "scenario_properties": {
     "start_date": "01/03/2022",   
     "simulation_duration": 100,              
-    "steps": 200,                            
+    "steps": 100,                            
     "min_altitude": 200,                   
     "max_altitude": 1400,                   
     "n_shells": 40,                         
@@ -30,53 +30,58 @@ To create a Model you need the following properties:
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
-    "v_imp": 10.0                          
-  }
+    "v_imp": 10.0,
+    "fragment_spreading": true, 
+    "parallel_processing" : true,
+    "baseline": false                          
+  },
 ```
 
 Species are defined as a separate "species" list within your json. Each item is a new species type, each species can have multiple lengths (see documentation for more information). 
 ```json
-"species": {
-    "S": {
-      "sym_name": "S",
-      "Cd": 2.2,
-      "mass": [1250, 750, 148],
-      "radius": [4, 2, 0.5],
-      "A": "Calculated based on radius",
-      "active": true,
-      "maneuverable": true,
-      "trackable": true,
-      "deltat": [8],
-      "Pm": 0.90,
-      "alpha": 1e-5,
-      "alpha_active": 1e-5,
-      "slotted": true, 
-      "slotting_effectiveness": 1.0,
-      "drag_effected": false,
-      "launch_func": "launch_func_constant",
-      "pmd_func": "pmd_func_sat",
-      "drag_func": "drag_func_exp"
-  },
-  "Su": {
-      "sym_name": "Su",
-      "Cd": 2.2,
-      "mass": [260, 473],
-      "A": [1.6652, 13.5615],
-      "radius": [0.728045069, 2.077681285],
-      "active": true,
-      "maneuverable": true,
-      "trackable": true,
-      "deltat": [8, 8],
-      "Pm": 0.65,
-      "alpha": 1e-5,
-      "alpha_active": 1e-5,
-      "RBflag": 0,
-      "slotting_effectiveness": 1.0,
-      "drag_effected": false,
-      "launch_func": "launch_func_constant",
-      "pmd_func": "pmd_func_sat",
-      "drag_func": "drag_func_exp"
-  }
+"species": [
+      {
+        "sym_name": "S",
+        "Cd": 2.2,
+        "mass": [1250, 750, 148],
+        "radius": [4, 2, 0.5],
+        "A": "Calculated based on radius",
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": [8],
+        "Pm": 0.90,
+        "alpha": 1e-5,
+        "alpha_active": 1e-5,
+        "slotted": true, 
+        "slotting_effectiveness": 1.0,
+        "drag_effected": false,
+        "launch_func": "launch_func_constant",
+        "lambda_constant": 500,
+        "pmd_func": "pmd_func_sat",
+        "drag_func": "drag_func_exp"
+    },
+    {
+        "sym_name": "Su",
+        "Cd": 2.2,
+        "mass": [260, 473],
+        "A": [1.6652, 13.5615],
+        "radius": [0.728045069, 2.077681285],
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": [8, 8],
+        "Pm": 0.65,
+        "alpha": 1e-5,
+        "alpha_active": 1e-5,
+        "RBflag": 0,
+        "slotting_effectiveness": 1.0,
+        "drag_effected": false,
+        "launch_func": "launch_func_constant",
+        "lambda_constant": 1000,
+        "pmd_func": "pmd_func_sat",
+        "drag_func": "drag_func_exp"
+    }]
 ```
 
 An example of running the simulation:
@@ -86,14 +91,14 @@ import json
 import os
 
 # Load simulation configuration
-with open('/path/to/example-sim-simple.json') as f:
+with open('/path/to/example-model.json') as f:
   simulation_data = json.load(f)
 
-scenario_props = simulation_data['scenario_properties']
+scenario_props = simulation_data["scenario_properties"]
 
-# Create an instance of the Model with the simulation parameters
+# Create an instance of the pySSEM_model with the simulation parameters
 model = Model(
-    start_date=scenario_props["start_date"].split("T")[0],  # Assuming date is in ISO format
+    start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
     simulation_duration=scenario_props["simulation_duration"],
     steps=scenario_props["steps"],
     min_altitude=scenario_props["min_altitude"],
@@ -103,15 +108,28 @@ model = Model(
     integrator=scenario_props["integrator"],
     density_model=scenario_props["density_model"],
     LC=scenario_props["LC"],
-    v_imp=scenario_props["v_imp"],
-    launchfile='path/to/launchfile.csv'
+    v_imp = scenario_props.get("v_imp", None),
+    fragment_spreading=scenario_props.get("fragment_spreading", True),
+    parallel_processing=scenario_props.get("parallel_processing", False),
+    baseline=scenario_props.get("baseline", False)
 )
 
 species = simulation_data["species"]
+
 species_list = model.configure_species(species)
 
-# Run the model
 results = model.run_model()
+```
+
+## Results and Plotting
+
+There are two more main functions that can be used to produce a set of figures within a local figures/ folder and to export the final results as json. 
+
+```python
+    model.create_plots()
+
+    ouput = model.results_to_json() # This will not save the json locally, just a return
+
 ```
 
 
