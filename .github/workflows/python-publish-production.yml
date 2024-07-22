@@ -30,11 +30,11 @@ jobs:
 
       - name: Build source and wheel distribution
         run: |
-          python setup.py sdist bdist_wheel --dist-dir dist/ --version ${{ env.VERSION }}
+          python -m build --sdist --wheel --outdir dist/
 
       - name: Set version
         run: echo "VERSION=1.0.0" >> $GITHUB_ENV 
-        
+
       - name: Upload distributions to workflow artifact
         uses: actions/upload-artifact@v2
         with:
