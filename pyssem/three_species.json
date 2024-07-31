@@ -15,7 +15,10 @@
         "simulation_duration": 100,
         "start_date": "01/02/2024",
         "steps": 100,
-        "v_imp": 10
+        "v_imp": 10, 
+        "fragment_spreading" : false,
+        "baseline" : false,
+        "parallel_processing" : false
     },
     "simulation_name": "Indigo",
     "species": [
