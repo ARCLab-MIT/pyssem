@@ -17,7 +17,7 @@
       "density_model": "static_exp_dens_func", 
       "LC": 0.1,                             
       "v_imp": 10.0,
-      "fragment_spreading": true, 
+      "fragment_spreading": false, 
       "parallel_processing" : true,
       "baseline": false                          
     },

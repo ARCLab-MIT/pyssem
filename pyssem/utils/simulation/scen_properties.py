@@ -130,6 +130,9 @@ class ScenarioProperties:
         # Outputs
         self.output = None
 
+        # Restults
+        self.results = None
+
         # Varying collision shells 
         self.fragment_spreading = fragment_spreading
 
@@ -602,89 +605,96 @@ class ScenarioProperties:
         if isinstance(self.results, str):
             self.results = json.loads(self.results)
 
-        D_ref = sum(species['populations'][0] for species in self.results['population_data']) / self.V
-
-        den = M_ref*D_ref*life_h_ref * (1+k)
+        initial_populations = [data['populations'][0] for data in self.results['population_data']]
+        V = np.array(self.V)
+        D_ref = np.max(np.sum(initial_populations, axis=0) / V)
+        
+        den = M_ref * D_ref * life_h_ref * (1+k) / 10
+        #den = 2.4477e-09
 
         cos_i_av = 2/pi #average value of cosine of inclination in the range -pi/2 pi/2 calculated using integral average
         Gamma_av = (1-cos_i_av)/2
 
-        rgb_c = [[0, 0.4470, 0.7410], [0.8500, 0.3250, 0.0980], [0.9290, 0.6940, 0.1250], 
-                 [0.4940, 0.1840, 0.5560], [0.4660, 0.6740, 0.1880], [0.3010, 0.7450, 0.9330], 
-                 [0.6350, 0.0780, 0.1840]]
+        rgb_c = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
         
         def life(h):
             return np.exp(14.18 * h**0.1831 - 42.94)
 
 
         if hasattr(self, 'results'):
-                    print("Producing two visuals of CSI.")
-                    plt.figure()
-                    plt.grid(True)
-                    CSI_S_sum_array = np.zeros(len(self.results['times']))
-                    CSI_D_sum_array = np.zeros(len(self.results['times']))
+            print("Producing two visuals of CSI.")
+            plt.figure()
+            plt.grid(True)
+            CSI_S_sum_array = np.zeros((len(self.results['times']), 0))
+            CSI_D_sum_array = np.zeros((len(self.results['times']), 0))
+            
+            unique_species = set([data['species'] for data in self.results['population_data']])
+            
+            for i2, species in enumerate(unique_species):
+                if i2 >= len(rgb_c):
+                    colorset = np.random.rand(3)
+                else:
+                    colorset = rgb_c[i2]
+                
+                CSI_X_mat = np.zeros((len(self.results['times']), self.n_shells))
+                species_list = [sp for species_group in self.species.values() for sp in species_group]
+
+                if 'S' in species or 'D' in species:
+                    for i in range(self.n_shells):
+                        shell_data = [data for data in self.results['population_data'] if data['species'] == species and data['shell'] == (i + 1)]
+                        if shell_data:
+                            life_i = life((self.R0_km[i] + self.R0_km[i + 1]) / 2)
+                            num = life_i * (1 + k * Gamma_av)
+                            try:
+                                mass = next((item.mass for item in species_list if item.sym_name == species), 0)
+                            except TypeError as e:
+                                print(f"Error accessing species_properties for species '{species}': {e}")
+                                print(f"species_list: {species_list}")
+                                raise
+                            dum_X = mass * num
+                            D_X = np.array(shell_data[0]['populations']) / self.V[i]
+                            CSI_X_mat[:, i] = D_X * dum_X
                     
-                    unique_species = set([data['species'] for data in self.results['population_data']])
+                    CSI_X_mat /= den
+                    CSI_X = np.sum(CSI_X_mat, axis=1)
+                    plt.plot(self.results['times'], CSI_X, label=f'CSI for {species.replace("p", ".")}', linewidth=2, color=colorset)
                     
-                    for i2, species in enumerate(unique_species):
-                        if i2 >= len(rgb_c):
-                            colorset = np.random.rand(3)
-                        else:
-                            colorset = rgb_c[i2]
-                        
-                        CSI_X_mat = np.zeros((len(self.results['times']), self.n_shells))
-                        
-                        if 'S' in species or 'D' in species:
-                            for i in range(self.n_shells):
-                                shell_data = [data for data in self.results['population_data'] if data['species'] == species and data['shell'] == (i + 1)]
-                                if shell_data:
-                                    life_i = life((self.R0[i] + self.R0[i + 1]) / 2)
-                                    num = life_i * (1 + k * Gamma_av)
-                                    mass = next((item.mass for item in self.species if item['species'] == species), 0)
-                                    dum_X = mass * num
-                                    D_X = np.array(shell_data[0]['populations']) / self.V[i]
-                                    CSI_X_mat[:, i] = D_X * dum_X
-                            
-                            CSI_X_mat /= den
-                            CSI_X = np.sum(CSI_X_mat, axis=1)
-                            plt.plot(self.results['times'], CSI_X, label=f'CSI for {species.replace("p", ".")}', linewidth=2, color=colorset)
-                            
-                            if 'S' in species and 'D' not in species:
-                                CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
-                            elif 'D' in species:
-                                CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
-                    
-                    CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
-                    CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
-                    plt.plot(self.results['times'], np.sum(CSI_S_sum + CSI_D_sum, axis=0), label='Total CSI', linewidth=2)
-                    plt.xlabel('Time (years)')
-                    plt.ylabel('CSI')
-                    plt.title('CSI per Species Type')
-                    plt.xlim([0, np.max(self.results['times'])])
-                    plt.legend(loc='best', frameon=False)
-                    plt.show()
-                    
-                    plt.figure()
-                    plt.grid(True)
-                    plt.plot(self.results['times'], CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2)
-                    plt.plot(self.results['times'], CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2)
-                    plt.plot(self.results['times'], np.sum(CSI_S_sum + CSI_D_sum, axis=0), label='Total CSI', linewidth=2)
-                    plt.xlabel('Time (years)')
-                    plt.ylabel('Cumulative CSI')
-                    plt.xlim([0, np.max(self.results['times'])])
-                    plt.title('CSI for Active and Derelict Species')
-                    plt.legend(loc='best', frameon=False)
-                    plt.show()
+                    if 'S' in species and 'D' not in species:
+                        CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
+                    elif 'D' in species:
+                        CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
+
+            if CSI_S_sum_array.shape[1] > 0:
+                CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
+            else:
+                CSI_S_sum = np.zeros(len(self.results['times']))
+
+            if CSI_D_sum_array.shape[1] > 0:
+                CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
+            else:
+                CSI_D_sum = np.zeros(len(self.results['times']))
+
+            plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
+            plt.xlabel('Time (years)')
+            plt.ylabel('CSI')
+            plt.title('CSI per Species')
+            plt.xlim([0, np.max(self.results['times'])])
+            plt.legend(loc='best', frameon=False)
+            plt.savefig('figures/CSI_per_species.png')
+
+            plt.figure()
+            plt.grid(True)
+            plt.plot(self.results['times'], CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2, color='#1f77b4')
+            plt.plot(self.results['times'], CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2, color='#ff7f0e')
+            plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
+            plt.xlabel('Time (years)')
+            plt.ylabel('Cumulative CSI')
+            plt.xlim([0, np.max(self.results['times'])])
+            plt.title('CSI for Active and Derelict Species')
+            plt.legend(loc='best', frameon=False)
+            plt.savefig('figures/CSI_active_derelict.png')
         else:
             raise ValueError("Simulation does not contain results. Please run the function run_model(x0) to produce simulation results required for CSI computation.")
         
         return
     
-if __name__ == "__main__":
-        # Open the simulation pickle file
-    import pickle
-
-    with open('scenario-properties-baseline.pkl', 'rb') as f:
-        scenario_properties = pickle.load(f)
-
-    scenario_properties.cum_CSI()

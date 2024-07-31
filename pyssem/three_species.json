@@ -20,6 +20,7 @@
     "simulation_name": "Indigo",
     "species": [
         {
+            "sym_name": "Su",
             "A": 1.6652,
             "active": true,
             "alpha": 1e-05,
@@ -36,10 +37,10 @@
             "radius": 0.728045069,
             "RBflag": 0,
             "slotting_effectiveness": 1,
-            "sym_name": "Su",
             "trackable": true
         },
         {
+            "sym_name": "B",
             "A": 22.6980069221863,
             "active": false,
             "alpha": 0,
@@ -54,8 +55,28 @@
             "RBflag": 1,
             "slotted": false,
             "slotting_effectiveness": 1,
-            "sym_name": "B",
             "trackable": true
+        },
+        {
+            "sym_name": "S",
+            "Cd": 2.2,
+            "mass": [1250, 750, 148],
+            "radius": [4, 2, 0.5],
+            "A": "Calculated based on radius",
+            "active": true,
+            "maneuverable": true,
+            "trackable": true,
+            "deltat": [8],
+            "Pm": 0.90,
+            "alpha": 1e-5,
+            "alpha_active": 1e-5,
+            "slotted": true, 
+            "slotting_effectiveness": 1.0,
+            "drag_effected": false,
+            "launch_func": "launch_func_constant",
+            "lambda_constant": 500,
+            "pmd_func": "pmd_func_sat",
+            "drag_func": "drag_func_exp"
         }
     ],
     "status": "not started"
