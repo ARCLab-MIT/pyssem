@@ -261,7 +261,7 @@ class ScenarioProperties:
                                                                                         sep_dist=60, 
                                                                                         inc = 40, 
                                                                                         shell_sep=5,
-                                                                                        graph=False))
+                                                                                        graph=True))
                 elif indicator == "ca_man_struct":
                     self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", 
                                                                             per_species=True, per_spacecraft=True))
@@ -620,7 +620,6 @@ class ScenarioProperties:
         def life(h):
             return np.exp(14.18 * h**0.1831 - 42.94)
 
-
         if hasattr(self, 'results'):
             print("Producing two visuals of CSI.")
             plt.figure()
@@ -677,7 +676,7 @@ class ScenarioProperties:
             plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
             plt.xlabel('Time (years)')
             plt.ylabel('CSI')
-            plt.title('CSI per Species')
+            plt.title('Cumulative Space Index (CSI) per Species')
             plt.xlim([0, np.max(self.results['times'])])
             plt.legend(loc='best', frameon=False)
             plt.savefig('figures/CSI_per_species.png')
@@ -690,7 +689,7 @@ class ScenarioProperties:
             plt.xlabel('Time (years)')
             plt.ylabel('Cumulative CSI')
             plt.xlim([0, np.max(self.results['times'])])
-            plt.title('CSI for Active and Derelict Species')
+            plt.title('Cumulative Space Index (CSI) for Active and Derelict Species')
             plt.legend(loc='best', frameon=False)
             plt.savefig('figures/CSI_active_derelict.png')
         else:

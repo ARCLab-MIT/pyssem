@@ -82,8 +82,7 @@ class Model:
                 baseline=baseline,
                 indicator_variables=indicator_variables
             )
-
-
+            
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
         
@@ -144,6 +143,11 @@ class Model:
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+
+            self.results_to_json()
+            
+            # CSI Index
+            self.scenario_properties.cum_CSI()
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -408,52 +412,46 @@ class Model:
         import shutil
         shutil.rmtree(frames_dir)
 
-
-
-
 if __name__ == "__main__":
 
-    # with open(os.path.join('pyssem', 'example_sim.json')) as f:
-    #     simulation_data = json.load(f)
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
+        simulation_data = json.load(f)
 
-    # scenario_props = simulation_data["scenario_properties"]
+    scenario_props = simulation_data["scenario_properties"]
 
-    # # Create an instance of the pySSEM_model with the simulation parameters
-    # model = Model(
-    #     start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
-    #     simulation_duration=scenario_props["simulation_duration"],
-    #     steps=scenario_props["steps"],
-    #     min_altitude=scenario_props["min_altitude"],
-    #     max_altitude=scenario_props["max_altitude"],
-    #     n_shells=scenario_props["n_shells"],
-    #     launch_function=scenario_props["launch_function"],
-    #     integrator=scenario_props["integrator"],
-    #     density_model=scenario_props["density_model"],
-    #     LC=scenario_props["LC"],
-    #     v_imp = scenario_props.get("v_imp", None), 
-    #     fragment_spreading=scenario_props.get("fragment_spreading", False),
-    #     parallel_processing=scenario_props.get("parallel_processing", True),
-    #     baseline=scenario_props.get("baseline", False),
-    #     indicator_variables=scenario_props.get("indicator_variables", None)
-    # )
+    # Create an instance of the pySSEM_model with the simulation parameters
+    model = Model(
+        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+        simulation_duration=scenario_props["simulation_duration"],
+        steps=scenario_props["steps"],
+        min_altitude=scenario_props["min_altitude"],
+        max_altitude=scenario_props["max_altitude"],
+        n_shells=scenario_props["n_shells"],
+        launch_function=scenario_props["launch_function"],
+        integrator=scenario_props["integrator"],
+        density_model=scenario_props["density_model"],
+        LC=scenario_props["LC"],
+        v_imp = scenario_props.get("v_imp", None), 
+        fragment_spreading=scenario_props.get("fragment_spreading", False),
+        parallel_processing=scenario_props.get("parallel_processing", True),
+        baseline=scenario_props.get("baseline", False),
+        indicator_variables=scenario_props.get("indicator_variables", None)
+    )
 
-    # species = simulation_data["species"]
+    species = simulation_data["species"]
 
-    # species_list = model.configure_species(species)
+    species_list = model.configure_species(species)
 
-    # results = model.run_model()
+    results = model.run_model()
 
     # #model.create_plots()
 
     # ouput = model.results_to_json()
-
 
     # # save the model to a pickle file
     # with open('scenario-amos.pkl', 'wb') as f:
     #     pickle.dump(model.scenario_properties, f)
 
     # open scenario-props.pkl
-    with open('scenario-amos.pkl', 'rb') as f:
-        scenario_props = pickle.load(f)
-
-    scenario_props.cum_CSI()
+    # with open('scenario-amos.pkl', 'rb') as f:
+    #     scenario_props = pickle.load(f)

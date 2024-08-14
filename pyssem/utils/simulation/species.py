@@ -197,10 +197,13 @@ class Species:
         """
 
         # Loop through the json and pass create and instance of species properties for each species
-
         if isinstance(species_json, dict):
             # convert to list
             raise ValueError("Species JSON must be a list.")
+        
+        # Check that at least one species called N exists
+        if not any([item.get('sym_name', '').lower() == 'n' for item in species_json]):
+            raise ValueError("At least one debris species with sym_name 'N' must be provided.")
             
         for properties in species_json:      
             species_object = None
