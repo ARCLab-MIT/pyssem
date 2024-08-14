@@ -56,6 +56,26 @@
             "slotting_effectiveness": 1,
             "sym_name": "B",
             "trackable": true
+        },
+        {
+            "sym_name": "N",
+            "Cd": 2.2,
+            "mass": [0.00141372, 0.5670],
+            "radius": [0.01, 0.1321],
+            "A": "Calculated based on radius",
+            "active": false,
+            "maneuverable": false,
+            "trackable": false,
+            "deltat": null,
+            "Pm": 0,
+            "alpha": 0,
+            "alpha_active": 0,
+            "RBflag": 0,
+            "slotting_effectiveness": 1,
+            "drag_effected": true,
+            "launch_func": "launch_func_null",
+            "pmd_func": "pmd_func_derelict",
+            "drag_func": "drag_func_exp"
         }
     ],
     "status": "not started"
