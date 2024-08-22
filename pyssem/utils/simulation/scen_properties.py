@@ -10,9 +10,6 @@ from ..handlers.handlers import download_file_from_google_drive
 from pkg_resources import resource_filename
 import pandas as pd
 import os
-import multiprocessing as mp
-from loky import get_reusable_executor
-import concurrent.futures
 import multiprocessing
 
 def lambdify_equation(all_symbolic_vars, eq):
@@ -20,6 +17,8 @@ def lambdify_equation(all_symbolic_vars, eq):
 
 # Function to parallelize lambdification using loky
 def parallel_lambdify(equations_flattened, all_symbolic_vars):
+    from loky import get_reusable_executor
+
     # Prepare arguments for parallel processing
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
