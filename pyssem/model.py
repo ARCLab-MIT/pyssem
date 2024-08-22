@@ -139,7 +139,7 @@ class Model:
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
+            with open('scenario-properties-controller.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties
@@ -436,7 +436,7 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    # model.create_plots()
+    model.create_plots()
 
     # ouput = model.results_to_json()
     

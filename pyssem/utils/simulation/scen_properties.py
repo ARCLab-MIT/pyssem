@@ -11,7 +11,6 @@ from pkg_resources import resource_filename
 import pandas as pd
 import os
 import multiprocessing as mp
-from loky import get_reusable_executor
 import concurrent.futures
 import multiprocessing
 
@@ -21,6 +20,7 @@ def lambdify_equation(all_symbolic_vars, eq):
 # Function to parallelize lambdification using loky
 def parallel_lambdify(equations_flattened, all_symbolic_vars):
     # Prepare arguments for parallel processing
+    from loky import get_reusable_executor
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
     # Determine the number of available CPU cores
