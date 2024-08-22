@@ -415,7 +415,7 @@ class ScenarioProperties:
             print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
+                            t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
@@ -424,7 +424,7 @@ class ScenarioProperties:
             print("Integrating equations...")
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
+                            t_eval=self.scen_times, method=self.integrator)
                 
         if output.success:
             print(f"Model run completed successfully.")
