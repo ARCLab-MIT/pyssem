@@ -10,9 +10,6 @@ from ..handlers.handlers import download_file_from_google_drive
 from pkg_resources import resource_filename
 import pandas as pd
 import os
-import multiprocessing as mp
-from loky import get_reusable_executor
-import concurrent.futures
 import multiprocessing
 
 def lambdify_equation(all_symbolic_vars, eq):
@@ -20,6 +17,8 @@ def lambdify_equation(all_symbolic_vars, eq):
 
 # Function to parallelize lambdification using loky
 def parallel_lambdify(equations_flattened, all_symbolic_vars):
+    from loky import get_reusable_executor
+
     # Prepare arguments for parallel processing
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
@@ -232,14 +231,22 @@ class ScenarioProperties:
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
                 # Remember indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
+                
+                if species.launch_altitude is not None:
+                    closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
 
                 for shell in range(self.n_shells):
                     y = species_FLM.loc[shell, :].values / time_step  
-        
+
+                    if species.launch_altitude is not None and shell == closest_shell:
+                        # Add the lambda_constant to each value in the array y
+                        y += species.lambda_constant
+
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
                     else:
                         species.lambda_funs.append(np.array(y))
+
 
                          
     def initial_pop_and_launch(self, baseline=False):
@@ -418,7 +425,7 @@ class ScenarioProperties:
             print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
+                            t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
@@ -427,7 +434,7 @@ class ScenarioProperties:
             print("Integrating equations...")
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
+                            t_eval=self.scen_times, method=self.integrator)
                 
         if output.success:
             print(f"Model run completed successfully.")

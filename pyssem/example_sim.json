@@ -1,5 +1,5 @@
 {
-    "simulation_name": "MOCAT Simulation",
+    "simulation_name": "AMOS Simulation",
     "id": "1234567890",
     "owner": "Indigo Brownhall",
     "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -8,7 +8,7 @@
     "scenario_properties": {
       "start_date": "01/03/2022",   
       "simulation_duration": 100,              
-      "steps": 50,                            
+      "steps": 100,                            
       "min_altitude": 200,                   
       "max_altitude": 1400,                   
       "n_shells": 40,                         
@@ -17,12 +17,12 @@
       "density_model": "static_exp_dens_func", 
       "LC": 0.1,                             
       "v_imp": 10.0,
-      "fragment_spreading": false,
-      "parallel_processing": false, 
-      "baseline": false                       
+      "fragment_spreading": false, 
+      "parallel_processing" :false,
+      "baseline": false                          
     },
-    "species": {
-      "S": {
+    "species": [
+      {
         "sym_name": "S",
         "Cd": 2.2,
         "mass": [1250, 750, 148],
@@ -39,11 +39,12 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_constant",
-        "lambda_constant": 500,
+        "lambda_constant": [2000, 2000, 2000],
+        "launch_altitude" : [1000, 1000, 1000],
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "Su": {
+    {
         "sym_name": "Su",
         "Cd": 2.2,
         "mass": [260, 473],
@@ -60,11 +61,12 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_constant",
-        "lambda_constant": 1000,
+        "lambda_constant": [500, 700],
+        "launch_altitude" : [500, 1000],
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "N": {
+    {
         "sym_name": "N",
         "Cd": 2.2,
         "mass": [0.00141372, 0.5670],
@@ -84,7 +86,7 @@
         "pmd_func": "pmd_func_derelict",
         "drag_func": "drag_func_exp"
     },
-    "Sns": {
+    {
         "sym_name": "Sns",
         "Cd": 2.2,
         "mass": 6,
@@ -104,7 +106,7 @@
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
-    "B": {
+    {
         "sym_name": "B",
         "RBflag" : 1,
         "Cd": 2.2,
@@ -121,5 +123,6 @@
         "trackable": true,
         "pmd_func": "pmd_func_none",
         "drag_func": "drag_func_exp"
-    }}
-  }
+    }
+  ]
+}
