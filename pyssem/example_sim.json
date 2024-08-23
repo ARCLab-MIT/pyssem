@@ -18,7 +18,7 @@
       "LC": 0.1,                             
       "v_imp": 10.0,
       "fragment_spreading": true, 
-      "parallel_processing" : true,
+      "parallel_processing" :false,
       "baseline": false                          
     },
     "species": [
