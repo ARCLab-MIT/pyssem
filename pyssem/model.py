@@ -171,7 +171,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -202,8 +202,7 @@ if __name__ == "__main__":
 
     model.create_plots()
 
-    # ouput = model.results_to_json()
-    
-    # # convert to json file
-    # with open('output.json', 'w') as f:
-    #     f.write(ouput)
+    ouput = model.results_to_json()
+    # convert to json file
+    with open('output.json', 'w') as f:
+        f.write(ouput)

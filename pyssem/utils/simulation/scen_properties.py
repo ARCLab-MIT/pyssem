@@ -232,14 +232,22 @@ class ScenarioProperties:
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
                 # Remember indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
+                
+                if species.launch_altitude is not None:
+                    closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
 
                 for shell in range(self.n_shells):
                     y = species_FLM.loc[shell, :].values / time_step  
-        
+
+                    if species.launch_altitude is not None and shell == closest_shell:
+                        # Add the lambda_constant to each value in the array y
+                        y += species.lambda_constant
+
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
                     else:
                         species.lambda_funs.append(np.array(y))
+
 
                          
     def initial_pop_and_launch(self, baseline=False):
@@ -279,6 +287,9 @@ class ScenarioProperties:
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0
         self.FLM_steps = FLM_steps
+
+        # Export x0 to csv
+        # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
         if not baseline:
             self.future_launch_model(FLM_steps)
