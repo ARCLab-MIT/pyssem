@@ -18,7 +18,8 @@
         "v_imp": 10,
         "baseline": true,
         "fragment_spreading": false,
-        "parallel_processing": false
+        "parallel_processing": false, 
+        "optimizer": true
     },
     "simulation_name": "Indigo",
     "species": [

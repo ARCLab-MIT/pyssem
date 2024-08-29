@@ -7,6 +7,7 @@ import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model, launch_func_constant
 from ..handlers.handlers import download_file_from_google_drive
+from ..optimizer.optimizer import *
 from pkg_resources import resource_filename
 import pandas as pd
 import os
@@ -535,5 +536,11 @@ class ScenarioProperties:
             dN_dt[i] += equations[i](*N)
 
         return dN_dt
+    
+    def optimizer(self):
+        """
+        More parameters to be added in the future.
+        """
+
 
 

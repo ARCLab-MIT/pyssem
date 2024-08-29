@@ -167,6 +167,15 @@ class Model:
             return results_to_json(self)
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
+        
+    def optimize(self):
+        """
+            Run the optimizer. 
+        """
+        try:
+            self.scenario_properties.run_optimizer()
+        except Exception as e:
+            raise RuntimeError(f"Failed to run optimizer: {str(e)}")
 
 
 if __name__ == "__main__":
@@ -199,6 +208,9 @@ if __name__ == "__main__":
     species_list = model.configure_species(species)
 
     results = model.run_model()
+
+    if scenario_props.get("optimzer", False) is True:
+        model.optimize()
 
     model.create_plots()
 
