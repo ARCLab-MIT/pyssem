@@ -10,6 +10,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import imageio
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import imageio
+
 def create_plots(self):
     """
     Generates a number of plots and deposits them into the figures folder.
@@ -125,11 +130,16 @@ def create_plots(self):
 
     weights = [extract_weight(name) for name in species_names]
 
-    # Normalize weights to range [0, 1] for color shading and invert to make lower weights darker
+    # Handle the case where all weights are equal
     max_weight = max(weights)
     min_weight = min(weights)
-    normalized_weights = [(w - min_weight) / (max_weight - min_weight) for w in weights]
-    inverted_weights = [1 - nw for nw in normalized_weights]
+    
+    if max_weight != min_weight:
+        normalized_weights = [(w - min_weight) / (max_weight - min_weight) for w in weights]
+        inverted_weights = [1 - nw for nw in normalized_weights]
+    else:
+        # If all weights are the same, use a default value for inverted weights
+        inverted_weights = [0.5 for _ in weights]
 
     # Create a color map for the base species
     color_map = plt.cm.get_cmap('tab20', len(unique_base_species))
@@ -194,7 +204,7 @@ def create_plots(self):
 
             # Plot all species in one plot
             for species_index in range(n_species):
-                base_color = color_map(unique_base_species.index(base_species_names[species_index]))
+                base_color = color_map.unique_base_species.index(base_species_names[species_index])
                 color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])
                 marker = markers[species_index % len(markers)]
                 ax.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
