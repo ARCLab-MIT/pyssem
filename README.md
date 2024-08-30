@@ -1,12 +1,14 @@
 # pySSEM - Source Sink Evolutionary Model
 
-**This is still at pre-alpha stage, the model is still actively being developed and tested. Please do not rely on results.**
-
 ## Description
 
 pySSEM is a tool that investigates the evolution of the space objects population in Low Earth Orbit (LEO) by exploiting a new probabilistic source-sink model. The objective is to estimate the LEO orbital capacity. This is carried out through the long-term propagation of the proposed source-sink model, which globally takes into account different object species, such as active satellites, derelict satellites, debris, and additional subgroups. Since the Space Objects (SOs) are propagated as species, the information about single objects is missing, but it allows the model to be computationally fast and provide essential information about the projected future distribution of SOs in the space environment for long prediction horizons.
 
 ## Creating a simulation
+If you are running a simulation for the first time, we would recomment starting with the `pyssem/example-sim.json` file, which is a simulation presented by [Miles Lifson at AMOS 2023](https://amostech.com/TechnicalPapers/2023/Poster/Lifson.pdf). Use this as a starting template and then updating the parameters as desired.
+
+Unfortunately, in version 1, adding your own launch file will not be possible and you will only be able to add the launch file created in the above paper. 
+
 ## Simulation Parameters
 
 When creating a model, the following properties are required within the `scenario_properties` section of your JSON configuration file. These parameters define the core aspects of your simulation environment:
@@ -43,6 +45,15 @@ When creating a model, the following properties are required within the `scenari
 
 - **v_imp**: Impact velocity (in km/s).
   - Example: `"v_imp": 10.0`
+
+- **fragment_spreading**: Debris fragments are spread across orbital shells after a collision. This will drastically increase run time, but will lead to more accurate results
+  - Example: `true`
+
+- **parallel_processing**: Will use all available cores to speed up the computations.
+  - Example: `true`
+
+- **baseline**: No futher launches. 
+  - Example: `false`
 
 ## Species Definition
 
@@ -204,7 +215,9 @@ model = Model(
     density_model=scenario_props["density_model"],
     LC=scenario_props["LC"],
     v_imp=scenario_props["v_imp"],
-    launchfile='path/to/launchfile.csv'
+    fragment_spreading=false,
+    parallel_processing=false, 
+    baseline=false
 )
 
 species = simulation_data["species"]

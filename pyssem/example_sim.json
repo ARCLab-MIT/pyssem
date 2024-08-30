@@ -17,8 +17,8 @@
       "density_model": "static_exp_dens_func", 
       "LC": 0.1,                             
       "v_imp": 10.0,
-      "fragment_spreading": true, 
-      "parallel_processing" : true,
+      "fragment_spreading": false, 
+      "parallel_processing" :false,
       "baseline": false                          
     },
     "species": [
@@ -39,7 +39,8 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_constant",
-        "lambda_constant": 500,
+        "lambda_constant": [2000, 2000, 2000],
+        "launch_altitude" : [1000, 1000, 1000],
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
@@ -60,7 +61,8 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_constant",
-        "lambda_constant": 1000,
+        "lambda_constant": [500, 700],
+        "launch_altitude" : [500, 1000],
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
@@ -100,7 +102,8 @@
         "slotting_effectiveness": 0,
         "drag_effected": true,
         "launch_func": "launch_func_constant",
-        "lambda_constant": 500,       
+        "lambda_constant": 500,  
+        "launch_altitude" : 350,     
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },

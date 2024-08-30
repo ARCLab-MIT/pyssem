@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 from tqdm import tqdm
+import os
 
 def find_alt_bin(altitude, scen_properties):
     # Convert altitude ranges to numpy arrays for vectorized operations
@@ -184,36 +185,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
-    # Handle species with elliptical_orbit set to True
-    elliptical_species = []
-    for species_group in scen_properties.species.values():
-        for species in species_group:
-            if species.elliptical_orbit:
-                elliptical_species.append(species.sym_name)
-
-    print("Elliptical Species:", elliptical_species)  # Debug: Check elliptical species
-
-    # Create matrices for semi-major axis and eccentricity bins
-    eccentricity_bins = [0.0, 0.1, 0.2, 0.3, 0.5, 0.9]
-    semi_major_axis_bins = [scen_properties.re + alt for alt in scen_properties.R0_km]
-    n_a_bins = len(semi_major_axis_bins) - 1
-    n_e_bins = len(eccentricity_bins) - 1
-
-    x0_elliptical_summary = pd.DataFrame(index=range(n_a_bins * n_e_bins), columns=elliptical_species).fillna(0)
-
-    for species in elliptical_species:
-        species_data = x0[x0['species'] == species]
-        print(f"Species: {species}, Count: {len(species_data)}")  # Debug: Check species data count
-        species_data['a_bin'] = species_data['sma'].apply(lambda sma: find_bin_index(semi_major_axis_bins, sma))
-        species_data['e_bin'] = species_data['ecc'].apply(lambda ecc: find_bin_index(eccentricity_bins, ecc))
-        for idx, row in species_data.iterrows():
-            a_idx = row['a_bin']
-            e_idx = row['e_bin']
-            if a_idx != -1 and e_idx != -1:
-                x0_elliptical_summary.at[a_idx * n_e_bins + e_idx, species] += 1
-
-    print("x0_elliptical_summary:\n", x0_elliptical_summary)  # Debug: Output summary
-
+    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
     # Create a pivot table, keep alt_bin
     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
