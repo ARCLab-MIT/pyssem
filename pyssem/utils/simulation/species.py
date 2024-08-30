@@ -1,5 +1,10 @@
 import json
 from sympy import Matrix
+from tqdm import tqdm    
+import numpy as np
+from astropy import units as u
+from poliastro.bodies import Earth
+from poliastro.twobody import Orbit
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
@@ -75,9 +80,11 @@ class SpeciesProperties:
 
         self.trackable_radius_threshold = 0.05  # m
 
-        self.elliptical_orbit = False
+        self.elliptical = False
         self.semi_major_axis_bins = None
         self.eccentricity_bins = None
+        self.time_per_shells = []
+        self.velocity_per_shells = []
 
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
@@ -108,6 +115,17 @@ class SpeciesProperties:
                 self.beta = None
             if self.beta is None:
                 print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
+
+    def copy(self):
+        """
+        Create a direct copy of a species object.
+        """
+        new_copy = SpeciesProperties()
+
+        # Copy all attributes from self
+        new_copy.__dict__.update(self.__dict__)
+
+        return new_copy
 
 
 class Species:
@@ -374,19 +392,109 @@ class Species:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
 
-    def set_elliptical_orbits(self, R0_km, Hmid):
+    def propagate_orbit(self, a, e, mu, num_points=1000):
         """
-        Set the semi-major axis and eccentricity bins for the species.
+        Propagate an orbit using the poliastro library and calculate positions over one orbit.
 
         Args:
-            semi_major_axis_bins (list): List of semi-major axis bins.
-            eccentricity_bins (list): List of eccentricity bins.
-        """
-        EARTH_RADIUS_KM = 6371
+            a (float): Semi-major axis in km.
+            e (float): Eccentricity.
+            mu (float): Gravitational parameter in km^3/s^2.
+            num_points (int): Number of points to calculate in the orbit.
 
+        Returns:
+            tuple: Arrays of the true anomaly and radius over the orbit.
+        """
+
+        # Define the orbit using poliastro's Orbit class
+        orbit = Orbit.from_classical(Earth, a * u.km, e * u.one, 0 * u.deg, 0 * u.deg, 0 * u.deg, 0 * u.deg)
+
+        # Time array over one period
+        period = orbit.period.to(u.s).value
+        time_values = np.linspace(0, period, num_points) * u.s
+
+        # Propagate the orbit over time_values
+        positions = np.array([orbit.propagate(t).r for t in time_values])
+        radii = np.linalg.norm(positions, axis=1)
+
+        # Calculate true anomaly for each point (using argument of latitude)
+        true_anomalies = np.linspace(0, 2 * np.pi, num_points)
+
+        # calculate velocity with vis viva
+        velocities = np.sqrt(mu * (2 / radii - 1 / a))
+
+        return true_anomalies, radii, velocities
+
+    def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
+        """
+        Calculate the normalized time spent in each shell and average velocity in each shell.
+
+        Args:
+            radii (np.ndarray): Array of orbital radii.
+            velocities (np.ndarray): Array of orbital velocities.
+            R0_km (np.ndarray): Array of shell boundary altitudes in km.
+
+        Returns:
+            tuple: Normalized time spent in each shell and average velocity in each shell.
+        """
+        time_in_shell = np.zeros(len(R0_km) - 1)
+        velocity_in_shell = np.zeros(len(R0_km) - 1)
+
+        for i in range(len(R0_km) - 1):
+            # Check if the radius falls within the shell boundaries
+            in_shell = (radii >= R0_km[i]) & (radii < R0_km[i + 1])
+            time_in_shell[i] = np.sum(in_shell)
+            if np.sum(in_shell) > 0:
+                velocity_in_shell[i] = np.mean(velocities[in_shell])
+
+        # Normalize the time_in_shell array
+        total_time = np.sum(time_in_shell)
+        if total_time > 0:
+            time_in_shell /= total_time
+
+        return time_in_shell, velocity_in_shell
+
+    def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float):
+        """
+        Set up elliptical orbits for species and calculate the time spent in each shell.
+        """
+        # Create new species for each eccentricity bin
+        for species_group in self.species.values():
+            processed_species = set()  # Set to track species that have already been processed
+
+            for species in list(species_group):  # Create a list to avoid modifying the group during iteration
+                if species.elliptical and species.sym_name not in processed_species:
+                    species.semi_major_axis_bins = HMid
+
+                    # Process each eccentricity bin
+                    for ecc in species.eccentricity_bins:
+                        # Create a new species based on the original
+                        new_species = species.copy()
+                        new_species.eccentricity = ecc
+                        new_species.sym_name = f"{species.sym_name}_e{ecc}"
+                        new_species.time_per_shells = []
+                        new_species.velocity_per_shells = []
+
+
+                        # Add the new species to the group
+                        species_group.append(new_species)
+
+                    # Mark the original species as processed and remove it
+                    processed_species.add(species.sym_name)
+                    species_group.remove(species)
+
+
+        # Calculate the time spent in each shell for each species
         for species_group in self.species.values():
             for species in species_group:
-                if species.elliptical_orbit:
-                    species.semi_major_axis_bins = [EARTH_RADIUS_KM + alt for alt in R0_km]
-                    species.eccentricity_bins = [0.0, 0.1, 0.2, 0.3, 0.5, 0.9]
-    
+                if species.elliptical: # hasn't been created yet
+                    # Set semi-major axis for this species
+                    species.semi_major_axis_bins = HMid
+
+                    # Calculate time spent in each shell for the semi-major axis
+                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                        true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
+                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+                        species.time_per_shells.append(time_in_shell)
+                        species.velocity_per_shells.append(velocity_in_shell)
+

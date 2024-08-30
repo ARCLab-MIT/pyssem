@@ -1,13 +1,13 @@
 {
     "owner": "Indigo",
     "scenario_properties": {
-        "density_model": "JB2008_dens_func",
+        "density_model": "static_exp_dens_func",
         "integrator": "BDF",
         "launch_function": "Constant",
         "LC": 0.1,
         "max_altitude": 2000,
         "min_altitude": 500,
-        "n_shells": 10,
+        "n_shells": 5,
         "simulation_duration": 100,
         "start_date": "01/02/2024",
         "steps": 100,
@@ -34,7 +34,9 @@
             "slotted": false,
             "slotting_effectiveness": 1,
             "sym_name": "B",
-            "trackable": true
+            "trackable": true,
+            "elliptical": true,
+            "eccentricity_bins" : [0.01, 0.05, 0.4]
         },
         {
             "sym_name": "N",
@@ -54,7 +56,8 @@
             "drag_effected": true,
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_derelict",
-            "drag_func": "drag_func_exp"
+            "drag_func": "drag_func_exp",
+            "elliptical": false
         }
     ],
     "status": "not started"

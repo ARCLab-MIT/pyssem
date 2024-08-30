@@ -223,7 +223,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
         flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
         flm_steps = pd.concat([flm_steps, flm_summary])
     
-    return x0_summary, flm_steps, x0_elliptical_summary
+    return x0_summary, flm_steps
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """

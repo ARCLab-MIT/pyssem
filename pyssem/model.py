@@ -95,12 +95,12 @@ class Model:
             species_list = Species()
             
             species_list.add_species_from_json(species_json)
+
+            # Set up elliptical orbits for species
+            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
-
-            # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties.R0_km, self.scenario_properties.HMid)
 
             # Create symbolic variables for the species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
@@ -113,6 +113,9 @@ class Model:
 
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+
+            # Merge elliptical back to main species
+            # species_list.merge_elliptical_to_main()
 
             return species_list
         except json.JSONDecodeError:

@@ -281,10 +281,9 @@ class ScenarioProperties:
         # Example usage: print the filepath to verify
         print("Filepath:", filepath)
               
-        [x0, FLM_steps, x0_elliptical] = ADEPT_traffic_model(self, filepath)
+        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
         # Store as part of the class, as it is needed for the run_model()
-        self.x0_elliptical = x0_elliptical
         self.x0 = x0
         self.FLM_steps = FLM_steps
 
