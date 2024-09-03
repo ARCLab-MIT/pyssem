@@ -148,7 +148,7 @@ def calculate_amsms_not_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
-def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
+def evolve_bins(m1, m2, r1, r2, dv, binC, binE, binW, LBdiam, source_sinks, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
     """
     Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
     Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
@@ -333,7 +333,6 @@ def process_species_pair(args):
 
     # Calculate the number of fragments made for each debris species
     frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-    is_catastrophic = np.zeros((1, scen_properties.species_length))
     alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
 
     # This will tell you the number of fragments in each debris bin
@@ -341,7 +340,7 @@ def process_species_pair(args):
         # If using the collision spreading function             
         if scen_properties.fragment_spreading:
             try:
-                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
+                results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
                 frags_made[dv_index, :] = results[0]
                 alt_nums = results[3]
             except IndexError as ie:
@@ -350,8 +349,21 @@ def process_species_pair(args):
             except ValueError as e:
                 continue
         else:
-            results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag)
-            frags_made[dv_index, :] = results[0]
+            results = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], LBgiven, RBflag, source_sinks)
+            # Check if s1 or s2 is elliptical
+            if s1.elliptical or s2.elliptical:
+                if s1.elliptical and s2.elliptical:
+                    # Both are elliptical, take the product of the time_per_shells values
+                    time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
+                elif s1.elliptical:
+                    time_factor = s1.time_per_shells[dv_index][dv_index]
+                else:
+                    # Only s2 is elliptical, use its time_per_shells value
+                    time_factor = s2.time_per_shells[dv_index][dv_index]
+                
+                frags_made[dv_index, :] = results[0] * time_factor
+            else:
+                frags_made[dv_index, :] = results[0]
 
     for i, species in enumerate(debris_species):
         frags_made_sym = Matrix(frags_made[:, i]) 

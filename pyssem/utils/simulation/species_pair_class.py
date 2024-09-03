@@ -25,7 +25,7 @@ class SpeciesPairClass:
         """
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")
-
+    
         # As species is a dictionary, it needs to be flatted first        
         all_species = [species for category in scen_properties.species.values() for species in category]
 
@@ -75,6 +75,7 @@ class SpeciesPairClass:
 
         if scen_properties.fragment_spreading:
             product_sym = species1.sym.multiply_elementwise(species2.sym).T
+
 
 
         # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 

@@ -216,8 +216,6 @@ class Species:
                 multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
                 multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
 
-        # Launch            
-
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
         return multi_species_list
