@@ -85,6 +85,8 @@ class SpeciesProperties:
         self.eccentricity_bins = None
         self.time_per_shells = []
         self.velocity_per_shells = []
+        self.ecc_lb = 0
+        self.ecc_ub = 1
 
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
@@ -178,7 +180,7 @@ class Species:
                     launch_alt_temp = species_props_copy.get('launch_altitude', 0)
 
                     species_props_copy['lambda_constant'] = lambda_const_temp[i-1]
-                    species_props_copy['lambda_altitude'] = launch_alt_temp[i-1]
+                    species_props_copy['launch_altitude'] = launch_alt_temp[i-1]
             except Exception as e:
                 raise ValueError(f"If you have lambda_constant as part of a multiple mass species. Please ensure that you have a lambda and alttiude defined for each sub-species.")
 
@@ -404,22 +406,32 @@ class Species:
             tuple: Arrays of the true anomaly and radius over the orbit.
         """
 
-        # Define the orbit using poliastro's Orbit class
+        #  convert mu to km^3/s^2
         orbit = Orbit.from_classical(Earth, a * u.km, e * u.one, 0 * u.deg, 0 * u.deg, 0 * u.deg, 0 * u.deg)
 
         # Time array over one period
         period = orbit.period.to(u.s).value
         time_values = np.linspace(0, period, num_points) * u.s
 
-        # Propagate the orbit over time_values
-        positions = np.array([orbit.propagate(t).r for t in time_values])
+        # Propagate the orbit over time_values and calculate positions and velocities
+        positions = []
+        velocities = []
+        for t in time_values:
+            state = orbit.propagate(t)
+            positions.append(state.r.to(u.km).value)  # Position in km
+
+            # Technically, we are working out the speed not the velocity (magnitude of velocity)
+            velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
+
+        # Convert positions and velocities to numpy arrays
+        positions = np.array(positions)
+        velocities = np.array(velocities)
+
+        # Calculate radii (distance from central body)
         radii = np.linalg.norm(positions, axis=1)
 
         # Calculate true anomaly for each point (using argument of latitude)
         true_anomalies = np.linspace(0, 2 * np.pi, num_points)
-
-        # calculate velocity with vis viva
-        velocities = np.sqrt(mu * (2 / radii - 1 / a))
 
         return true_anomalies, radii, velocities
 
@@ -456,7 +468,6 @@ class Species:
         """
         Set up elliptical orbits for species and calculate the time spent in each shell.
         """
-        # Create new species for each eccentricity bin
         for species_group in self.species.values():
             processed_species = set()  # Set to track species that have already been processed
 
@@ -465,7 +476,7 @@ class Species:
                     species.semi_major_axis_bins = HMid
 
                     # Process each eccentricity bin
-                    for ecc in species.eccentricity_bins:
+                    for i, ecc in enumerate(species.eccentricity_bins):
                         # Create a new species based on the original
                         new_species = species.copy()
                         new_species.eccentricity = ecc
@@ -473,6 +484,16 @@ class Species:
                         new_species.time_per_shells = []
                         new_species.velocity_per_shells = []
 
+                        # Calculate the lower and upper bounds for the eccentricity bin
+                        if i == 0:
+                            new_species.ecc_lb = 0 
+                        else:
+                            new_species.ecc_lb = 0.5 * (species.eccentricity_bins[i - 1] + ecc)
+
+                        if i == len(species.eccentricity_bins) - 1:
+                            new_species.ecc_ub = 1  
+                        else:
+                            new_species.ecc_ub = 0.5 * (ecc + species.eccentricity_bins[i + 1])
 
                         # Add the new species to the group
                         species_group.append(new_species)
