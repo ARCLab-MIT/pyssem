@@ -83,7 +83,8 @@ class Model:
         
     def configure_species(self, species_json):
         """
-        Configure species into Species objects from JSON.
+        Configure species into Species objects from JSON. This will pass the multiple species and split them, creating the symbolic variables.
+        Then pairs the debris and active species for PMD modeling.Finally, it will create the collision pairs between the species to enable the simulation.
         
         Parameters:
         - species_json (dict): JSON object containing species data.

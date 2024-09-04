@@ -373,19 +373,19 @@ def process_species_pair(args):
         else:
             results = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks)
             # Check if s1 or s2 is elliptical
-            # if s1.elliptical or s2.elliptical:
-            #     if s1.elliptical and s2.elliptical:
-            #         # Both are elliptical, take the product of the time_per_shells values
-            #         time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
-            #     elif s1.elliptical:
-            #         time_factor = s1.time_per_shells[dv_index][dv_index]
-            #     else:
-            #         # Only s2 is elliptical, use its time_per_shells value
-            #         time_factor = s2.time_per_shells[dv_index][dv_index]
+            if s1.elliptical or s2.elliptical:
+                if s1.elliptical and s2.elliptical:
+                    # Both are elliptical, take the product of the time_per_shells values
+                    time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
+                elif s1.elliptical:
+                    time_factor = s1.time_per_shells[dv_index][dv_index]
+                else:
+                    # Only s2 is elliptical, use its time_per_shells value
+                    time_factor = s2.time_per_shells[dv_index][dv_index]
                 
-            #     frags_made[dv_index, :] = results[0] * time_factor
-            # else:
-            frags_made[dv_index, :] = results[0]
+                frags_made[dv_index, :] = results[0] * time_factor
+            else:
+                frags_made[dv_index, :] = results[0]
 
     for i, species in enumerate(debris_species):
         frags_made_sym = Matrix(frags_made[:, i]) 
@@ -432,9 +432,9 @@ def create_collision_pairs(scen_properties):
     species_pairs_classes = [] 
     n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
 
-    # Debris species
-    debris_species = scen_properties.species['debris']
-
+    # Debris species - remember, we don't want PMD linked species. Just raw debris.
+    debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
+    
     # Calculate the Mass bin centres, edges and widths
     binC = np.zeros(len(debris_species))
     binE = np.zeros(2 * len(debris_species))

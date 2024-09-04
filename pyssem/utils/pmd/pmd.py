@@ -56,8 +56,6 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
         sympy.Matrix: Cpmdot, the rate of change in the species due to post-mission
                       disposal, an N_shell x 1 matrix.
     """
-    num_linked_species = len(species_properties.pmd_linked_species)
-
     # Initialize Cpmddot as a symbolic zero matrix
     Cpmddot = zeros(scen_properties.n_shells, 1)
 
@@ -70,9 +68,3 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
             Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
 
     return Cpmddot
-
-# Example usage of find_alt_bin, assuming altitude bins are predefined in scen_properties
-def find_alt_bin(disposal_altitude, scen_properties):
-    # This is a placeholder function; you need to define the logic based on your altitude bins
-    pass
-
