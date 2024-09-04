@@ -73,6 +73,35 @@ def launch_func_constant(t, h, species_properties, scen_properties):
 
     return Lambdadot_list
 
+def launch_func_random(t, h, species_properties, scen_properties):
+    """
+    Adds a random launch rate from species_properties.lambda_random.
+    Given a certain altitude, this will return the rate of change in the species in each shell at the specified time due to launch.
+
+    Args:
+        t (float): Time from scenario start in years.
+        h (list or numpy.ndarray): Altitudes of the scenario above ellipsoid in km of shell lower edges.
+        species_properties (dict): Properties for the species, including 'lambda_random'.
+        scen_properties (dict): Properties for the scenario, including 'N_shell'.
+
+    Returns:
+        list: np., a list of symbolic expressions representing the rate of change in the species in each shell due to launch.
+    """
+
+    if len(h) != scen_properties.n_shells:
+        raise ValueError("Random launch rate must be specified per altitude shell.")
+
+    # Create a symbolic variable for the launch rate
+    lambda_random = symbols('lambda_random')
+
+    # Assign the random launch rate to each shell
+    Lambdadot = Matrix(scen_properties.n_shells, 1, lambda i, j: lambda_random)
+
+    # Convert the Matrix of symbolic expressions to a list
+    Lambdadot_list = [Lambdadot[i] for i in range(scen_properties.n_shells)]
+
+    return Lambdadot_list
+
 def launch_func_lambda_fun(t, h, species_properties, scen_properties):
     """
     This function will return the lambda function for a required species. 
