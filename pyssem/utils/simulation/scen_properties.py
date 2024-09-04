@@ -288,7 +288,7 @@ class ScenarioProperties:
         self.FLM_steps = FLM_steps
 
         # Export x0 to csv
-        # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
         if not baseline:
             self.future_launch_model(FLM_steps)

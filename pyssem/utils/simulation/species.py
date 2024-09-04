@@ -188,22 +188,21 @@ class Species:
 
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
+
+        # Sort the species by mass
+        species_list.sort(key=lambda x: x.mass) # sorts by mass
+
+        for i in range(len(species_list)):
+            if i == 0:
+                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+            elif i == len(species_list) - 1:
+                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+            else:
+                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+
         return species_list
-
-    def calculate_mass_bins(self):
-
-        self.species['debris'].sort(key=lambda x: x.mass) # sorts by mass
-
-        # Update the mass_lb and mass_ub for each species
-        # This will be based on the mass of the species and the mass of the species before and after it in the list
-        for i in range(len(self.species['debris'])):
-            if i == 0:  # First element (lowest mass)
-                self.species['debris'][i].mass_ub = 0.5 * (self.species['debris'][i].mass + self.species['debris'][i + 1].mass)
-            elif i == len(self.species['debris']) - 1:  # Last element (highest mass)
-                self.species['debris'][i].mass_lb = 0.5 * (self.species['debris'][i - 1].mass + self.species['debris'][i].mass)
-            else:  # Elements in between
-                self.species['debris'][i].mass_ub = 0.5 * (self.species['debris'][i].mass + self.species['debris'][i + 1].mass)
-                self.species['debris'][i].mass_lb = 0.5 * (self.species['debris'][i - 1].mass + self.species['debris'][i].mass)       
+  
 
     def add_species_from_json(self, species_json: json):
         """
@@ -250,8 +249,6 @@ class Species:
 
             self.species['debris'].append(debris_species_template)
 
-        self.calculate_mass_bins()
-
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
            
         return self.species
@@ -296,8 +293,6 @@ class Species:
         all_species_symbols = []
         for species_group in self.species.values():
             for species in species_group:
-                if species.sym_name == "B":
-                    print("Species name contains B")
                 # if a sym_name contains '.' then it will be replaced with 'p'
                 species.sym_name.replace('.', 'p') # P means decimal point
                 species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
