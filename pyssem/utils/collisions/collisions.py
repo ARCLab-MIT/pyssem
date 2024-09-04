@@ -398,9 +398,9 @@ def create_collision_pairs(scen_properties):
     species_pairs_classes = [] 
     n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
 
-    # Debris species
-    debris_species = scen_properties.species['debris']
-
+    # Debris species - remember, we don't want PMD linked species. Just raw debris.
+    debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
+    
     # Calculate the Mass bin centres, edges and widths
     binC = np.zeros(len(debris_species))
     binE = np.zeros(2 * len(debris_species))

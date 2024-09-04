@@ -83,7 +83,8 @@ class Model:
         
     def configure_species(self, species_json):
         """
-        Configure species into Species objects from JSON.
+        Configure species into Species objects from JSON. This will pass the multiple species and split them, creating the symbolic variables.
+        Then pairs the debris and active species for PMD modeling.Finally, it will create the collision pairs between the species to enable the simulation.
         
         Parameters:
         - species_json (dict): JSON object containing species data.
@@ -109,7 +110,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             return species_list
         except json.JSONDecodeError:
@@ -209,9 +210,6 @@ if __name__ == "__main__":
     species_list = model.configure_species(species)
 
     results = model.run_model()
-
-    if scenario_props.get("optimzer", False) is True:
-        model.optimize()
 
     model.create_plots()
 
