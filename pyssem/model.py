@@ -102,7 +102,7 @@ class Model:
             # Create symbolic variables for the species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
-            # Pair the active species to the debris species for PMD modeling
+            # # Pair the active species to the debris species for PMD modeling
             species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['debris'])
 
             # Add the final species to the scenario properties to be used in the simulation
@@ -172,7 +172,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'just_debris.json')) as f:
+    with open(os.path.join('pyssem', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]

@@ -1,5 +1,6 @@
 import json
 from sympy import Matrix
+import copy
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
@@ -134,14 +135,20 @@ class Species:
         :return: _description_
         :rtype: _type_
         """
+        self.species['debris'] = []
 
-        if len(species_properties['mass']) == 1:
-            raise ValueError("Multi-property species must have multiple masses.")
+
+        # As mass can also be a list, we need to convert it to a list, to do a len check
+        mass = species_properties.get('mass', [])
+        if not isinstance(mass, list):
+            mass = [mass]
+        if len(mass) == 1:
+            self.species['debris'].append(SpeciesProperties(species_properties)) # have to return a list
+            return self.species['debris']
         
         if "_" in species_properties['sym_name']:
             raise ValueError("Species names cannot contain underscores.")
 
-        multi_species_list = []
         num_species = len(species_properties['mass'])
 
         for i in range(num_species):
@@ -156,7 +163,7 @@ class Species:
                     launch_alt_temp = species_props_copy.get('launch_altitude', 0)
 
                     species_props_copy['lambda_constant'] = lambda_const_temp[i-1]
-                    species_props_copy['lambda_altitude'] = launch_alt_temp[i-1]
+                    species_props_copy['launch_altitude'] = launch_alt_temp[i-1]
             except Exception as e:
                 raise ValueError(f"If you have lambda_constant as part of a multiple mass species. Please ensure that you have a lambda and alttiude defined for each sub-species.")
 
@@ -178,28 +185,109 @@ class Species:
                  
             # Create the species instance and append it to the species list
             species_instance = SpeciesProperties(species_props_copy)
-            multi_species_list.append(species_instance)
-
-        # Sort the species list by mass and set upper and lower bounds for mass bins
-        multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
-
-        # Update the mass_lb and mass_ub for each species
-        # This will be based on the mass of the species and the mass of the species before and after it in the list
-        for i in range(len(multi_species_list)):
-            if i == 0:  # First element (lowest mass)
-                multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
-            elif i == len(multi_species_list) - 1:  # Last element (highest mass)
-                multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
-            else:  # Elements in between
-                multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
-                multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
-
-        # Launch            
+            self.species['debris'].append(species_instance)
 
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
-        return multi_species_list
+        return self.species['debris']
+
+    # def add_species_from_json(self, species_json: json) -> None:
+    #     """
+    #     Creates a dictionary of the species properties from a json file.
+    #     It will create a dictionary of 'active' 'debris' and 'rocket_body' species.
+
+    #     :param json_string: _description_
+    #     :type json_string: json
+    #     :return: _description_
+    #     :rtype: None
+    #     """
+
+    #     # Loop through the json and pass create and instance of species properties for each species
+
+    #     if isinstance(species_json, dict):
+    #         # convert to list
+    #         raise ValueError("Species JSON must be a list.")
+            
+    #     for properties in species_json:      
+    #         species_object = None
+
+    #         # Active
+    #         if properties.get('active', False):
+    #             if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
+    #                 multiple_species = self.add_multi_property_species(properties)
+    #                 self.species['active'].extend(multiple_species)
+    #             else:
+    #                 species_object = SpeciesProperties(properties)
+    #                 self.species['active'].append(species_object)
+
+    #         # Debris and Rocket Body
+    #         rb_flag = properties.get('RBflag', 0)  # Defaults to 0 if 'RBflag' is not found
+    #         if rb_flag == 1:
+    #             if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
+    #                 multiple_species = self.add_multi_property_species(properties)
+    #                 self.species['rocket_body'].extend(multiple_species)
+    #             else:
+    #                 species_object = SpeciesProperties(properties)
+    #                 self.species['rocket_body'].append(species_object)
+
+    #     # The debris species (N) will need to be created for the active species. 
+    #     # Therefore you have to re-loop after the active satellites have been created.
+    #     active_masses = [i.mass for i in self.species['active']]
+    #     active_radii = [i.radius for i in self.species['active']]
+
+    #     for item in species_json:
+    #         properties = item  # Now item itself is the properties dictionary
+
+    #         if not properties.get('active', True):
+    #             if properties.get('RBflag', 0) == 0:
+    #                 debris_species = properties
+    #                 if isinstance(debris_species.get('mass', []), list) and len(debris_species['mass']) > 1:
+    #                     debris_species['mass'].extend(active_masses)
+    #                     debris_species['radius'].extend(active_radii)
+    #                 else:  # Just take the one value
+    #                     if active_masses:
+    #                         # Ensure debris_species['mass'] is a list
+    #                         current_mass = debris_species.get('mass', [])
+    #                         if not isinstance(current_mass, list):
+    #                             current_mass = [current_mass]
+    #                         debris_species['mass'] = current_mass + [active_masses[0]]
+    #                     if active_radii:
+    #                         # Ensure debris_species['radius'] is a list
+    #                         current_radius = debris_species.get('radius', [])
+    #                         if not isinstance(current_radius, list):
+    #                             current_radius = [current_radius]
+    #                         debris_species['radius'] = current_radius + [active_radii[0]]
+
+    #                 # Create species objects for non-active species
+    #                 if isinstance(properties.get('mass', []), list) and len(properties['mass']) > 1:
+    #                     multiple_species = self.add_multi_property_species(properties)
+    #                     self.species['debris'].extend(multiple_species)
+    #                 else:
+    #                     species_object = SpeciesProperties(properties)
+    #                     self.species['debris'].append(species_object)
+
+
+    #     print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
         
+    #     self.calculate_mass_bins()
+
+    #     return self.species
+
+    def calculate_mass_bins(self):
+
+        self.species['debris'].sort(key=lambda x: x.mass) # sorts by mass
+
+        # Update the mass_lb and mass_ub for each species
+        # This will be based on the mass of the species and the mass of the species before and after it in the list
+        for i in range(len(self.species['debris'])):
+            if i == 0:  # First element (lowest mass)
+                self.species['debris'][i].mass_ub = 0.5 * (self.species['debris'][i].mass + self.species['debris'][i + 1].mass)
+            elif i == len(self.species['debris']) - 1:  # Last element (highest mass)
+                self.species['debris'][i].mass_lb = 0.5 * (self.species['debris'][i - 1].mass + self.species['debris'][i].mass)
+            else:  # Elements in between
+                self.species['debris'][i].mass_ub = 0.5 * (self.species['debris'][i].mass + self.species['debris'][i + 1].mass)
+                self.species['debris'][i].mass_lb = 0.5 * (self.species['debris'][i - 1].mass + self.species['debris'][i].mass)       
+
     def add_species_from_json(self, species_json: json) -> None:
         """
         Creates a dictionary of the species properties from a json file.
@@ -216,70 +304,41 @@ class Species:
             species_object = None
 
             # Active
-            if properties.get('active', False):
-                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                    multiple_species = self.add_multi_property_species(properties)
-                    self.species['active'].extend(multiple_species)
-                else:
-                    species_object = SpeciesProperties(properties)
-                    self.species['active'].append(species_object)
-
-            # Debris and Rocket Body
             rb_flag = properties.get('RBflag', 0)  # Defaults to 0 if 'RBflag' is not found
-            if rb_flag == 1:
-                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                    multiple_species = self.add_multi_property_species(properties)
-                    self.species['rocket_body'].extend(multiple_species)
-                else:
-                    species_object = SpeciesProperties(properties)
-                    self.species['rocket_body'].append(species_object)
 
-        # The debris species (N) will need to be created for the active species. 
-        # Therefore you have to re-loop after the active satellites have been created.
-        # This should only happen to active species that have either a pmd value of 1, or NOT pmd_func_none
-        active_masses = [i.mass for i in self.species['active']]
-        active_radii = [i.radius for i in self.species['active']]
+            if properties.get('active', False):
+                self.species['active'].extend(self.add_multi_property_species(properties))
+            elif not properties.get('active', False) and rb_flag == 0:
+                self.species['debris'].extend(self.add_multi_property_species(properties))
+            else:
+                if rb_flag == 1:
+                    self.species['rocket_body'].extend(self.add_multi_property_species(properties))
 
-        for item in species_json:
-            properties = item  # Now item itself is the properties dictionary
+        # Create Debris Species for Post Mission Disposal
+        # If an object has a pmd_func that is not pmd_func_none, then a debris species will need to be created for it. 
 
-            if not properties.get('active', True):
-                if properties.get('RBflag', 0) == 0:
-                    
-                    if properties.get('pmd_func', 'pmd_func_none'):
-                        # Don't create a debris species
-                        # Create species objects for non-active species
-                        if isinstance(properties.get('mass', []), list) and len(properties['mass']) > 1:
-                            multiple_species = self.add_multi_property_species(properties)
-                            self.species['debris'].extend(multiple_species)
-                        else:
-                            species_object = SpeciesProperties(properties)
-                            self.species['debris'].append(species_object)
+        for properties in self.species['active']:
+            if properties.pmd_func == 'pmd_func_none':
+                # Don't create a debris species
+                continue
 
-                    debris_species = properties
-                    if isinstance(debris_species.get('mass', []), list) and len(debris_species['mass']) > 1:
-                        debris_species['mass'].extend(active_masses)
-                        debris_species['radius'].extend(active_radii)
-                    else:  # Just take the one value
-                        if active_masses:
-                            # Ensure debris_species['mass'] is a list
-                            current_mass = debris_species.get('mass', [])
-                            if not isinstance(current_mass, list):
-                                current_mass = [current_mass]
-                            debris_species['mass'] = current_mass + [active_masses[0]]
-                        if active_radii:
-                            # Ensure debris_species['radius'] is a list
-                            current_radius = debris_species.get('radius', [])
-                            if not isinstance(current_radius, list):
-                                current_radius = [current_radius]
-                            debris_species['radius'] = current_radius + [active_radii[0]]
+            # Change the relevant properties to make it a debris
+            debris_species_template = copy.deepcopy(self.species['debris'][0])  
+            debris_species_template.mass = properties.mass
+            debris_species_template.Cd = properties.Cd
+            debris_species_template.A = properties.A
+            debris_species_template.amr = properties.amr
+            debris_species_template.beta = properties.beta
+            debris_species_template.radius = properties.radius
+            debris_species_template.trackable = properties.trackable  # large debris is trackable
+            debris_species_template.sym_name = f"N_{properties.mass}kg"
 
-                    
+            self.species['debris'].append(debris_species_template)
 
+        self.calculate_mass_bins()
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
-        
-        # Pass any required functions
+           
         return self.species
     
     def convert_params_to_functions(self):
@@ -322,6 +381,8 @@ class Species:
         all_species_symbols = []
         for species_group in self.species.values():
             for species in species_group:
+                if species.sym_name == "B":
+                    print("Species name contains B")
                 # if a sym_name contains '.' then it will be replaced with 'p'
                 species.sym_name.replace('.', 'p') # P means decimal point
                 species.sym = Matrix(symbols([f'{species.sym_name}_{i+1}' for i in range(n_shells)]))
@@ -336,7 +397,10 @@ class Species:
         Args:
             active_species (list): List of active species objects.
             debris_species (list): List of debris species objects.
-        """
+        # """
+        # active_species = self.species['active']
+        # debris_species = self.species['debris']
+
         # Collect active species and their names
         linked_spec_names = [item.sym_name for item in active_species]
         print("Pairing the following active species to debris classes for PMD modeling...")
