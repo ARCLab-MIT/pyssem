@@ -16,8 +16,12 @@ def PrfAll(x, scenario_properties):
 
   Returns:
     f: Objective function.
-  """
+  """ 
 
+  # define which species that you want
+  # log helps to norm the values
+  # github - should be more hands on/tuning for the optimizer
+  
   N_shell = scenario_properties.n_shells
   S_all = x[:N_shell]  # Extract S_all from x
 
@@ -57,13 +61,16 @@ def PrIneqAll(x,scenario_properties,failure_rate_U):
       An array containing the results of all inequality constraint function evaluations.
     """
 
+    # need to fix this - user defines what species they want to use
+    # usually is greater than 0, need to flip the sign if you want less than. 
+
     N_shell = scenario_properties.n_shells
     S_all = x[:N_shell]
-    lambda_all = x[3*N_shell:4*N_shell]
-    deltat = 8
+    lambda_all = x[3*N_shell:4*N_shell] # should be the end of the x array
+    deltat = 8 # not able to access deltat from the scenario_properties object - fix 
     y_fail_u = []
     for i1 in range(N_shell):
-        y_fail_u.append( -(lambda_all[i1] * deltat * (1 - failure_rate_U) - S_all[i1]) ) 
+        y_fail_u.append( -(lambda_all[i1] * deltat * (1 - failure_rate_U) - S_all[i1]) ) # flip minus sign for less than, failure rate upper is set to 100, this can be defined by the user. 
     c_ineq = y_fail_u
 
     return c_ineq
@@ -127,6 +134,7 @@ def run_optimizer(scenario_properties):
   ub = np.inf
 
   ## Farilure rate, % = fail_rate / 100
+  # make this user define. This is a %. 
   failure_rate_U = 100
   failure_rate_U = failure_rate_U/100
 
