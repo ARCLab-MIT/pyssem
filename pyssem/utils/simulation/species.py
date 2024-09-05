@@ -192,7 +192,7 @@ class Species:
                 raise ValueError(f"If you have lambda_constant as part of a multiple mass species. Please ensure that you have a lambda and alttiude defined for each sub-species.")
 
             for field in species_properties:
-                if field == "sym_name":
+                if field == "sym_name" or field == "eccentricity_bins": # these get handled later
                     continue
 
                 field_value = species_properties[field]

@@ -7,7 +7,7 @@
     "modified": "2024-01-01T12:00:00Z",
     "scenario_properties": {
       "start_date": "01/03/2022",   
-      "simulation_duration": 50,              
+      "simulation_duration": 100,              
       "steps": 50,                            
       "min_altitude": 200,                   
       "max_altitude": 1400,                   
@@ -17,8 +17,8 @@
       "density_model": "static_exp_dens_func", 
       "LC": 0.1,                             
       "v_imp": 10.0,
-      "fragment_spreading": false, 
-      "parallel_processing" : false,
+      "fragment_spreading": true, 
+      "parallel_processing" : true,
       "baseline": false                          
     },
     "species": [
@@ -60,9 +60,6 @@
         "RBflag": 0,
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
-        "launch_func": "launch_func_constant",
-        "lambda_constant": [250, 250],
-        "launch_altitude" : [500, 750],
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
@@ -123,7 +120,9 @@
         "alpha_active": 0, 
         "trackable": true,
         "pmd_func": "pmd_func_none",
-        "drag_func": "drag_func_exp"
+        "drag_func": "drag_func_exp",
+        "elliptical": true, 
+        "eccentricity_bins": [0.1, 0.2]
     }
   ]
 }

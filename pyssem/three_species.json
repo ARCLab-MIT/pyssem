@@ -17,7 +17,7 @@
         "steps": 100,
         "v_imp": 10, 
         "baseline": true,
-        "fragment_spreading": true, 
+        "fragment_spreading": false, 
         "parallel_processing": false
     },
     "simulation_name": "Indigo",
