@@ -12,7 +12,7 @@
         "start_date": "01/02/2024",
         "steps": 100,
         "v_imp": 10,
-        "fragment_spreading": false,
+        "fragment_spreading": true,
         "baseline": true,
         "parallel_processing": false
     },
@@ -34,9 +34,7 @@
             "slotted": false,
             "slotting_effectiveness": 1,
             "sym_name": "B",
-            "trackable": true,
-            "elliptical": true,
-            "eccentricity_bins" : [0.01, 0.02, 0.04, 0.06, 0.1]
+            "trackable": true
         },
         {
             "sym_name": "N",

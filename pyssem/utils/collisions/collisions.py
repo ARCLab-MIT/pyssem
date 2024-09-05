@@ -305,6 +305,8 @@ def process_species_pair(args):
     m1, m2 = s1.mass, s2.mass
     r1, r2 = s1.radius, s2.radius
 
+    # print(f"{s1.sym_name} vs. {s2.sym_name}")
+
     # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
     gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
 
@@ -346,18 +348,7 @@ def process_species_pair(args):
     # This will tell you the number of fragments in each debris bin
     for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
 
-        # # First, calculte if ellitpical the dv value
-        # if s1.elliptical:
-        #     dv1 = s1.velocity_per_shells[dv_index][dv_index]
-        # else:
-        #     dv1 = dv
-
-        # if s2.elliptical:
-        #     dv2 = s2.velocity_per_shells[dv_index][dv_index]
-        # else:
-        #     dv2 = dv
-
-        dv1, dv2 = 10, 10
+        dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. This can change later. 
 
         # If using the collision spreading function             
         if scen_properties.fragment_spreading:
@@ -430,11 +421,12 @@ def create_collision_pairs(scen_properties):
     # Combine the cross and self pairs
     species_pairs = species_cross_pairs + species_self_pairs
     species_pairs_classes = [] 
-    n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
+    # n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
 
     # Debris species - remember, we don't want PMD linked species. Just raw debris.
-    debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
-    
+    # debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
+    debris_species = [species for species in scen_properties.species['debris']]
+
     # Calculate the Mass bin centres, edges and widths
     binC = np.zeros(len(debris_species))
     binE = np.zeros(2 * len(debris_species))

@@ -213,7 +213,21 @@ class Species:
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
 
-        # Sort the species by mass
+        # Sort the species by mass, only if active, if debris it will be done once PMD species are added. 
+        if species_properties['active'] == True:
+            species_list.sort(key=lambda x: x.mass)
+            for i in range(len(species_list)):
+                if i == 0:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                elif i == len(species_list) - 1:
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+                else:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+
+        return species_list
+    
+    def set_mass_bounds(self, species_list):
         species_list.sort(key=lambda x: x.mass) # sorts by mass
 
         for i in range(len(species_list)):
@@ -224,8 +238,9 @@ class Species:
             else:
                 species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
                 species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-
+        
         return species_list
+
   
 
     def add_species_from_json(self, species_json: json):
@@ -274,6 +289,9 @@ class Species:
             self.species['debris'].append(debris_species_template)
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
+
+        # As new debris species have been added, the upper and lower mass bounds need to be updated
+        self.species['debris'] = self.set_mass_bounds(self.species['debris'])
            
         return self.species
     
