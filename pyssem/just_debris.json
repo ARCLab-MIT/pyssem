@@ -1,13 +1,13 @@
 {
     "owner": "Indigo",
     "scenario_properties": {
-        "density_model": "JB2008_dens_func",
+        "density_model": "static_exp_dens_func",
         "integrator": "BDF",
         "launch_function": "Constant",
         "LC": 0.1,
-        "max_altitude": 2000,
+        "max_altitude": 1200,
         "min_altitude": 500,
-        "n_shells": 10,
+        "n_shells": 20,
         "simulation_duration": 100,
         "start_date": "01/02/2024",
         "steps": 100,
@@ -54,8 +54,10 @@
             "drag_effected": true,
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_derelict",
-            "drag_func": "drag_func_exp"
+            "drag_func": "drag_func_exp",
+            "elliptical": false
         }
+        
     ],
     "status": "not started"
 }
