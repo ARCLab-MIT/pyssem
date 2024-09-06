@@ -22,7 +22,11 @@ def func_Am(d, ObjClass):
     out : ndarray
         Area-to-mass ratio for each fragment.
     """
-    numObj = d.size
+    try:
+        numObj = d.size
+    except AttributeError:
+        numObj = 1
+        d = np.array([d])
     logds = np.log10(d)
     amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
 
