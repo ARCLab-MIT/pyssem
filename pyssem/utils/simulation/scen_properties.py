@@ -2,7 +2,7 @@ import numpy as np
 from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
-from scipy.spatial import KDTree
+from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model, launch_func_constant
@@ -134,6 +134,9 @@ class ScenarioProperties:
 
         # Baseline Scenario
         self.baseline = baseline    
+
+        # Progress bar for the final integration
+        self.progress_bar = None
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
@@ -376,7 +379,7 @@ class ScenarioProperties:
 
         :return: None
         """
-        print("Conversion of equations to lambda functions...")
+        print("Preparing equations for integration (Lambdafying) ...")
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
@@ -431,18 +434,21 @@ class ScenarioProperties:
             self.drag_cur_lamd = None
 
         else:
-            print("Integrating equations...")
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
-                
+            
+            self.progress_bar.close()
+            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+
         if output.success:
             print(f"Model run completed successfully.")
         else:
             print(f"Model run failed: {output.message}")
 
-        # Process results
-        self.output = output
+        self.output = output # Save
 
         return 
 
@@ -512,7 +518,9 @@ class ScenarioProperties:
 
         :return: Rate of change of population at the given timestep, t. 
         """
-        print(t)
+        # Update the progress bar
+        if self.progress_bar is not None:
+            self.progress_bar.update(t - self.progress_bar.n)
 
         # Initialize the rate of change array
         dN_dt = np.zeros_like(N)

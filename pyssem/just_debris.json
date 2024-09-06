@@ -12,7 +12,7 @@
         "start_date": "01/02/2024",
         "steps": 100,
         "v_imp": 10,
-        "fragment_spreading": true,
+        "fragment_spreading": false,
         "baseline": true,
         "parallel_processing": false
     },
@@ -57,6 +57,7 @@
             "drag_func": "drag_func_exp",
             "elliptical": false
         }
+        
     ],
     "status": "not started"
 }

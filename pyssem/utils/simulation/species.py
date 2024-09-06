@@ -6,6 +6,7 @@ from astropy import units as u
 from poliastro.bodies import Earth
 from poliastro.twobody import Orbit
 import copy
+import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
@@ -175,6 +176,10 @@ class Species:
 
         num_species = len(species_properties['mass'])
 
+        # First check that each item in the list is unique
+        if len(set(species_properties['mass'])) != num_species:
+            raise ValueError("Masses must be unique for each species.")
+
         for i in range(num_species):
             species_props_copy = species_properties.copy()
             species_props_copy['mass'] = species_properties['mass'][i] if isinstance(species_properties['mass'], list) else species_properties['mass']
@@ -232,6 +237,7 @@ class Species:
 
         for i in range(len(species_list)):
             if i == 0:
+                species_list[i].mass_lb = 0
                 species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
             elif i == len(species_list) - 1:
                 species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
@@ -457,8 +463,18 @@ class Species:
             time_in_shell /= total_time
 
         return time_in_shell, velocity_in_shell
+    
+    def process_orbit_data(self, args):
+        """
+            Helper function for parallel processing of time and velocity in shells for elliptical orbits.
+        """
+        species, a, mu, R0_km, propagate_orbit, calculate_time_and_velocity_in_shell = args
+        true_anomalies, radii, velocities = propagate_orbit(a, species.eccentricity, mu)
+        time_in_shell, velocity_in_shell = calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+        
+        return time_in_shell, velocity_in_shell
 
-    def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float):
+    def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float, parellel_processing: bool):
         """
         Set up elliptical orbits for species and calculate the time spent in each shell.
         """
@@ -496,18 +512,42 @@ class Species:
                     processed_species.add(species.sym_name)
                     species_group.remove(species)
 
+        if parellel_processing:
+            for species_group in self.species.values():
+                for species in species_group:
+                    if species.elliptical:  # hasn't been created yet
+                        # Set semi-major axis for this species
+                        species.semi_major_axis_bins = HMid
 
-        # Calculate the time spent in each shell for each species
-        for species_group in self.species.values():
-            for species in species_group:
-                if species.elliptical: # hasn't been created yet
-                    # Set semi-major axis for this species
-                    species.semi_major_axis_bins = HMid
+                        # Prepare arguments for parallel processing
+                        args_list = [
+                            (species, a, mu, R0_km, self.propagate_orbit, self.calculate_time_and_velocity_in_shell)
+                            for a in species.semi_major_axis_bins
+                        ]
 
-                    # Calculate time spent in each shell for the semi-major axis
-                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                        true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
-                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
-                        species.time_per_shells.append(time_in_shell)
-                        species.velocity_per_shells.append(velocity_in_shell)
+                        # Use ProcessPoolExecutor for parallel execution
+                        with concurrent.futures.ProcessPoolExecutor() as executor:
+                            results = list(tqdm(
+                                executor.map(self.process_orbit_data, args_list),
+                                total=len(args_list),
+                                desc=f"Calculating time in shells for {species.sym_name}"
+                            ))
 
+                        # Store the results for each species
+                        for time_in_shell, velocity_in_shell in results:
+                            species.time_per_shells.append(time_in_shell)
+                            species.velocity_per_shells.append(velocity_in_shell)
+        else:
+             # Calculate the time spent in each shell for each species
+            for species_group in self.species.values():
+                for species in species_group:
+                    if species.elliptical: # hasn't been created yet
+                        # Set semi-major axis for this species
+                        species.semi_major_axis_bins = HMid
+
+                        # Calculate time spent in each shell for the semi-major axis
+                        for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
+                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+                            species.time_per_shells.append(time_in_shell)
+                            species.velocity_per_shells.append(velocity_in_shell)

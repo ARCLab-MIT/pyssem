@@ -81,7 +81,9 @@
         "drag_effected": true,
         "launch_func": "launch_func_null",
         "pmd_func": "pmd_func_derelict",
-        "drag_func": "drag_func_exp"
+        "drag_func": "drag_func_exp",
+        "elliptical": true,
+        "eccentricity_bins": [0.1, 0.2]
     },
     {
         "sym_name": "Sns",
