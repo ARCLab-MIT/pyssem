@@ -1,6 +1,6 @@
 {
     "created": "2024-07-02T21:25:24.117000+00:00",
-    "description": "",
+    "description": "Testing elliptical orbits",
     "id": "e28e1156-b337-429d-85a6-f8e489960095",
     "modified": "2024-07-02T21:25:24.117000+00:00",
     "owner": "Indigo",
@@ -16,9 +16,9 @@
         "start_date": "01/02/2024",
         "steps": 50,
         "v_imp": 10, 
-        "baseline": true,
+        "baseline": false,
         "fragment_spreading": true, 
-        "parallel_processing": false
+        "parallel_processing": true
     },
     "simulation_name": "Indigo",
     "species": [

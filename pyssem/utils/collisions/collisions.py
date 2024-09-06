@@ -297,6 +297,12 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
         hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
         altNums = hc / (SS * 3)
 
+        if altNums is None:
+            print(hc)  # Check if hc is correct
+            print(SS)  # Check if SS is not zero
+            print(hc.shape)  # Check if hc has the expected shape
+            print(SS * 3)  # Ensure that the denominator is not zero
+
     return nums, isCatastrophic, binOut, altNums
 
 def process_species_pair(args):
