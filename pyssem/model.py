@@ -222,4 +222,4 @@ if __name__ == "__main__":
     with open('scenario-properties-test.pkl', 'rb') as f:
         scenario_properties = pickle.load(f)
 
-    run_optimizer(scenario_properties, "S)
+    run_optimizer(scenario_properties, "S")
