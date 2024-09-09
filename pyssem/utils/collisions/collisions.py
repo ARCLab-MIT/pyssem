@@ -70,6 +70,11 @@ def func_dv(Am, mode):
     z = 10 ** N # m/s
     return z 
 
+def func_ev():
+    """
+    Calculate the change of the eccentricity for the fragments
+    """
+
 def calculate_amsms_for_rocket_body(logd):
     """
     Calculate alpha, mu1, sigma1, mu2, sigma2 for rocket body related objects.

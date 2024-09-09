@@ -1,7 +1,11 @@
 from utils.collisions.collisions import func_Am, func_dv
+from utils.collisions.NASA_SBN6 import *
 import numpy as np
 from tqdm import tqdm
+from utils.collisions.cartesian_to_kep import cart_2_kep, kep_2_cart
 from sympy import symbols, Matrix, pi, S, Expr, zeros
+import matplotlib.pyplot as plt
+from copy import deepcopy
 
 def create_collision_pairs(scen_properties):
     """
@@ -9,8 +13,6 @@ def create_collision_pairs(scen_properties):
     which other objects it could collide with. 
     
     """
-
-    print(scen_properties)
 
     all_elliptical_collision_species = []
 
@@ -40,23 +42,31 @@ def create_collision_pairs(scen_properties):
                             print(f"Time spent: {species1.sym_name}: {time_1}, {species2.sym_name}: {time_2}\n")
                             all_elliptical_collision_species.append(EllipticalCollisionPair(species1, species2, shell_index))
 
-    print(f"Total number of collisions: {count}")
+    print(f"Total number of elliptical collision pairs: {count}")
 
     debris_species = [species for species in scen_properties.species['debris']]
 
-    binC = np.zeros(len(debris_species))
-    binE = np.zeros(2 * len(debris_species))
-    binW = np.zeros(len(debris_species))
+
+    # Mass Binning
+    binC_mass = np.zeros(len(debris_species))
+    binE_mass = np.zeros(2 * len(debris_species))
+    binW_mass = np.zeros(len(debris_species))
     LBgiven = scen_properties.LC
 
     for index, debris in enumerate(debris_species):
-        binC[index] = debris.mass
-        binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
-        binW[index] = debris.mass_ub - debris.mass_lb
+        binC_mass[index] = debris.mass
+        binE_mass[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
+        binW_mass[index] = debris.mass_ub - debris.mass_lb
 
-    binE = np.unique(binE)
+    binE_mass = np.unique(binE_mass)
 
-    args = [(i, species_pair, scen_properties, debris_species, binE, LBgiven) for i, species_pair in enumerate(all_elliptical_collision_species)]
+    # Eccentricity Binning, multiple debris species will have the same eccentricity bins
+    binE_ecc = debris_species[0].eccentricity_bins
+    ecc_values = np.insert(binE_ecc, 0, 0) # Insert 0 at the beginning
+    ecc_values = np.append(ecc_values, 1) # Append 1 at end 
+
+
+    args = [(i, species_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven) for i, species_pair in enumerate(all_elliptical_collision_species)]
     
     results = [process_elliptical_collision_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
 
@@ -68,7 +78,7 @@ def process_elliptical_collision_pair(args):
     you are able to calculate evolve bins just once. 
 
     """
-    i, collision_pair, scen_properties, debris_species, binE, LBgiven = args
+    i, collision_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
     m1, m2 = collision_pair.species1.mass, collision_pair.species2.mass
     r1, r2 = collision_pair.species1.radius, collision_pair.species2.radius
 
@@ -114,7 +124,8 @@ def process_elliptical_collision_pair(args):
     debris_eccentricity_bins = debris_species[0].eccentricity_bins
 
     # there needs to be some changes here to account for the fact that the shells are already defined
-    fragments, catastrophic, binOut, altA, altE = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km, debris_eccentricity_bins)
+    # set fragment_spreading to True
+    fragments, catastrophic, binOut, altA, altE = evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, [], binE_mass, binE_ecc, [], LBgiven, source_sinks, collision_pair.shell_index, RBflag, True, scen_properties.n_shells, scen_properties.R0_km, debris_eccentricity_bins)
 
     collision_pair.gammas = gammas
     collision_pair.fragments = fragments
@@ -125,7 +136,9 @@ def process_elliptical_collision_pair(args):
 
     return collision_pair
 
-def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, debris_eccentricity_bins = None): # eventually add stochastic ability
+
+
+def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, binC, binE_mass, binE_ecc, binW, LBdiam, source_sinks, collision_index, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, debris_eccentricity_bins = None): # eventually add stochastic ability
     # for now just doing binE
     SS = 20 # super sampling ratio
     MU = 398600.4418  # km^3/s^2
@@ -133,16 +146,16 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
     altNums = None
 
     # Bin Center is given
-    if len(binC) > 0 and len(binE) == 0 and len(binW) == 0: 
+    if len(binC) > 0 and len(binE_mass) == 0 and len(binW) == 0: 
         LBm = binC[0] - (binC[1] - binC[0]) / 2  
         UBm = binC[-1] + (binC[-1] - binC[-2]) / 2 
-        binEd = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
+        binEd_mass = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
     
     # Bin Edges are given
-    elif len(binC) > 0 and len(binW) > 0 and len(binE) == 0: 
-        binEd1 = binC - binW / 2
-        binEd2 = binC + binW / 2
-        binEd = np.sort(np.concatenate((binEd1, binEd2)))
+    elif len(binC) > 0 and len(binW) > 0 and len(binE_mass) == 0: 
+        binEd_mass1 = binC - binW / 2
+        binEd_mass2 = binC + binW / 2
+        binEd_mass = np.sort(np.concatenate((binEd_mass1, binEd_mass2)))
         
         # Check for overlapping bin edges
         if any(np.diff(binC) < binW):
@@ -150,8 +163,12 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
             raise ValueError(f"Overlapping bin edges between bin centered at {binC[errinds[0]]:.1f} and {binC[errinds[0] + 1]:.1f}")
 
     # Bin Widths are given     
-    elif len(binE) > 0 and len(binC) == 0 and len(binW) == 0:
-        binEd = np.sort(binE)
+    elif len(binE_mass) > 0 and len(binC) == 0 and len(binW) == 0:
+        binEd_mass = np.sort(binE_mass)
+
+    # Eccentric Bin Widths are given
+    if len(binE_ecc) > 0:
+        binE_ecc = np.sort(binE_ecc)
 
     LB = LBdiam
     objclass = 5 if RBflag == 0 else 0
@@ -177,7 +194,7 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
 
     # Below shouldn't be becessary for bin edges
     #if numSS == 0:
-        #return np.zerios(len(binEd) -1)
+        #return np.zerios(len(binEd_mass) -1)
 
     # Create PDF of power law distribution, then sample 'num' selections
     # Only up to 1m, then randomly sample larger objects as quoted above
@@ -196,7 +213,7 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
         dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
     except ValueError: # This is when the probability breaks as the objects are too small
         dss = 0
-        #return np.zeros(len(binEd) - 1)
+        #return np.zeros(len(binEd_mass) - 1)
 
     # Calculate the mass of objects
     A = 0.556945 * dss ** 2.0047077 # Equation 2.72
@@ -204,22 +221,22 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
     m = A/Am
 
     # Binning via histcounts
-    nums, _ = np.histogram(m, bins=binEd)
+    nums, _ = np.histogram(m, bins=binEd_mass)
     nums = nums / SS # Correct for super sampling
 
     # Define binOut based on the option chosen for bin setup
     binOut = []
-    if binC is not None and binE is None and binW is None:  # Option 1: bin center given; output = edges
-        binOut = binEd
-    elif binE is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
-        binOut = binE[:-1] + np.diff(binE) / 2
+    if binC is not None and binE_mass is None and binW is None:  # Option 1: bin center given; output = edges
+        binOut = binEd_mass
+    elif binE_mass is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
+        binOut = binE_mass[:-1] + np.diff(binE_mass) / 2
 
     # Always need to assume fragment spreading.
     nShell = len(np.diff(R02))
 
     # find difference in orbital velocity for shells
     # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
-    dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+    dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
     dv_values = func_dv(Am, 'col') / 1000 # km/s
     u = np.random.rand(len(dv_values)) * 2 - 1
     theta = np.random.rand(len(dv_values)) * 2 * np.pi
@@ -228,26 +245,110 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
     p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
     dv_vec = p * dv_values[:, np.newaxis]
 
-    hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
+    hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd_mass])
     altA = hc / (SS * 3)
-
-    # Also need to calculate the change in eccentricity bins for the debris objects. 
 
     altE = debris_eccentricity_bins
 
-    return nums, isCatastrophic, binOut, altA, altE
+    # just for the first round use matt's values
+    aCentres = scen_properties.HMid + RE
+    eCentres = debris_eccentricity_bins
+
+    # will probably want to try and remove this?
+    # iCentres = numpy.array([0.19634954084936207, 0.5890486225480862, 0.9817477042468103, 1.3744467859455345, 1.7671458676442586])
+    # random inlcination
+    inc = numpy.arccos(2*numpy.random.random()-1)
+    omega_AP  = 2*numpy.pi*numpy.random.random()
+    omega_LAN = 2*numpy.pi*numpy.random.random()
+    EA        = 2*numpy.pi*numpy.random.random()
+
+
+    cartesianStore = simulateCollision(mass1=m1, mass2=m2, a=scen_properties.HMid[collision_index] + RE, e=eCentres[0], i=inc, omega_AP=omega_AP, omega_LAN=omega_LAN, EA=EA)
+
+    eccentricities = cartesianStore[:, 1]  # Assuming eccentricities are in the 2nd column (adjust this based on simulateCollision output)
+
+    ecc_binned, _ = np.histogram(eccentricities, bins=binE_ecc)
+
+    binOut = []
+    if binC is not None and binE_mass is None and binW is None:  # Option 1: bin center given; output = edges
+        binOut = binEd_mass
+    elif binE_mass is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
+        binOut = binE_mass[:-1] + np.diff(binE_mass) / 2
+
+    total_fragments = ecc_binned.sum()
+    ecc_binned_normalized = ecc_binned / total_fragments  # This gives fractions summing to 1
+
+    num_species, num_alt_bins = altA.shape
+    num_ecc_bins = len(ecc_binned)
+
+    # Initialize a new array to hold the expanded data
+    # The new shape will be (num_species, num_alt_bins * num_ecc_bins)
+    expanded_altA = np.zeros((num_species, num_alt_bins * num_ecc_bins))
+
+    # Step 3: Distribute the original altA counts into eccentricity bins and expand columns
+    for species_index in range(num_species):
+        for ecc_index in range(num_ecc_bins):
+            # Calculate the new column indices for this species-eccentricity combination
+            start_col = ecc_index * num_alt_bins
+            end_col = (ecc_index + 1) * num_alt_bins
+            # Multiply the original counts by the normalized eccentricity percentage
+            expanded_altA[species_index, start_col:end_col] = altA[species_index, :] * ecc_binned_normalized[ecc_index]
+
+    return expanded_altA, isCatastrophic, binOut, altA, altE
 
 
 
+def simulateCollision(mass1=1000, mass2=10, a=450+6371, e=0, i=0, omega_AP=0, omega_LAN=0, EA=0):
+    
+    fragments, catastrophic = createFragmentsLikeNASAdata(mass1, mass2, 100, printOut=0)
+    #trackable = pullTrackableObjects(fragments)
+    
+    #print ("{} fragments to simulate".format(numpy.sum(trackable[:,1])))
+    
+    rInit, vInit = kep_2_cart(a,e,i,omega_AP,omega_LAN, EA) #Initial location and speed of collision
+    
+    cartesianStore = []
+    
+    #for fragmentsgroup in trackable: #Loop over trackable fragment groups (mutliples of objects inside):
+    for fragmentsgroup in fragments: #Loop over trackable fragment groups (mutliples of objects inside):
+        for fragment in range(int(fragmentsgroup[1])): #each individual fragment
+            
+            rInitcurr = deepcopy(rInit)
+            
+            dV = numpy.real(fragmentsgroup[6]) * random_three_vector() #dV vector with random direction
+            
+            new_velocity = vInit + dV
+            #print (rInitcurr, new_velocity)
+            
+            newCart = cart_2_kep(rInitcurr,new_velocity,rInit, vInit, fragmentsgroup[6], dV)
+            cartesianStore += [newCart]
+            
+    return numpy.array(cartesianStore)
 
+def pullTrackableObjects(fragments):
+    
+    trackable = []
+    
+    for fragment in fragments:
+        if fragment[2]>0.1:
+            trackable += [fragment]
 
+    return numpy.array(trackable)
 
+def random_three_vector():
+    """
+    Generates a random 3D unit vector (direction) with a uniform spherical distribution
+    Algo from http://stackoverflow.com/questions/5408276/python-uniform-spherical-distribution
+    :return:
+    """
+    phi = numpy.random.uniform(0,numpy.pi*2)
+    costheta = numpy.random.uniform(-1,1)
 
-
-
-
-
-
+    theta = numpy.arccos( costheta )
+    x = numpy.sin( theta) * numpy.cos( phi )
+    y = numpy.sin( theta) * numpy.sin( phi )
+    z = numpy.cos( theta )
+    return numpy.array((x,y,z))
 
 class EllipticalCollisionPair:
     def __init__(self, species1, species2, index) -> None:
@@ -265,7 +366,7 @@ class EllipticalCollisionPair:
         self.s1_col_sym_name = f"{species1.sym_name}_sh_{index}"
         self.s2_col_sym_name = f"{species2.sym_name}_sh_{index}"
         self.col_sym_name = f"{species1.sym_name}__{species2.sym_name}_sh_{index}" 
-        self.combined_TIS = self.species1_TIS * self.species2_TIS
+        self.combinEd_mass_TIS = self.species1_TIS * self.species2_TIS
         self.min_TIS = min(self.species1_TIS, self.species2_TIS)
         self.max_TIS = max(self.species1_TIS, self.species2_TIS)
 
@@ -275,3 +376,5 @@ class EllipticalCollisionPair:
         self.binOut = None
         self.altA = None
         self.altE = None
+
+        self.debris_eccentrcity_bins = None
