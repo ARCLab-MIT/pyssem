@@ -76,7 +76,7 @@ def PrIneqAll(x,scenario_properties,failure_rate_U):
     return c_ineq
 
 
-def run_optimizer(scenario_properties):
+def run_optimizer(scenario_properties, optimized_species):
   """ 
   This occurs after the model simulation has been run, 
   it will take a full SimulationClass, extract the equations, and re-run an optimization. 
