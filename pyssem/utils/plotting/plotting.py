@@ -5,9 +5,14 @@ import pandas as pd
 import json
 import imageio
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import imageio
+
 def create_plots(self):
     """
-    Generates a number of plots and diposits them into the figures folder:
+    Generates a number of plots and deposits them into the figures folder.
     """
     print('Making plots')
     scenario_properties = self.scenario_properties
@@ -18,7 +23,13 @@ def create_plots(self):
     n_species = scenario_properties.species_length
     num_shells = scenario_properties.n_shells
 
-    fig, axes = plt.subplots(3, 5, figsize=(20, 12))
+    # Dynamically determine the layout for subplots
+    cols = 5  # Define the number of columns you want
+    rows = (n_species + cols - 1) // cols  # Calculate the number of rows needed
+
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
+    axes = np.atleast_2d(axes)  # Ensure axes is always 2D, even for a single row
+
     for species_index in range(n_species):
         ax = axes.flatten()[species_index]
         species_data = output.y[species_index * num_shells:(species_index + 1) * num_shells]
@@ -30,6 +41,10 @@ def create_plots(self):
         ax.set_title(f'{scenario_properties.species_names[species_index]}')
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
+
+    # Hide any unused axes
+    for i in range(n_species, rows * cols):
+        fig.delaxes(axes.flatten()[i])
 
     plt.suptitle('Species 1 All Shells')
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -62,13 +77,15 @@ def create_plots(self):
     # Plot heatmap for each species
     n_time_points = len(output["t"])
     cols = 3
-    rows = np.ceil(n_species / cols).astype(int)
+    rows = (n_species + cols - 1) // cols
 
-    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=(12, rows * 6))
+    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=(4 * cols, 6 * rows))
+    axs = np.atleast_2d(axs)  # Ensure axs is always 2D
+
     for i, species_name in enumerate(species_names):
         row = i // cols
         col = i % cols
-        ax = axs[row, col] if rows > 1 else axs[col]
+        ax = axs[row, col]
 
         start_idx = i * num_shells
         end_idx = start_idx + num_shells
@@ -82,26 +99,18 @@ def create_plots(self):
         ax.set_ylabel('Orbital Shell')
         ax.set_title(species_name)
         ax.set_xticks(np.linspace(output["t"][0], output["t"][-1], num=5))
-        ax.set_yticks(np.arange(0, num_shells, 5))
-        ax.set_yticklabels([f'{alt:.0f}' for alt in scenario_properties.HMid[::5]])
+        ax.set_yticks(np.arange(0, num_shells, max(1, num_shells // 5)))
+        ax.set_yticklabels([f'{alt:.0f}' for alt in scenario_properties.HMid[::max(1, num_shells // 5)]])
 
+    # Hide any unused axes
     for i in range(n_species, rows * cols):
-        if rows == 1:
-            fig.delaxes(axs[i])
-        else:
-            axs.flatten()[i].set_visible(False)
+        fig.delaxes(axs.flatten()[i])
 
     plt.tight_layout()
     plt.savefig('figures/heatmaps_species.png')
     plt.close(fig)
 
     time_points = output.t
-
-    n_species = scenario_properties.species_length
-    shells_per_species = scenario_properties.n_shells
-
-    # Get the species names
-    species_names = scenario_properties.species_names
 
     # Extract the unique base species names (part before the underscore)
     base_species_names = [name.split('_')[0] for name in species_names]
@@ -127,69 +136,141 @@ def create_plots(self):
 
     # Reshape the data to separate species and shells
     n_time_points = len(time_points)
-    data_reshaped = output.y.reshape(n_species, shells_per_species, n_time_points)
+    data_reshaped = output.y.reshape(n_species, num_shells, n_time_points)
 
     # Get the x-axis labels from scenario_properties.R0_km and slice to match shells_per_species
-    orbital_shell_labels = scenario_properties.R0_km[:shells_per_species]
+    orbital_shell_labels = scenario_properties.R0_km[:num_shells]
 
     # Define markers for each species (reuse if more species than markers)
     markers = ['o', 's', '^', 'D', 'v', '>', '<', 'p', '*', 'h']
 
     # Directory to save the frames
     frames_dir = 'frames'
-    if not os.path.exists(frames_dir):
-        os.makedirs(frames_dir)
+    os.makedirs(frames_dir, exist_ok=True)
 
-    # Generate frames for each timestep
-    for t_idx, t in enumerate(time_points):
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 8))  # Adjust the size as needed
-        
-        # Plot species names that begin with 'S' on the left plot
-        for species_index in range(n_species):
-            if base_species_names[species_index].startswith('S'):
+    # Check if there are species starting with 'S'
+    species_with_s = [species_names[i] for i in range(n_species) if base_species_names[i].startswith('S')]
+
+    if species_with_s:
+        # Generate frames for each timestep
+        for t_idx, t in enumerate(time_points):
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 8))
+
+            # Plot species names that begin with 'S' on the left plot
+            for species_index in range(n_species):
+                if base_species_names[species_index].startswith('S'):
+                    base_color = color_map(unique_base_species.index(base_species_names[species_index]))
+                    color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])
+                    marker = markers[species_index % len(markers)]
+                    ax1.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
+
+            ax1.set_title('Final Timestep: Species Starting with S')
+            ax1.set_xlabel('Orbital Shell (R0_km)')
+            ax1.set_ylabel('Count of Objects')
+            ax1.legend(title='Species')
+
+            # Plot the rest of the species on the right plot
+            for species_index in range(n_species):
+                if not base_species_names[species_index].startswith('S'):
+                    base_color = color_map(unique_base_species.index(base_species_names[species_index]))
+                    color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])
+                    marker = markers[species_index % len(markers)]
+                    ax2.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
+
+            ax2.set_title('Final Timestep: Other Species')
+            ax2.set_xlabel('Orbital Shell (R0_km)')
+            ax2.set_ylabel('Count of Objects')
+            ax2.legend(title='Species')
+
+            plt.tight_layout()
+
+            frame_path = os.path.join(frames_dir, f'frame_{t_idx:04d}.png')
+            plt.savefig(frame_path)
+            plt.close(fig)
+    else:
+        # Generate frames for each timestep with only one plot
+        for t_idx, t in enumerate(time_points):
+            fig, ax = plt.subplots(figsize=(12, 8))
+
+            # Plot all species in one plot
+            for species_index in range(n_species):
                 base_color = color_map(unique_base_species.index(base_species_names[species_index]))
-                color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])  # Adjust alpha based on inverted weight
+                color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])
                 marker = markers[species_index % len(markers)]
-                ax1.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
-        
-        # Setting titles and labels for the left plot
-        ax1.set_title('Final Timestep: Species Starting with S')
-        ax1.set_xlabel('Orbital Shell (R0_km)')
-        ax1.set_ylabel('Count of Objects')
-        ax1.legend(title='Species')
-        
-        # Plot the rest of the species on the right plot
-        for species_index in range(n_species):
-            if not base_species_names[species_index].startswith('S'):
-                base_color = color_map(unique_base_species.index(base_species_names[species_index]))
-                color = (base_color[0], base_color[1], base_color[2], inverted_weights[species_index])  # Adjust alpha based on inverted weight
-                marker = markers[species_index % len(markers)]
-                ax2.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
-        
-        # Setting titles and labels for the right plot
-        ax2.set_title('Final Timestep: Other Species')
-        ax2.set_xlabel('Orbital Shell (R0_km)')
-        ax2.set_ylabel('Count of Objects')
-        ax2.legend(title='Species')
-        
-        plt.tight_layout()
-        
-        # Save the frame
-        frame_path = os.path.join(frames_dir, f'frame_{t_idx:04d}.png')
-        plt.savefig(frame_path)
-        plt.close(fig)
+                ax.plot(orbital_shell_labels, data_reshaped[species_index, :, t_idx], label=species_names[species_index], color=color, marker=marker)
+
+            ax.set_title('Final Timestep: All Species')
+            ax.set_xlabel('Orbital Shell (R0_km)')
+            ax.set_ylabel('Count of Objects')
+            ax.legend(title='Species')
+
+            plt.tight_layout()
+
+            frame_path = os.path.join(frames_dir, f'frame_{t_idx:04d}.png')
+            plt.savefig(frame_path)
+            plt.close(fig)
 
     # Create the GIF
-    images = []
-    for t_idx in range(len(time_points)):
-        frame_path = os.path.join(frames_dir, f'frame_{t_idx:04d}.png')
-        images.append(imageio.imread(frame_path))
+    images = [imageio.imread(os.path.join(frames_dir, f'frame_{t_idx:04d}.png')) for t_idx in range(len(time_points))]
     gif_path = 'figures/species_shells_evolution_side_by_side.gif'
-    imageio.mimsave(gif_path, images, duration=0.5)  # Adjust the duration as needed
+    imageio.mimsave(gif_path, images, duration=0.5)
 
     # Cleanup frames
     import shutil
     shutil.rmtree(frames_dir)
+
+
+    # Splitting by sub-group
+    output = scenario_properties.output  # Output object from simulation
+    n_species = scenario_properties.species_length  # Number of species
+    num_shells = scenario_properties.n_shells  # Number of shells per species
+    species_names = scenario_properties.species_names  # List of species names
+    plt.figure(figsize=(10, 6))
+
+    total_objects_all_species = np.zeros_like(output.t)
+
+    # Initialize arrays for different species groups
+    total_objects_S_group = np.zeros_like(output.t)
+    total_objects_N_group = np.zeros_like(output.t)
+    total_objects_B_group = np.zeros_like(output.t)
+
+    for i in range(n_species):
+        start_idx = i * num_shells
+        end_idx = start_idx + num_shells
+        total_objects_per_species = np.sum(output.y[start_idx:end_idx, :], axis=0)
+
+        # Check species group by name and sum accordingly
+        species_name = species_names[i]
+        
+        if species_name.startswith('S_'):
+            total_objects_S_group += total_objects_per_species
+        elif species_name.startswith('N_'):
+            total_objects_N_group += total_objects_per_species
+        elif species_name.startswith('B_'):
+            total_objects_B_group += total_objects_per_species
+        
+        total_objects_all_species += total_objects_per_species
+
+    # Plot each species group in different colors
+    plt.plot(output.t, total_objects_S_group, label='S_ Group', color='blue', linewidth=2)
+    plt.plot(output.t, total_objects_N_group, label='N_ Group', color='green', linewidth=2)
+    plt.plot(output.t, total_objects_B_group, label='B_ Group', color='red', linewidth=2)
+
+    # Plot the total number of objects for all species combined
+    plt.plot(output.t, total_objects_all_species, label='Total All Species', color='k', linewidth=2, linestyle='--')
+
+    # Add labels, title, and legend
+    plt.xlabel('Time')
+    plt.ylabel('Total Number of Objects')
+    plt.title('Objects Over Time for Each Species Group and Total')
+    plt.xlim(0, max(output.t))
+    plt.legend()
+    plt.tight_layout()
+    plt.yscale('log')
+
+    # Save the figure
+    plt.savefig('figures/total_objects_by_species_group.png')
+    plt.close()
 
 def results_to_json(self):
         """

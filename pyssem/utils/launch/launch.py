@@ -73,6 +73,35 @@ def launch_func_constant(t, h, species_properties, scen_properties):
 
     return Lambdadot_list
 
+def launch_func_random(t, h, species_properties, scen_properties):
+    """
+    Adds a random launch rate from species_properties.lambda_random.
+    Given a certain altitude, this will return the rate of change in the species in each shell at the specified time due to launch.
+
+    Args:
+        t (float): Time from scenario start in years.
+        h (list or numpy.ndarray): Altitudes of the scenario above ellipsoid in km of shell lower edges.
+        species_properties (dict): Properties for the species, including 'lambda_random'.
+        scen_properties (dict): Properties for the scenario, including 'N_shell'.
+
+    Returns:
+        list: np., a list of symbolic expressions representing the rate of change in the species in each shell due to launch.
+    """
+
+    if len(h) != scen_properties.n_shells:
+        raise ValueError("Random launch rate must be specified per altitude shell.")
+
+    # Create a symbolic variable for the launch rate
+    lambda_random = symbols('lambda_random')
+
+    # Assign the random launch rate to each shell
+    Lambdadot = Matrix(scen_properties.n_shells, 1, lambda i, j: lambda_random)
+
+    # Convert the Matrix of symbolic expressions to a list
+    Lambdadot_list = [Lambdadot[i] for i in range(scen_properties.n_shells)]
+
+    return Lambdadot_list
+
 def launch_func_lambda_fun(t, h, species_properties, scen_properties):
     """
     This function will return the lambda function for a required species. 
@@ -111,6 +140,13 @@ def julian_to_datetime(julian_date):
         # Handle dates that are out of range
         print(f"Date conversion error: {e}")
         return None
+
+def find_bin_index(bin_edges, value):
+    """Find the index of the bin a value belongs to."""
+    for i in range(len(bin_edges) - 1):
+        if bin_edges[i] <= value < bin_edges[i + 1]:
+            return i
+    return -1  # Return an invalid index if not found
 
 def ADEPT_traffic_model(scen_properties, file_path):
     """
@@ -156,18 +192,44 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T_new = pd.DataFrame()
 
     # Loop through object classes and assign species based on mass
+    # for obj_class in T['obj_class'].unique():
+    #     species_class = species_dict.get(obj_class)
+    #     if species_class in scen_properties.species_cells:
+    #         if len(scen_properties.species_cells[species_class]) == 1:
+    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #             T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+    #             T_new = pd.concat([T_new, T_obj_class])
+    #         else:
+    #             species_cells = scen_properties.species_cells[species_class]
+    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #             T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+    #             T_new = pd.concat([T_new, T_obj_class])
+
     for obj_class in T['obj_class'].unique():
         species_class = species_dict.get(obj_class)
-        if species_class in scen_properties.species_cells:
-            if len(scen_properties.species_cells[species_class]) == 1:
+        
+        if species_class in scen_properties.species_cells:     
+            if species_class == 'B':
+                # Handle the case where species_class is 'B' and match by mass bin
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                T_new = pd.concat([T_new, T_obj_class])
-            else:
                 species_cells = scen_properties.species_cells[species_class]
-                T_obj_class = T[T['obj_class'] == obj_class].copy()
-                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                      
+                T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
+                
                 T_new = pd.concat([T_new, T_obj_class])
+            
+            else:
+                # General case for all other species_class
+                if len(scen_properties.species_cells[species_class]) == 1:
+                    T_obj_class = T[T['obj_class'] == obj_class].copy()
+
+                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                    T_new = pd.concat([T_new, T_obj_class])
+                else:
+                    T_obj_class = T[T['obj_class'] == obj_class].copy()
+                    species_cells = scen_properties.species_cells[species_class]
+                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
+                    T_new = pd.concat([T_new, T_obj_class])
 
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
@@ -217,6 +279,25 @@ def ADEPT_traffic_model(scen_properties, file_path):
         flm_steps = pd.concat([flm_steps, flm_summary])
     
     return x0_summary, flm_steps
+
+def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
+    """
+    Find the eccentricity bin for a given eccentricity.
+
+    :param eccentricity: Eccentricity of the object's orbit
+    :type eccentricity: float
+    :param scen_properties: The scenario properties object
+    :type scen_properties: ScenarioProperties
+    :param species_cell: The species cell to find the eccentricity bin for
+    :type species_cell: Species
+    :return: The species name corresponding to the given eccentricity
+    :rtype: str
+    """
+
+    for species in species_cell:
+        if species.ecc_lb <= eccentricity < species.ecc_ub:
+            return species.sym_name
+
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """

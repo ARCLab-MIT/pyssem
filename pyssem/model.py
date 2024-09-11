@@ -82,7 +82,8 @@ class Model:
         
     def configure_species(self, species_json):
         """
-        Configure species into Species objects from JSON.
+        Configure species into Species objects from JSON. This will pass the multiple species and split them, creating the symbolic variables.
+        Then pairs the debris and active species for PMD modeling.Finally, it will create the collision pairs between the species to enable the simulation.
         
         Parameters:
         - species_json (dict): JSON object containing species data.
@@ -94,6 +95,9 @@ class Model:
             species_list = Species()
             
             species_list.add_species_from_json(species_json)
+
+            # Set up elliptical orbits for species
+            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
@@ -109,6 +113,9 @@ class Model:
 
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+
+            # Merge elliptical back to main species
+            # species_list.merge_elliptical_to_main()
 
             return species_list
         except json.JSONDecodeError:
