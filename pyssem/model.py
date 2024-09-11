@@ -220,4 +220,11 @@ if __name__ == "__main__":
     with open('scenario-properties-elliptical.pkl', 'rb') as f:
         scenario_properties = pickle.load(f)
     
-    create_collision_pairs(scenario_properties)
+    results = create_collision_pairs(scenario_properties)
+
+    scenario_properties.results = results
+
+
+    # save the scenario properties to a pickle file
+    with open('scenario-properties-collision.pkl', 'wb') as f:
+        pickle.dump(scenario_properties, f)

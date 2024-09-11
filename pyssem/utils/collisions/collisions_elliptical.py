@@ -70,7 +70,7 @@ def create_collision_pairs(scen_properties):
     
     results = [process_elliptical_collision_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
 
-    print(results)
+    return results 
 
 def process_elliptical_collision_pair(args):
     """
@@ -161,7 +161,6 @@ def func_de(m, dv, mu=398600.4418):
 
 def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_mass, binE_ecc, binW, LBdiam, source_sinks, collision_index, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, debris_eccentricity_bins = None): # eventually add stochastic ability
     
-    # for now just doing binE
     SS = 20 # super sampling ratio
     MU = 398600.4418  # km^3/s^2
     RE = 6378.1  # km
@@ -215,33 +214,26 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_ma
     numSS = SS * num
 
     # Create PDF of power law distribution, then sample 'num' selections
-    # Only up to 1m, then randomly sample larger objects as quoted above
-    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500) # logg space, up to either 1m or diameter of the larger object
-    dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2) # Log 10 of diameter edge bins, then mean values of each diameter edge bin (linear as bins are log-spaced)
+    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
+    dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
     
     # Cumulative distribution
-    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  #eq 2.68
-    ndd = np.maximum(0, -np.diff(nddcdf)) # diff to get the PDF count for the bins (dd_edges), if negative, set to 0
+    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)
+    ndd = np.maximum(0, -np.diff(nddcdf))
     
     # Make sure int, 0 to 1, random number for stochastic sampling of fragment diameters
     repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
-    d_pdf = np.repeat(dd_means, repeat_counts) # PDF of debris objects between LB and 1m.
+    d_pdf = np.repeat(dd_means, repeat_counts)
 
     try:
         dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
-    except ValueError: # This is when the probability breaks as the objects are too small
+    except ValueError: 
         dss = 0
 
     # Calculate the mass of objects
     A = 0.556945 * dss ** 2.0047077 # Equation 2.72
     Am = func_Am(dss, objclass) # use Am conversion of the larger object
     m = A/Am
-
-    # Dictionary to store the debris species and their corresponding data
-    debris_species = {}
-
-    # Always need to assume fragment spreading.
-    nShell = len(np.diff(R02))
 
     # Find difference in orbital velocity for shells
     dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
@@ -257,62 +249,53 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_ma
     dv_vec = p * dv_values[:, np.newaxis]  # velocity vectors
 
     # Calculate change in eccentricity for each fragment
-    e_initial_fragments = np.full(len(m), (e1 + e2) / 2)  # Use the average initial eccentricity
-    dE_values = func_de(e_initial_fragments, dv_values)  # Calculate final eccentricities
+    e_initial_fragments = np.full(len(m), (e1 + e2) / 2)
+    dE_values = func_de(e_initial_fragments, dv_values)
 
     # Ensure the eccentricity bins start at 0 and end at 1
-    binE_ecc = np.insert(binE_ecc, 0, 0)  # Insert 0 at the beginning
-    binE_ecc = np.append(binE_ecc, 1)  # Append 1 at the end
+    binE_ecc = np.insert(binE_ecc, 0, 0)
+    binE_ecc = np.append(binE_ecc, 1)
 
     # Find the eccentricity bin for each fragment
-    binEccIndex = np.digitize(dE_values, binE_ecc) - 1  # Bin the eccentricity values
+    binEccIndex = np.digitize(dE_values, binE_ecc) - 1
 
     # Generate velocity-mass distribution using 2D histogram
-    hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd_mass])
-    altNums = hc / (SS * 3)  # Normalize the velocity-mass matrix
+    hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-n_shells, n_shells) * dDV / 1000, binEd_mass])
+    altNums = hc / (SS * 3)
 
-    # Proportionally distribute fragments into eccentricity bins based on the eccentricity change
-    n_vel_bins = len(np.arange(-nShell, nShell + 1) * dDV / 1000)  # Velocity bins
-    n_mass_bins = len(binEd_mass) - 1  # Mass bins
-    n_ecc_bins = len(binE_ecc) - 1  # Eccentricity bins
-
-    # Initialize the final fragment matrix (mass x eccentricity x velocity)
-    fragment_matrix = np.zeros((n_vel_bins, n_mass_bins * n_ecc_bins))
+    # Initialize the final fragment matrix with size equal to the number of shells
+    fragment_matrix = np.zeros((n_shells, len(binEd_mass) - 1, len(binE_ecc) - 1))
 
     # Use the eccentricity change to spread fragments across eccentricity bins proportionally
-    for mass_bin_idx in range(n_mass_bins):
-        for vel_bin_idx in range(n_vel_bins - 1):
-            # Clip vel_bin_idx to ensure it stays within the valid range
-            vel_bin_idx = np.clip(vel_bin_idx, 0, n_vel_bins - 1)
-
-            # Get the fragment count for the current mass-velocity bin
+    for mass_bin_idx in range(len(binEd_mass) - 1):
+        for vel_bin_idx in range(n_shells):
             fragment_count = altNums[vel_bin_idx, mass_bin_idx]
             
             if fragment_count > 0:
-                # Calculate the percentage of fragments that should go into each eccentricity bin
                 ecc_percentages = np.histogram(dE_values, bins=binE_ecc, density=True)[0]
                 
-                # Distribute the fragments into the eccentricity bins based on the calculated percentages
-                for ecc_bin_idx in range(n_ecc_bins):
-                    fragment_matrix[vel_bin_idx, mass_bin_idx * n_ecc_bins + ecc_bin_idx] = fragment_count * ecc_percentages[ecc_bin_idx]
+                for ecc_bin_idx in range(len(binE_ecc) - 1):
+                    # Distribute the fragments based on eccentricity
+                    frag_count_in_ecc_bin = fragment_count * ecc_percentages[ecc_bin_idx]
+
+                    # Calculate the fragment position relative to the collision index
+                    position_idx = collision_index + vel_bin_idx - n_shells // 2
+
+                    # Ensure fragments stay within bounds
+                    if position_idx < 0:
+                        continue  # Remove fragments below the bottom shell
+                    elif position_idx >= n_shells:
+                        position_idx = n_shells - 1  # Add excess fragments to the top shell
+
+                    # Assign fragments to the appropriate shell, mass, and eccentricity bin
+                    fragment_matrix[position_idx, mass_bin_idx, ecc_bin_idx] += frag_count_in_ecc_bin
 
     # Ensure the total count of fragments is conserved
     total_fragments_generated = len(m)
     total_fragments_in_matrix = np.sum(fragment_matrix)
-
-    # Normalize the fragment matrix to ensure the total fragment count matches the original
     fragment_matrix = fragment_matrix * (total_fragments_generated / total_fragments_in_matrix)
 
-    # # Store the results in a dictionary structure for each debris species
-    # debris_species["species_1"] = {
-    #     "altNums": altNums,
-    #     "eccentricity_bins": {
-    #         f"ecc_bin_{i+1}": fragment_matrix[:, mass_bin_idx * n_ecc_bins + i]
-    #         for i in range(n_ecc_bins)
-    #     }
-    # }
-
-    return debris_species
+    return fragment_matrix
 
 
 
