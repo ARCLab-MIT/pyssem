@@ -40,6 +40,12 @@ def create_collision_pairs(scen_properties):
                             count += 1
                             print(f"Species {species1.sym_name} and {species2.sym_name} are in shell {shell_index}")
                             print(f"Time spent: {species1.sym_name}: {time_1}, {species2.sym_name}: {time_2}\n")
+                            
+                            # There is also a check on the mass of the objects, if they are both too small then they will just create dust
+                            # this is defined by the LC. LC is the diameter of the smallest object that can be tracked.
+                            if species1.mass < scen_properties.LC and species2.mass < scen_properties.LC:
+                                continue
+                                    
                             all_elliptical_collision_species.append(EllipticalCollisionPair(species1, species2, shell_index))
 
     print(f"Total number of elliptical collision pairs: {count}")
@@ -125,7 +131,8 @@ def process_elliptical_collision_pair(args):
 
     # there needs to be some changes here to account for the fact that the shells are already defined
     # set fragment_spreading to True
-    fragments = evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, s1.eccentricity, s2.eccentricity, [], binE_mass, binE_ecc, [], 
+    v1, v2 = s1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index], s2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, s1.eccentricity, s2.eccentricity, [], binE_mass, binE_ecc, [], 
                             LBgiven, source_sinks, collision_pair.shell_index, RBflag, True, scen_properties.n_shells, scen_properties.R0_km, debris_eccentricity_bins)
 
     collision_pair.gammas = gammas
@@ -138,7 +145,7 @@ def process_elliptical_collision_pair(args):
     return collision_pair
 
 def func_de(m, dv, mu=398600.4418):
-    """
+    """s
     Calculate the change in eccentricity (delta-e) based on mass and velocity changes (delta-v).
 
     Args:
@@ -159,7 +166,19 @@ def func_de(m, dv, mu=398600.4418):
 
     return dE
 
-def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_mass, binE_ecc, binW, LBdiam, source_sinks, collision_index, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, debris_eccentricity_bins = None): # eventually add stochastic ability
+def calculate_eccentricity(R, V):
+    # Calculate specific angular momentum vector h = R x V
+    h = np.cross(R, V)
+
+    mu = 398600.4418  # km^3/s^2
+    
+    # Calculate eccentricity vector e
+    e_vector = (np.cross(V, h) / mu) - (R / np.linalg.norm(R))
+    
+    # Return the magnitude of the eccentricity vector
+    return np.linalg.norm(e_vector)
+
+def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, e1, e2, binC, binE_mass, binE_ecc, binW, LBdiam, source_sinks, collision_index, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, debris_eccentricity_bins = None): # eventually add stochastic ability
     
     SS = 20 # super sampling ratio
     MU = 398600.4418  # km^3/s^2
@@ -210,10 +229,11 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_ma
         M = m1 + m2
         isCatastrophic = 1
 
+    # find the number of fragments generated
     num = (0.1 * M ** 0.75 * LB ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
     numSS = SS * num
 
-    # Create PDF of power law distribution, then sample 'num' selections
+    # Create PDF of power law distribution, then sample 'num' selections to find each mass
     dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
     dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
     
@@ -231,9 +251,26 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_ma
         dss = 0
 
     # Calculate the mass of objects
-    A = 0.556945 * dss ** 2.0047077 # Equation 2.72
+    A = 0.556945 * dss ** 2.0047077 # Equation 2.72 
     Am = func_Am(dss, objclass) # use Am conversion of the larger object
+    
+    # order the output in descending order
+    Am = np.sort(Am)[::-1]
     m = A/Am
+
+    # Calculate which parent object the fragments came from
+    mass_ratio1 = m1 / (m1 + m2)
+    mass_ratio2 = m2 / (m1 + m2)
+
+    num_fragments = len(m)
+    num_fragments1 = int(num_fragments * mass_ratio1)
+    num_fragments2 = int(num_fragments * mass_ratio2)  # Remaining fragments
+
+    # Split the mass array
+    fragments_obj1 = m[:num_fragments1]
+    fragments_obj2 = m[num_fragments1:]
+
+    m_by_root_species = np.concatenate((fragments_obj1, fragments_obj2))
 
     # Find difference in orbital velocity for shells
     dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
@@ -241,12 +278,34 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, dv1, dv2, e1, e2, binC, binE_ma
     # Compute delta-v for the fragments
     dv_values = func_dv(Am, 'col') / 1000  # km/s
 
+    # split the velocities into the root species array
+    dv_by_root_species = np.concatenate((dv_values[:num_fragments1], dv_values[num_fragments1:]))
+
     # Generate random directions for the velocity vectors
     u = np.random.rand(len(dv_values)) * 2 - 1
     theta = np.random.rand(len(dv_values)) * 2 * np.pi
     v = np.sqrt(1 - u**2)
     p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
     dv_vec = p * dv_values[:, np.newaxis]  # velocity vectors
+
+    # split the dv into the root species array
+    dv_vec_by_root_species = np.concatenate((dv_vec[:num_fragments1], dv_vec[num_fragments1:]))
+
+    # get the original velocity vectors for time in shells
+
+    
+    # Take the initial velocity (10km/s) which will need to be a vector - 
+    # all you need is r, v  => then cross for h, the mag, then go to eccentricity
+    # take single value for r (alt) make a vecotr that is the dv
+    # velocity vector that is the same as initial velocity
+    # add vector of dvs to original velocity vectors
+    # then you have a function of eccentricity since original 
+    # this will give you a set of ecc, then bin
+    # the original eccentricity will have the be taken into account to work out the difference - this will come from the SBM.
+
+    # better explanation of the document - better explanation of the variables on the github. Include warnings - if someone picks a large LC for example. 
+
+    # minimim value where things no longer collide. LC. # characteristic length, its diameter, not the radius. Has to match what the SBM does.  
 
     # Calculate change in eccentricity for each fragment
     e_initial_fragments = np.full(len(m), (e1 + e2) / 2)

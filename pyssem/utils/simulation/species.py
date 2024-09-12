@@ -5,6 +5,7 @@ import numpy as np
 from astropy import units as u
 from poliastro.bodies import Earth
 from poliastro.twobody import Orbit
+from matplotlib import pyplot as plt
 import copy
 import concurrent.futures
 from ..pmd.pmd import *
@@ -416,12 +417,14 @@ class Species:
         # Propagate the orbit over time_values and calculate positions and velocities
         positions = []
         velocities = []
+        velocities_vec = []
         for t in time_values:
             state = orbit.propagate(t)
             positions.append(state.r.to(u.km).value)  # Position in km
 
             # Technically, we are working out the speed not the velocity (magnitude of velocity)
             velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
+            velocities_vec.append(state.v.to(u.km / u.s).value)  # Velocity vector in km/s
 
         # Convert positions and velocities to numpy arrays
         positions = np.array(positions)
@@ -433,9 +436,9 @@ class Species:
         # Calculate true anomaly for each point (using argument of latitude)
         true_anomalies = np.linspace(0, 2 * np.pi, num_points)
 
-        return true_anomalies, radii, velocities
+        return true_anomalies, radii, velocities, velocities_vec
 
-    def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
+    def calculate_time_and_velocity_in_shell(self, radii, velocities, velocity_vecs, R0_km):
         """
         Calculate the normalized time spent in each shell and average velocity in each shell.
 
@@ -447,23 +450,59 @@ class Species:
         Returns:
             tuple: Normalized time spent in each shell and average velocity in each shell.
         """
-        time_in_shell = np.zeros(len(R0_km) - 1)
-        velocity_in_shell = np.zeros(len(R0_km) - 1)
 
-        for i in range(len(R0_km) - 1):
+        # Because this is a full orbit, the average of all of the velocities will be near 0. Instead just take half an orbit
+        velocities = velocities[len(velocities) // 2:]
+        velocity_vecs = velocity_vecs[len(velocity_vecs) // 2:]
+        radii = radii[len(radii) // 2:]
+
+        velocity_vecs = np.array(velocity_vecs)
+
+        num_shells = len(R0_km) - 1
+        time_in_shell = np.zeros(num_shells)
+        
+        # Initialize velocity_in_shell as a matrix with 3 columns (for u, v, w)
+        velocity_in_shell = np.zeros((num_shells, 3))
+
+        for i in range(num_shells):
             # Check if the radius falls within the shell boundaries
             in_shell = (radii >= R0_km[i]) & (radii < R0_km[i + 1])
             time_in_shell[i] = np.sum(in_shell)
+
             if np.sum(in_shell) > 0:
-                velocity_in_shell[i] = np.mean(velocities[in_shell])
+                # Compute average of each velocity component (u, v, w) for particles in the shell
+                velocity_in_shell[i, 0] = np.mean(velocity_vecs[in_shell, 0])  # Average u-component
+                velocity_in_shell[i, 1] = np.mean(velocity_vecs[in_shell, 1])  # Average v-component
+                velocity_in_shell[i, 2] = np.mean(velocity_vecs[in_shell, 2])  # Average w-component
 
         # Normalize the time_in_shell array
-        total_time = np.sum(time_in_shell)
-        if total_time > 0:
-            time_in_shell /= total_time
+        time_range = np.arange(len(velocity_vecs))
 
+        # plt.figure(figsize=(10, 6))
+
+        # # Plot u-component
+        # plt.plot(time_range, velocity_vecs[:, 0], label='u-component', marker='o')
+
+        # # Plot v-component
+        # plt.plot(time_range, velocity_vecs[:, 1], label='v-component', marker='o')
+
+        # # Plot w-component
+        # plt.plot(time_range, velocity_vecs[:, 2], label='w-component', marker='o')
+
+        # # Adding titles and labels
+        # plt.title('Velocity Components (u, v, w) Over Time with Orbital Shell Separation')
+        # plt.xlabel('Time Index')
+        # plt.ylabel('Velocity (u, v, w)')
+        # plt.legend()
+        # plt.grid(True)
+
+        # # Show the plot
+        # plt.show()
+
+
+        # Return the normalized time and the matrix of velocity components (u, v, w) for each shell
         return time_in_shell, velocity_in_shell
-    
+        
     def process_elliptical_species(self, args):
         """
             Helper function for parallel processing of time and velocity in shells for elliptical orbits.
@@ -548,7 +587,7 @@ class Species:
 
                         # Calculate time spent in each shell for the semi-major axis
                         for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
-                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+                            true_anomalies, radii, velocities, velocity_vectors = self.propagate_orbit(a, species.eccentricity, mu)
+                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, velocity_vectors, R0_km)
                             species.time_per_shells.append(time_in_shell)
                             species.velocity_per_shells.append(velocity_in_shell)
