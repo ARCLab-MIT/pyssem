@@ -6,6 +6,9 @@ import matplotlib.cm as cm
 import numpy as np
 import sympy as sp
 
+n_opt = 6 # for lambda
+n_opt_2 = 6 # for S_all in obj. function
+
 def PrfAll(x, scenario_properties):
   """
   Python version of the PrfAll function.
@@ -23,11 +26,14 @@ def PrfAll(x, scenario_properties):
   # github - should be more hands on/tuning for the optimizer
   
   N_shell = scenario_properties.n_shells
-  S_all = x[:N_shell]  # Extract S_all from x
+
+  S_all = x[:n_opt_2*N_shell]  # Extract all S from x, 6 species of active satellites in AMOS scenario
+  # S_all = x[:1*N_shell]
+  # S_all = x[0]
 
   # HIGH CAPACITY
-  # f = -np.sum(np.log(S_all)**1)
-  f = -np.sum(np.log(S_all)**2) 
+  f = -np.sum(np.log(S_all)**1)
+  # f = -np.sum(np.log(S_all)**2) 
   # f = -np.sum(np.log(S_all)**3) 
   # f = 1/np.sum(S_all) 
 
@@ -65,13 +71,26 @@ def PrIneqAll(x,scenario_properties,failure_rate_U):
     # usually is greater than 0, need to flip the sign if you want less than. 
 
     N_shell = scenario_properties.n_shells
-    S_all = x[:N_shell]
-    lambda_all = x[3*N_shell:4*N_shell] # should be the end of the x array
-    deltat = 8 # not able to access deltat from the scenario_properties object - fix 
+    num_species = len(scenario_properties.species_names)
+
+    S_all = x[:n_opt*N_shell]
+    lambda_all = x[num_species*N_shell:] # should be the end of the x array
+     
+    # deltat = 8 # not able to access deltat from the scenario_properties object - fix 
     y_fail_u = []
-    for i1 in range(N_shell):
-        y_fail_u.append( -(lambda_all[i1] * deltat * (1 - failure_rate_U) - S_all[i1]) ) # flip minus sign for less than, failure rate upper is set to 100, this can be defined by the user. 
+    # y_fail_l = []
+    # for i1 in range(n_opt*N_shell):
+    for i1 in range(6*N_shell):
+        # i2 = i1 % N_shell
+        i2 = i1
+        if i1 < 5*N_shell:
+            deltat = 8 # not able to access deltat from the scenario_properties object - fix
+        else:
+            deltat = 3
+        y_fail_u.append( -(lambda_all[i2] * deltat * (1 - failure_rate_U) - S_all[i1]) ) # flip minus sign for less than, failure rate upper is set to 100, this can be defined by the user. 
+        # y_fail_l.append( (lambda_all[i2] * deltat * (1 - 0) - S_all[i1]) )
     c_ineq = y_fail_u
+    # c_ineq =  np.concatenate([y_fail_u, y_fail_l])
 
     return c_ineq
 
@@ -85,11 +104,15 @@ def run_optimizer(scenario_properties, optimized_species):
   # solver
   equations_flattened = [scenario_properties.equations[i, j] for j in range(scenario_properties.equations.cols) for i in range(scenario_properties.equations.rows)]
 
-  full_lambda = sp.Matrix(sp.symbols([f'lambda_{i+1}' for i in range(scenario_properties.n_shells)]))
+  # full_lambda = sp.Matrix(sp.symbols([f'lambda_{i+1}' for i in range((n_opt)*scenario_properties.n_shells)]))
+  full_lambda = sp.Matrix(sp.symbols([f'lambda_{i+1}' for i in range((n_opt+1)*scenario_properties.n_shells)]))
   full_lambda_flattened = [full_lambda[i, j] for j in range(full_lambda.cols) for i in range(full_lambda.rows)]
 
-  for i1 in range(scenario_properties.n_shells):
+  for i1 in range(n_opt*scenario_properties.n_shells):
       equations_flattened[i1] = equations_flattened[i1]+full_lambda_flattened[i1]
+
+  for i1 in range(scenario_properties.n_shells):
+      equations_flattened[i1+14*scenario_properties.n_shells] = equations_flattened[i1+14*scenario_properties.n_shells]+full_lambda_flattened[i1+n_opt*scenario_properties.n_shells]
 
   scenario_properties.all_symbolic_vars = scenario_properties.all_symbolic_vars + full_lambda_flattened
 
@@ -107,9 +130,10 @@ def run_optimizer(scenario_properties, optimized_species):
   for i, var in enumerate(scenario_properties.species_names):
       var_name = var + '_0'  # For naming purposes
       # Dynamically calculate the number of variables for each species based on N_shell
-      var_initial_guess = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell]))  # Initial guess for each species
+      var_initial_guess = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 0  # Initial guess for each species
       lb_initial = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 1  # Lower bound for each species
-      
+      # lb_initial = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 0.005
+
       species_list.append(var_initial_guess)
       lb_species_list.append(lb_initial)
 
@@ -121,13 +145,14 @@ def run_optimizer(scenario_properties, optimized_species):
 
   # Dynamically handle the lambda variables based on how many species there are
   start_lambda_idx = num_species * N_shell
-  lam_0 = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:]))  # Handling lambda dynamically
+  lam_0 = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 0 # Handling lambda dynamically
 
   # Concatenate species initial guesses with lam_0 to form the final x0
   x0 = np.concatenate([x0_species, lam_0])
 
   # Handle the lambda variables' lower bounds similarly
   lb_lam = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 1
+  # lb_lam = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 0.005
 
   # Concatenate species lower bounds with lambda lower bounds to form the final lb array
   lb = np.concatenate([lb_species, lb_lam])
@@ -135,7 +160,7 @@ def run_optimizer(scenario_properties, optimized_species):
 
   ## Farilure rate, % = fail_rate / 100
   # make this user define. This is a %. 
-  failure_rate_U = 100
+  failure_rate_U = 0.5 # 0.15
   failure_rate_U = failure_rate_U/100
 
   ## Objective function
@@ -152,11 +177,11 @@ def run_optimizer(scenario_properties, optimized_species):
   ## Options for SLSQP
   options = {
       'disp': True,   
-      'maxiter': 5e5,
-      'ftol': 1e-6,     
-      'eps': 1e-18,
-      # 'finite_diff_rel_step': 1e-12,     
-  }
+      'maxiter': 5e5,  # 5e5
+      'ftol': 1e-1,    # 1e-6, 1e-3 (test_3); 1e-2 (test_2); 1e-1 (test_4)
+      'eps': 1e-18,    # 1e-18
+      # 'finite_diff_rel_step': 1e-13,     
+  } # '3-point', 'cs'
 
   ## Perform the optimization
   result = minimize(objective, x0, args=(scenario_properties), method='SLSQP', 
@@ -166,9 +191,9 @@ def run_optimizer(scenario_properties, optimized_species):
                     options = options)
 
   ## Print the results
-  print("Optimal found at:", result.x)
-  print("Function value at optimal:", -result.fun)
-  print("Equality constraints:", np.array([sp.lambdify(scenario_properties.all_symbolic_vars, eq, 'numpy')(*result.x) for eq in equations_flattened]))
+#   print("Optimal found at:", result.x)
+#   print("Function value at optimal:", -result.fun)
+#   print("Equality constraints:", np.array([sp.lambdify(scenario_properties.all_symbolic_vars, eq, 'numpy')(*result.x) for eq in equations_flattened]))
 
   xopt = result.x
   R02 = scenario_properties.R0_km
@@ -188,6 +213,12 @@ def run_optimizer(scenario_properties, optimized_species):
   # Dynamically handle lambda variables (lambda always comes after all species-related variables)
   start_lambda_idx = num_species * N_shell
   lam_opt = xopt[start_lambda_idx:]
+
+  lam_opt_list = []
+  for i in range(len(lam_opt)):
+      start_idx = i * N_shell
+      end_idx = (i + 1) * N_shell
+      lam_opt_list.append(lam_opt[start_idx:end_idx])
 
   # Handle constraints and equilibrium values dynamically
   c_eq = np.array([sp.lambdify(scenario_properties.all_symbolic_vars, eq, 'numpy')(*xopt) for eq in equations_flattened])
@@ -217,7 +248,7 @@ def run_optimizer(scenario_properties, optimized_species):
       return np.array(fun3(x, np.array(lam_opt))).flatten()
 
   # Time span for the solution
-  tf_ss = 100
+  tf_ss = 1000
   tspan1 = np.linspace(0, tf_ss, 100)
 
   # Solve the ODE using solve_ivp
@@ -250,7 +281,6 @@ def run_optimizer(scenario_properties, optimized_species):
   sel_MarkerWidth = 10
   sel_LineWidthAxis = 1
   sel_FontSize = 14
-  deltat = 8
 
   # Ensure the figures and optimizer directories exist
   import os
@@ -282,15 +312,17 @@ def run_optimizer(scenario_properties, optimized_species):
       plt.plot(t_prop, species_prop_list[i].sum(axis=0), color=colormap(i), linewidth=sel_LineWidth)
 
   # Update labels, title, and legend dynamically
-  plt.title("Population")
-  plt.xlabel("Years")
-  plt.ylabel("Count")
+  # plt.title("Population")
+  plt.xlabel("Years", fontsize=sel_FontSize)
+  plt.ylabel("Count", fontsize=sel_FontSize)
   legend_labels = ["Total"] + scenario_properties.species_names  # Add species names dynamically
   plt.legend(legend_labels, loc="best")
   plt.gca().tick_params(axis='both', which='major', labelsize=sel_FontSize)
   plt.gca().spines['bottom'].set_linewidth(sel_LineWidthAxis)
   plt.gca().spines['left'].set_linewidth(sel_LineWidthAxis)
-  plt.savefig("figures/optimizer/so_variation_no_fail.png", dpi=300)
+  plt.savefig("figures/optimizer/population.png", bbox_inches='tight', dpi=300)
+  plt.savefig("figures/optimizer/population.pdf", bbox_inches='tight', dpi=300)
+
 
   # 2. Plot population variation
   plt.figure(facecolor='w')
@@ -305,15 +337,17 @@ def run_optimizer(scenario_properties, optimized_species):
       plt.plot(t_prop, species_variation[-1] - species_variation, color=colormap(i), linewidth=sel_LineWidth)
 
   # Update labels, title, and legend dynamically
-  plt.title("Population variation")
-  plt.xlabel("Years")
-  plt.ylabel("Count")
+  # plt.title("Population variation")
+  plt.xlabel("Years", fontsize=sel_FontSize)
+  plt.ylabel("Count", fontsize=sel_FontSize)
   legend_labels = ["Total"] + scenario_properties.species_names  # Add species names dynamically
   plt.legend(legend_labels, loc="best")
   plt.gca().tick_params(axis='both', which='major', labelsize=sel_FontSize)
   plt.gca().spines['bottom'].set_linewidth(sel_LineWidthAxis)
   plt.gca().spines['left'].set_linewidth(sel_LineWidthAxis)
-  plt.savefig("figures/optimizer/population_variation.png", dpi=300)
+  plt.savefig("figures/optimizer/so_variation.png", bbox_inches='tight', dpi=300)
+  plt.savefig("figures/optimizer/so_variation.pdf", bbox_inches='tight', dpi=300)
+
 
   # 3. Plot failure rate constraint
   plt.figure(facecolor='w')
@@ -325,21 +359,29 @@ def run_optimizer(scenario_properties, optimized_species):
   # Filter species that begin with 'S'
   s_species_indices = [i for i, species_name in enumerate(scenario_properties.species_names) if species_name.startswith('S')]
 
+  # deltat = 8 # not able to access deltat from the scenario_properties object - fix
   # Dynamically plot the failure rate only for species starting with 'S'
-  for i in s_species_indices:
-      plt.plot(R02[1:] - 25, 100 * (deltat * lam_opt - species_opt_list[i]) / (deltat * lam_opt),
+  for i in range(n_opt):
+      if i < 5:
+            deltat = 8 # not able to access deltat from the scenario_properties object - fix
+      else:
+            deltat = 3
+      plt.plot(R02[1:] - 25, 100 * (deltat * lam_opt_list[i] - species_opt_list[i]) / (deltat * lam_opt_list[i]),
               '-o', color=colormap(i), linewidth=sel_LineWidth, markersize=sel_MarkerWidth)
 
   # Update labels, title, and legend dynamically
   s_species_names = [scenario_properties.species_names[i] for i in s_species_indices]
-  plt.title("Failure rate constraint")
-  plt.xlabel("Altitude (km)")
-  plt.ylabel("Failure rate (%)")
+  # plt.title("Failure rate constraint")
+  plt.xlabel("Altitude (km)", fontsize=sel_FontSize)
+  plt.ylabel("Failure rate (%)", fontsize=sel_FontSize)
   plt.legend(["$\chi_{max}$"] + s_species_names, loc="best")
+  # plt.legend(s_species_names, loc="best")
   plt.gca().tick_params(axis='both', which='major', labelsize=sel_FontSize)
   plt.gca().spines['bottom'].set_linewidth(sel_LineWidthAxis)
   plt.gca().spines['left'].set_linewidth(sel_LineWidthAxis)
-  plt.savefig("figures/optimizer/fail_rate_no_fail.png", dpi=300)
+  plt.savefig("figures/optimizer/fail_rate.png", bbox_inches='tight', dpi=300)
+  plt.savefig("figures/optimizer/fail_rate.pdf", bbox_inches='tight', dpi=300)
+
 
   # 4. Plot the optimal solution dynamically for all species
   plt.figure(facecolor='w')
@@ -349,18 +391,24 @@ def run_optimizer(scenario_properties, optimized_species):
   for i, species_name in enumerate(scenario_properties.species_names):
       plt.semilogy(R02[1:] - 25, species_opt_list[i], '-o', color=colormap(i), linewidth=sel_LineWidth, markersize=sel_MarkerWidth)
 
-  # Always plot lambda as the last line
-  plt.semilogy(R02[1:] - 25, lam_opt, '-v', color='black', linewidth=sel_LineWidth, markersize=sel_MarkerWidth)
+  # # Always plot lambda as the last line
+  # for i, species_name in enumerate(range(n_opt)):
+  # # for i, species_name in enumerate(range(n_opt+1)):
+  #   plt.semilogy(R02[1:] - 25, lam_opt_list[i], '-v', color=colormap(i), linewidth=sel_LineWidth, markersize=sel_MarkerWidth)
 
   # Update labels, title, and legend dynamically
-  plt.title("Optimal solution")
-  plt.xlabel("Altitude (km)")
-  plt.ylabel("Count")
-  plt.legend(scenario_properties.species_names + ["$\lambda$"], loc="best")
+  # plt.title("Optimal solution")
+  plt.xlabel("Altitude (km)", fontsize=sel_FontSize)
+  plt.ylabel("Count", fontsize=sel_FontSize)
+  # plt.legend(scenario_properties.species_names + ["$\lambda$"], loc="best")
+  # plt.legend(scenario_properties.species_names, loc="best")
+  plt.legend(scenario_properties.species_names,bbox_to_anchor = (1, 1)) 
   plt.gca().tick_params(axis='both', which='major', labelsize=sel_FontSize)
   plt.gca().spines['bottom'].set_linewidth(sel_LineWidthAxis)
   plt.gca().spines['left'].set_linewidth(sel_LineWidthAxis)
-  plt.savefig("figures/optimizer/max_capacity_no_fail.png", dpi=300)
+  plt.savefig("figures/optimizer/max_capacity.png", bbox_inches='tight', dpi=300)
+  plt.savefig("figures/optimizer/max_capacity.pdf", bbox_inches='tight', dpi=300)
+
 
   # 5. Plot equilibrium constraint dynamically for all species
   plt.figure(facecolor='w')
@@ -371,11 +419,12 @@ def run_optimizer(scenario_properties, optimized_species):
       plt.plot(R02[1:] - 25, species_eq_list[i], color=colormap(i), linewidth=sel_LineWidth)
 
   # Update labels, title, and legend dynamically
-  plt.title("Equilibrium constraint")
-  plt.xlabel("Altitude (km)")
-  plt.ylabel("Count")
+  # plt.title("Equilibrium constraint")
+  plt.xlabel("Altitude (km)", fontsize=sel_FontSize)
+  plt.ylabel("Count", fontsize=sel_FontSize)
   plt.legend(scenario_properties.species_names, loc="best")
   plt.gca().tick_params(axis='both', which='major', labelsize=sel_FontSize)
   plt.gca().spines['bottom'].set_linewidth(sel_LineWidthAxis)
   plt.gca().spines['left'].set_linewidth(sel_LineWidthAxis)
-  plt.savefig("figures/optimizer/equil_constr_no_fail.png", dpi=300)
+  plt.savefig("figures/optimizer/equil_constr.png", bbox_inches='tight', dpi=300)
+  plt.savefig("figures/optimizer/equil_constr.pdf", bbox_inches='tight', dpi=300)

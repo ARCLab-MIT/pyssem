@@ -218,7 +218,12 @@ if __name__ == "__main__":
     # with open('output.json', 'w') as f:
     #     f.write(ouput)
 
-    # open pickle file
+    # # test_2 : 200-1400 km, Nshell = 24, example_sim_2 -> working
+    # # test_3 : 200-900 km, Nshell = 14, example_sim_2 -> working
+    # # test_4 : 200-1400 km, Nshell = 40, example_sim_2 -> working
+    # # test_5 : 200-900 km, Nshell = 14, example_sim (orig. amos scenario) -> working
+    
+    # # open pickle file
     # with open('scenario-properties-test.pkl', 'rb') as f:
     #     scenario_properties = pickle.load(f)
 
