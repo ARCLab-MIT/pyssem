@@ -110,7 +110,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            #self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             return species_list
         except json.JSONDecodeError:
@@ -185,6 +185,9 @@ if __name__ == "__main__":
     # with open(os.path.join('pyssem', 'example_sim.json')) as f:
     #     simulation_data = json.load(f)
 
+    # with open(os.path.join('pyssem', 'example_sim_2.json')) as f:
+    #     simulation_data = json.load(f)
+
     # scenario_props = simulation_data["scenario_properties"]
 
     # # Create an instance of the pySSEM_model with the simulation parameters
@@ -218,8 +221,13 @@ if __name__ == "__main__":
     # with open('output.json', 'w') as f:
     #     f.write(ouput)
 
+    # # test_2 : 200-1400 km, Nshell = 24, example_sim_2 -> working
+    # # test_3 : 200-900 km, Nshell = 14, example_sim_2 -> working
+    # # test_4 : 200-1400 km, Nshell = 40, example_sim_2 -> working
+    # # test_5 : 200-900 km, Nshell = 14, example_sim (orig. amos scenario) -> working
+    
     # open pickle file
-    with open('scenario-properties-test.pkl', 'rb') as f:
+    with open('scenario-properties-test_5.pkl', 'rb') as f:
         scenario_properties = pickle.load(f)
 
     run_optimizer(scenario_properties, "S")
