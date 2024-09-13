@@ -229,6 +229,59 @@ def create_plots(self):
     import shutil
     shutil.rmtree(frames_dir)
 
+
+    # Splitting by sub-group
+    output = scenario_properties.output  # Output object from simulation
+    n_species = scenario_properties.species_length  # Number of species
+    num_shells = scenario_properties.n_shells  # Number of shells per species
+    species_names = scenario_properties.species_names  # List of species names
+    plt.figure(figsize=(10, 6))
+
+    total_objects_all_species = np.zeros_like(output.t)
+
+    # Initialize arrays for different species groups
+    total_objects_S_group = np.zeros_like(output.t)
+    total_objects_N_group = np.zeros_like(output.t)
+    total_objects_B_group = np.zeros_like(output.t)
+
+    for i in range(n_species):
+        start_idx = i * num_shells
+        end_idx = start_idx + num_shells
+        total_objects_per_species = np.sum(output.y[start_idx:end_idx, :], axis=0)
+
+        # Check species group by name and sum accordingly
+        species_name = species_names[i]
+        
+        if species_name.startswith('S_'):
+            total_objects_S_group += total_objects_per_species
+        elif species_name.startswith('N_'):
+            total_objects_N_group += total_objects_per_species
+        elif species_name.startswith('B_'):
+            total_objects_B_group += total_objects_per_species
+        
+        total_objects_all_species += total_objects_per_species
+
+    # Plot each species group in different colors
+    plt.plot(output.t, total_objects_S_group, label='S_ Group', color='blue', linewidth=2)
+    plt.plot(output.t, total_objects_N_group, label='N_ Group', color='green', linewidth=2)
+    plt.plot(output.t, total_objects_B_group, label='B_ Group', color='red', linewidth=2)
+
+    # Plot the total number of objects for all species combined
+    plt.plot(output.t, total_objects_all_species, label='Total All Species', color='k', linewidth=2, linestyle='--')
+
+    # Add labels, title, and legend
+    plt.xlabel('Time')
+    plt.ylabel('Total Number of Objects')
+    plt.title('Objects Over Time for Each Species Group and Total')
+    plt.xlim(0, max(output.t))
+    plt.legend()
+    plt.tight_layout()
+    plt.yscale('log')
+
+    # Save the figure
+    plt.savefig('figures/total_objects_by_species_group.png')
+    plt.close()
+
 def results_to_json(self):
         """
         Converts the output of solve_ivp (integrator) to a JSON format. 

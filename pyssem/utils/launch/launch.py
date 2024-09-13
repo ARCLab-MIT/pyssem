@@ -299,18 +299,44 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T_new = pd.DataFrame()
 
     # Loop through object classes and assign species based on mass
+    # for obj_class in T['obj_class'].unique():
+    #     species_class = species_dict.get(obj_class)
+    #     if species_class in scen_properties.species_cells:
+    #         if len(scen_properties.species_cells[species_class]) == 1:
+    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #             T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+    #             T_new = pd.concat([T_new, T_obj_class])
+    #         else:
+    #             species_cells = scen_properties.species_cells[species_class]
+    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #             T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+    #             T_new = pd.concat([T_new, T_obj_class])
+
     for obj_class in T['obj_class'].unique():
         species_class = species_dict.get(obj_class)
-        if species_class in scen_properties.species_cells:
-            if len(scen_properties.species_cells[species_class]) == 1:
+        
+        if species_class in scen_properties.species_cells:     
+            if species_class == 'B':
+                # Handle the case where species_class is 'B' and match by mass bin
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                T_new = pd.concat([T_new, T_obj_class])
-            else:
                 species_cells = scen_properties.species_cells[species_class]
-                T_obj_class = T[T['obj_class'] == obj_class].copy()
-                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                      
+                T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
+                
                 T_new = pd.concat([T_new, T_obj_class])
+            
+            else:
+                # General case for all other species_class
+                if len(scen_properties.species_cells[species_class]) == 1:
+                    T_obj_class = T[T['obj_class'] == obj_class].copy()
+
+                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                    T_new = pd.concat([T_new, T_obj_class])
+                else:
+                    T_obj_class = T[T['obj_class'] == obj_class].copy()
+                    species_cells = scen_properties.species_cells[species_class]
+                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
+                    T_new = pd.concat([T_new, T_obj_class])
 
     print(f"Total Objects after mass bin: {len(T_new)}")
 
@@ -382,6 +408,25 @@ def ADEPT_traffic_model(scen_properties, file_path):
     print(f"Future Launch Model: {len(flm_steps)}")
     
     return x0_summary, flm_steps
+
+def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
+    """
+    Find the eccentricity bin for a given eccentricity.
+
+    :param eccentricity: Eccentricity of the object's orbit
+    :type eccentricity: float
+    :param scen_properties: The scenario properties object
+    :type scen_properties: ScenarioProperties
+    :param species_cell: The species cell to find the eccentricity bin for
+    :type species_cell: Species
+    :return: The species name corresponding to the given eccentricity
+    :rtype: str
+    """
+
+    for species in species_cell:
+        if species.ecc_lb <= eccentricity < species.ecc_ub:
+            return species.sym_name
+
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """
