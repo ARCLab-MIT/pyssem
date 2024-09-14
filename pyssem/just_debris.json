@@ -5,14 +5,14 @@
     "modified": "2024-07-02T21:25:24.117000+00:00",
     "owner": "Indigo",
     "scenario_properties": {
-        "density_model": "static_exp_dens_func",
+        "density_model": "JB2008_dens_func",
         "integrator": "BDF",
         "launch_function": "Constant",
         "LC": 0.1,
-        "max_altitude": 900,
-        "min_altitude": 200,
-        "n_shells": 14,
-        "simulation_duration": 10,
+        "max_altitude": 2000,
+        "min_altitude": 500,
+        "n_shells": 10,
+        "simulation_duration": 100,
         "start_date": "01/02/2024",
         "steps": 10,
         "v_imp": 10,
@@ -100,9 +100,11 @@
             "slotting_effectiveness": 0,
             "drag_effected": true,
             "launch_func": "launch_func_null",
-            "pmd_func": "pmd_func_none",
-            "drag_func": "drag_func_exp"
+            "pmd_func": "pmd_func_derelict",
+            "drag_func": "drag_func_exp",
+            "elliptical": false
         }
+        
     ],
     "status": "not started"
 }
