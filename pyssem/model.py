@@ -185,36 +185,36 @@ if __name__ == "__main__":
     # with open(os.path.join('pyssem', 'example_sim.json')) as f:
     #     simulation_data = json.load(f)
 
-    with open(os.path.join('pyssem', 'example_sim_2.json')) as f:
-        simulation_data = json.load(f)
+    # with open(os.path.join('pyssem', 'example_sim_2.json')) as f:
+    #     simulation_data = json.load(f)
 
-    scenario_props = simulation_data["scenario_properties"]
+    # scenario_props = simulation_data["scenario_properties"]
 
-    # Create an instance of the pySSEM_model with the simulation parameters
-    model = Model(
-        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
-        simulation_duration=scenario_props["simulation_duration"],
-        steps=scenario_props["steps"],
-        min_altitude=scenario_props["min_altitude"],
-        max_altitude=scenario_props["max_altitude"],
-        n_shells=scenario_props["n_shells"],
-        launch_function=scenario_props["launch_function"],
-        integrator=scenario_props["integrator"],
-        density_model=scenario_props["density_model"],
-        LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None),
-        fragment_spreading=scenario_props.get("fragment_spreading", True),
-        parallel_processing=scenario_props.get("parallel_processing", False),
-        baseline=scenario_props.get("baseline", False)
-    )
+    # # Create an instance of the pySSEM_model with the simulation parameters
+    # model = Model(
+    #     start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+    #     simulation_duration=scenario_props["simulation_duration"],
+    #     steps=scenario_props["steps"],
+    #     min_altitude=scenario_props["min_altitude"],
+    #     max_altitude=scenario_props["max_altitude"],
+    #     n_shells=scenario_props["n_shells"],
+    #     launch_function=scenario_props["launch_function"],
+    #     integrator=scenario_props["integrator"],
+    #     density_model=scenario_props["density_model"],
+    #     LC=scenario_props["LC"],
+    #     v_imp = scenario_props.get("v_imp", None),
+    #     fragment_spreading=scenario_props.get("fragment_spreading", True),
+    #     parallel_processing=scenario_props.get("parallel_processing", False),
+    #     baseline=scenario_props.get("baseline", False)
+    # )
 
-    species = simulation_data["species"]
+    # species = simulation_data["species"]
 
-    species_list = model.configure_species(species)
+    # species_list = model.configure_species(species)
 
-    results = model.run_model()
+    # results = model.run_model()
 
-    model.create_plots()
+    # model.create_plots()
 
     # ouput = model.results_to_json()
     # # convert to json file
@@ -226,9 +226,10 @@ if __name__ == "__main__":
     # # test_4 : 200-1400 km, Nshell = 40, example_sim_2 -> working
     # # test_5 : 200-900 km, Nshell = 14, example_sim (orig. amos scenario) -> working
     # # test_6 : 200-1200 km, Nshell = 20, example_sim (orig. amos scenario) -> working
+    # # test_7 : 200-1400 km, Nshell = 24, example_sim (orig. amos scenario) -> not working
     
-    # # open pickle file
-    # with open('scenario-properties-test_7.pkl', 'rb') as f:
-    #     scenario_properties = pickle.load(f)
+    # open pickle file
+    with open('scenario-properties-test_7.pkl', 'rb') as f:
+        scenario_properties = pickle.load(f)
 
-    # run_optimizer(scenario_properties, "S") 
+    run_optimizer(scenario_properties, "S") 
