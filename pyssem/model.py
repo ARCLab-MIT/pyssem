@@ -188,6 +188,9 @@ if __name__ == "__main__":
     with open(os.path.join('pyssem', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
+    # with open(os.path.join('pyssem', 'example_sim_2.json')) as f:
+    #     simulation_data = json.load(f)
+
     scenario_props = simulation_data["scenario_properties"]
 
     # Create an instance of the pySSEM_model with the simulation parameters
@@ -228,8 +231,8 @@ if __name__ == "__main__":
     # # test_6 : 200-1200 km, Nshell = 20, example_sim (orig. amos scenario) -> working
     # # test_7 : 200-1400 km, Nshell = 24, example_sim (orig. amos scenario) -> not working
     
-    # open pickle file
-    with open('scenario-properties-test_7.pkl', 'rb') as f:
-        scenario_properties = pickle.load(f)
+    # # open pickle file
+    # with open('scenario-properties-test_7.pkl', 'rb') as f:
+    #     scenario_properties = pickle.load(f)
 
-    run_optimizer(scenario_properties, "S") 
+    # run_optimizer(scenario_properties, "S") 
