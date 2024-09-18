@@ -140,7 +140,7 @@ class Model:
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties-test.pkl', 'wb') as f:
+            with open('scenario-properties-frag-spread.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties

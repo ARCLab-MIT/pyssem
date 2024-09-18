@@ -299,46 +299,19 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T_new = pd.DataFrame()
 
     # Loop through object classes and assign species based on mass
-    # for obj_class in T['obj_class'].unique():
-    #     species_class = species_dict.get(obj_class)
-    #     if species_class in scen_properties.species_cells:
-    #         if len(scen_properties.species_cells[species_class]) == 1:
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-    #             T_new = pd.concat([T_new, T_obj_class])
-    #         else:
-    #             species_cells = scen_properties.species_cells[species_class]
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-    #             T_new = pd.concat([T_new, T_obj_class])
-
     for obj_class in T['obj_class'].unique():
         species_class = species_dict.get(obj_class)
-        
-        if species_class in scen_properties.species_cells:     
-            if species_class == 'B':
-                # Handle the case where species_class is 'B' and match by mass bin
+        if species_class in scen_properties.species_cells:
+            if len(scen_properties.species_cells[species_class]) == 1:
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-                species_cells = scen_properties.species_cells[species_class]
-                      
-                T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
-                
+                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
                 T_new = pd.concat([T_new, T_obj_class])
-            
             else:
-                # General case for all other species_class
-                if len(scen_properties.species_cells[species_class]) == 1:
-                    T_obj_class = T[T['obj_class'] == obj_class].copy()
+                species_cells = scen_properties.species_cells[species_class]
+                T_obj_class = T[T['obj_class'] == obj_class].copy()
+                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                T_new = pd.concat([T_new, T_obj_class])
 
-                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                    T_new = pd.concat([T_new, T_obj_class])
-                else:
-                    T_obj_class = T[T['obj_class'] == obj_class].copy()
-                    species_cells = scen_properties.species_cells[species_class]
-                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
-                    T_new = pd.concat([T_new, T_obj_class])
-
-    print(f"Total Objects after mass bin: {len(T_new)}")
 
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
@@ -351,18 +324,8 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # print the count of each species in species_class
     print(T_new['species'].value_counts())
 
-    print("Start date: ", scen_properties.start_date)
-
-    # find the count of rows before and after the start date
-    before = len(T_new[T_new['epoch_start_datetime'] < scen_properties.start_date])
-    after = len(T_new[T_new['epoch_start_datetime'] >= scen_properties.start_date])
-
-    print(f"Objects before start date: {before}")
-    print(f"Objects after start date: {after}")
-
     # Initial population
-    # x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date.year]
-    x0 = T_new[T_new['epoch_start_datetime'] < '01-01-2023']
+    x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
 
     print(f"Initial Population: {len(x0)}")
 

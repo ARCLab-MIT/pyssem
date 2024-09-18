@@ -24,7 +24,6 @@
     "simulation_name": "Indigo",
     "species": [
         {
-<<<<<<< HEAD
             "A": 4.9564,
             "active": true,
             "alpha": 0.2,
@@ -37,23 +36,6 @@
             "maneuverable": true,
             "mass": 192.9379,
             "Pm": 0.9,
-=======
-            "sym_name": "S",
-            "Cd": 2.2,
-            "mass": 500,
-            "radius": 2,
-            "A": "Calculated based on radius",
-            "active": true,
-            "maneuverable": false,
-            "trackable": false,
-            "deltat": 8,
-            "Pm": 0.90,
-            "alpha": 1e-5,
-            "alpha_active": 1e-5,
-            "slotted": false, 
-            "slotting_effectiveness": 1.0,
-            "drag_effected": true,
->>>>>>> main
             "pmd_func": "pmd_func_sat",
             "radius": 1.2561,
             "RBflag": 0,
@@ -76,7 +58,6 @@
             "alpha": 0,
             "alpha_active": 0,
             "RBflag": 0,
-<<<<<<< HEAD
             "slotting_effectiveness": 0,
             "drag_effected": true,
             "launch_func": "launch_func_null",
@@ -101,17 +82,10 @@
             "drag_effected": true,
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_none",
-=======
-            "slotting_effectiveness": 1,
-            "drag_effected": true,
-            "launch_func": "launch_func_null",
-            "pmd_func": "pmd_func_derelict",
->>>>>>> main
             "drag_func": "drag_func_exp"
         },
         {
             "sym_name": "B",
-<<<<<<< HEAD
             "Cd": 2.2,
             "mass": 192.9379,
             "A": 4.9564,
@@ -127,21 +101,6 @@
             "slotting_effectiveness": 0,
             "drag_effected": true,
             "launch_func": "launch_func_null",
-=======
-            "RBflag" : 1,
-            "Cd": 2.2,
-            "mass": 1783.94,
-            "radius": 2.687936011,
-            "A": 22.6980069221863,
-            "active": false,
-            "slotted": false,
-            "slotting_effectiveness": 1,
-            "drag_effected": true,
-            "Pm": 0,
-            "alpha": 0,
-            "alpha_active": 0, 
-            "trackable": true,
->>>>>>> main
             "pmd_func": "pmd_func_none",
             "drag_func": "drag_func_exp",
             "elliptical": true, 
