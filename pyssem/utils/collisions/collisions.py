@@ -3,7 +3,7 @@ from sympy import symbols, Matrix
 import numpy as np
 from ..simulation.species_pair_class import SpeciesPairClass
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import multiprocessing as mp
 

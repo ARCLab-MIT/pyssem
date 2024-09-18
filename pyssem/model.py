@@ -1,13 +1,13 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
-# from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_collision_pairs
-from utils.plotting.plotting import create_plots, results_to_json
+from utils.optimizer.optimizer import run_optimizer
 from datetime import datetime
+from utils.plotting.plotting import create_plots, results_to_json
 import json
 import os
 import pickle
@@ -99,6 +99,9 @@ class Model:
 
             # Set up elliptical orbits for species
             species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+
+            # Set up elliptical orbits for species
+            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
@@ -147,7 +150,7 @@ class Model:
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
+            with open('scenario-properties-frag-spread.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties
@@ -179,6 +182,15 @@ class Model:
             return results_to_json(self)
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
+        
+    def optimize(self):
+        """
+            Run the optimizer. 
+        """
+        try:
+            run_optimizer(self.scenario_properties)
+        except Exception as e:
+            raise RuntimeError(f"Failed to run optimizer: {str(e)}")
 
 
 if __name__ == "__main__":

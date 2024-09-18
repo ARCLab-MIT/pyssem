@@ -7,6 +7,7 @@ import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model, launch_func_constant
 from ..handlers.handlers import download_file_from_google_drive
+from ..optimizer.optimizer import *
 from pkg_resources import resource_filename
 import pandas as pd
 import os
@@ -20,6 +21,7 @@ def parallel_lambdify(equations_flattened, all_symbolic_vars):
     from loky import get_reusable_executor
 
     # Prepare arguments for parallel processing
+    from loky import get_reusable_executor
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
     # Determine the number of available CPU cores
@@ -260,7 +262,8 @@ class ScenarioProperties:
         Returns: None
         """
 
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        # launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'start_full_V2_new.asem.csv')
 
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
@@ -542,5 +545,11 @@ class ScenarioProperties:
             dN_dt[i] += equations[i](*N)
 
         return dN_dt
+    
+    def optimizer(self):
+        """
+        More parameters to be added in the future.
+        """
+
 
 

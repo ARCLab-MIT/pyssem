@@ -6,9 +6,9 @@
     "created": "2024-01-01T12:00:00Z",
     "modified": "2024-01-01T12:00:00Z",
     "scenario_properties": {
-      "start_date": "01/03/2022",   
-      "simulation_duration": 100,              
-      "steps": 50,                            
+      "start_date": "01/03/2024",   
+      "simulation_duration": 200,              
+      "steps": 100,                            
       "min_altitude": 200,                   
       "max_altitude": 1400,                   
       "n_shells": 40,                         
@@ -20,6 +20,10 @@
       "fragment_spreading": true, 
       "parallel_processing" : false,
       "baseline": false                          
+      "fragment_spreading": true, 
+      "parallel_processing" :true,
+      "baseline": false,
+      "optimizer" : true                          
     },
     "species": [
       {
@@ -39,8 +43,8 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": true,
         "launch_func": "launch_func_constant",
-        "lambda_constant": [133, 133, 133],
-        "launch_altitude" : [500, 550, 600],
+        "lambda_constant": [0, 0, 0],
+        "launch_altitude" : [0, 0, 0],
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
@@ -60,6 +64,31 @@
         "RBflag": 0,
         "slotting_effectiveness": 1.0,
         "drag_effected": true,
+        "drag_effected": false,
+        "launch_func": "launch_func_constant",
+        "lambda_constant": [0, 0],
+        "launch_altitude" : [0, 0],
+        "pmd_func": "pmd_func_sat",
+        "drag_func": "drag_func_exp"
+    },
+    {
+        "sym_name": "Sns",
+        "Cd": 2.2,
+        "mass": 6,
+        "radius": 0.105550206,
+        "A": 0.035,
+        "active": true,
+        "maneuverable": false,
+        "deltat": 3,
+        "Pm": 0,
+        "alpha": 0,
+        "alpha_active": 0,
+        "slotted" : false, 
+        "slotting_effectiveness": 0,
+        "drag_effected": true,
+        "launch_func": "launch_func_constant",
+        "lambda_constant": 0,  
+        "launch_altitude" : 0,     
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
     },
