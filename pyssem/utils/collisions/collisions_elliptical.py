@@ -252,19 +252,19 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, e1, e2, binC, binE_mass
         # No fragments bigger the LNT are generated
         return None
 
-    # Calculate which parent object the fragments came from
-    mass_ratio1 = m1 / (m1 + m2)
-    mass_ratio2 = m2 / (m1 + m2)
+    # # Calculate which parent object the fragments came from
+    # mass_ratio1 = m1 / (m1 + m2)
+    # mass_ratio2 = m2 / (m1 + m2)
 
-    num_fragments = len(m)
-    num_fragments1 = int(num_fragments * mass_ratio1)
-    num_fragments2 = int(num_fragments * mass_ratio2)  # Remaining fragments
+    # num_fragments = len(m)
+    # num_fragments1 = int(num_fragments * mass_ratio1)
+    # num_fragments2 = int(num_fragments * mass_ratio2)  # Remaining fragments
 
-    # Split the mass array
-    fragments_obj1 = m[:num_fragments1]
-    fragments_obj2 = m[num_fragments1:]
+    # # Split the mass array
+    # fragments_obj1 = m[:num_fragments1]
+    # fragments_obj2 = m[num_fragments1:]
 
-    m_by_root_species = np.concatenate((fragments_obj1, fragments_obj2))
+    # m_by_root_species = np.concatenate((fragments_obj1, fragments_obj2))
 
     # Find difference in orbital velocity for shells
     dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
@@ -279,132 +279,69 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, e1, e2, binC, binE_mass
     p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
     dv_vec = p * dv_values[:, np.newaxis]  # velocity vectors
 
-    # # Split the dv into the root species array
-    dv_vec_by_root_species = [dv_vec[:num_fragments1], dv_vec[num_fragments1:]]
-
-    # # Get the original velocity vectors for time in shells, and apply the change
-    # #fragments_new_vel = np.array([v1 + dv_vec_by_root_species, v2 + dv_vec_by_root_species])
-
-    # # Original eccentricity of the fragments
-    # ecc_initial_fragments = [np.full(len(fragments_obj1), e1), np.full(len(fragments_obj2), e2)]
-
-    # a = scen_properties.HMid[collision_index] + scen_properties.re
-
-    # r_vec = np.array([a, 0, 0])  # Initial position vector
-    # fragments_r_vec = [np.array([r_vec] * len(fragments_obj1)), np.array([r_vec] * len(fragments_obj2))]
-
-    
-    # dE_values_fragments1 = []
-    # dE_values_fragments2 = []
-
-    # for i in range(len(fragments_obj1)):
-    #     e_new = func_de(fragments_r_vec[0][i], dv_vec_by_root_species[0][i])
-    #     dE_values_fragments1.append(e_new - e1)
-
-    # for i in range(len(fragments_obj2)):
-    #     e_new = func_de(fragments_r_vec[1][i], dv_vec_by_root_species[1][i])
-    #     dE_values_fragments2.append(e_new - e2)
-
-    # # Combine eccentricity changes
-    # dE_values = np.concatenate([dE_values_fragments1, dE_values_fragments2]) 
-    # Take the initial velocity (10km/s) which will need to be a vector - 
-    # all you need is r, v  => then cross for h, the mag, then go to eccentricity
-    # take single value for r (alt) make a vecotr that is the dv
-    # velocity vector that is the same as initial velocity
-    # add vector of dvs to original velocity vectors
-    # then you have a function of eccentricity since original 
-    # this will give you a set of ecc, then bin
-    # the original eccentricity will have the be taken into account to work out the difference - this will come from the SBM.
-
-    # better explanation of the document - better explanation of the variables on the github. Include warnings - if someone picks a large LC for example. 
-
-    # minimim value where things no longer collide. LC. # characteristic length, its diameter, not the radius. Has to match what the SBM does.  
-
-    # Ensure the eccentricity bins start at 0 and end at 1
-    # binE_ecc = np.insert(binE_ecc, 0, 0)
-    # binE_ecc = np.append(binE_ecc, 1)
-
-    # # Find the eccentricity bin for each fragment
-    # binEccIndex = np.digitize(dE_values, binE_ecc) - 1
-
-
-    # WHILE ECCENTRICITY IS INCORRECT - WE ARE JUST GOING TO USE RANDOM NUMBERS FOR NEW ECC
-    # random_list1 = np.random.uniform(low=0.0, high=0.1, size=num_fragments1)
-    # random_list2 = np.random.uniform(low=0.0, high=0.1, size=num_fragments2)
-
+    # Calculate the new eccentricity of the fragments
     a = scen_properties.HMid[collision_index] + scen_properties.re
     r_vec = np.tile([a, 0, 0], (len(m), 1)) # create an R
-    v_vec = [np.linalg.norm(vec) for vec in dv_vec] + v1
+    v_vec = [np.linalg.norm(vec) for vec in dv_vec] + v1 # create a v vec
     v_vec_2d = np.array([[0, v, 0] for v in v_vec])
     new_ecc = func_de(r_vec, v_vec_2d)
 
     # I need to bin the fragments based on the eccentricity change using binEd_ecc
     binEccIndex = np.digitize(new_ecc, binE_ecc)
 
-    # # # Generate velocity-mass distribution using 2D histogram
+    # # # Generate velocity-mass distribution using 2D histogram - old way
+    # hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-n_shells, n_shells) * dDV / 1000, binEd_mass])
+    # altNums = hc / (SS * 3)
+
+    # Step 1: Calculate the magnitude of the velocity change from the u, v, w components
+    dv = np.sqrt(dv_vec[:, 0]**2 + dv_vec[:, 1]**2 + dv_vec[:, 2]**2)  # Magnitude of velocity
+
+    # Step 2: Determine the direction (positive or negative) based on the primary velocity component
+    # Assuming the 'u' component tells us the main direction of altitude change.
+    direction_flags = np.sign(dv_vec[:, 0])  # Positive or negative movement along 'u' axis (altitude)
+
+    # Step 3: Calculate the number of velocity changes required to reach each shell
+    # Define shell bins based on the velocity differences
+    shell_bins = np.arange(0, n_shells) * dDV / 1000  # Only positive shells, since negative velocities won't reach new altitudes
+
+    # Initialize an array to hold the shell index for each fragment
+    n_shell_indices = np.full(len(dv), None)  # Initially set all fragments to None
+
+    # Step 4: For fragments moving in the positive direction (ascending):
+    positive_movement = direction_flags > 0
+    positive_dv = dv[positive_movement]
+
+    # Bin the fragments with positive movement into shell bins based on their velocity magnitude
+    if len(positive_dv) > 0:
+        positive_shell_indices = np.digitize(positive_dv, shell_bins) - 1  # Get the shell index for each fragment
+        n_shell_indices[positive_movement] = collision_index + positive_shell_indices
+
+    # Step 5: For fragments moving in the negative direction (descending):
+    # Here, we assume negative velocities won't reach any altitude above the collision point.
+    negative_movement = direction_flags < 0
+    n_shell_indices[negative_movement] = -99  # Fragments moving downward don't reach any higher altitude shell
+
+    n_shell_indices = np.where((n_shell_indices >= 0) & (n_shell_indices < n_shells-1), n_shell_indices, None)
+
+    # bin the mass of the fragments based on the binEd_mass
+    binMassIndex = np.digitize(m, binEd_mass)
+
+    # Create a final matrix, which is for each each fragment, the shell index, the eccentricity index and the mass index
+    fragment_matrix = np.array([n_shell_indices, binEccIndex, binMassIndex]).T
+
+    fragment_3D_matrix = np.zeros((n_shells, len(binEd_mass)-1, len(binE_ecc)-2)) # this is wrong, the eccentricity is 2 more than it should be
+
+    # # Loop through the fragment_matrix and populate the 3D matrix
+    # for row in fragment_matrix:
+    #     shell_idx = row[0]      # n_shell_indices
+    #     ecc_idx = row[1]         # binEccIndex
+    #     mass_idx = row[2]    # binMassIndex
+        
+    #     # Increment the count at the corresponding shell, mass, and eccentricity bin
+    #     if shell_idx != -99 and shell_idx is not None:
+    #         fragment_3D_matrix[shell_idx-1, mass_idx-1, ecc_idx-2] += 1
     
-    hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-n_shells, n_shells) * dDV / 1000, binEd_mass])
-    altNums = hc / (SS * 3)
-
-    # just a 1d historgam with just dv_vec and shells
-    hc = np.histogram(dv_vec.ravel(), bins=np.arange(-n_shells, n_shells) * dDV / 1000)[0]
-    altNums2 = hc / SS
-
-    fragsMade2D_list = [np.roll(altNums, shift) for shift in range(n_shells + 1)]
-    fragsMade2D = np.column_stack(fragsMade2D_list)
-
-    # Define shell bins based on velocity differences
-    shell_bins = np.arange(-n_shells, n_shells) * dDV / 1000  # Shell bins based on delta velocity
-
-    # Calculate the shell bin index for each fragment based on dv_vec
-    n_shell_indices = np.digitize(dv_vec.ravel(), shell_bins) - 1  # Get the shell index for each fragment
-
-    # Shift the shell indices based on the collision index
-    n_shell_indices = n_shell_indices + collision_index
-
-    # Roll the shell indices back to the range [0, n_shells) using modulus
-    n_shell_indices = n_shell_indices % n_shells
-
-    # Calculate the mass bin index for each fragment
-    mass_bin_indices = np.digitize(m, binEd_mass) - 1  # Get the mass bin index for each fragment
-
-    # Combine indices into a list of tuples (n_shell_index, mass_bin_index)
-    fragment_indices = np.vstack((n_shell_indices, mass_bin_indices)).T
-
-    # Initialize the result dictionary
-    result = {}
-
-    # Iterate over mass bins
-    for mass_bin_idx in range(len(binEd_mass) - 1):
-        # Initialize an empty matrix for the current mass bin
-        fragment_matrix = np.zeros((n_shells, len(binE_ecc) - 1))
-
-        # Find fragments that fall into this mass bin
-        mass_filter = (m >= binEd_mass[mass_bin_idx]) & (m < binEd_mass[mass_bin_idx + 1])
-
-        # For each fragment in this mass bin
-        for fragment_idx in np.where(mass_filter)[0]:
-            # Bin the eccentricity change
-            ecc_bin_idx = np.digitize(dE_values[fragment_idx], binE_ecc) - 1
-
-            # Calculate the velocity bin index (which will give us the shell)
-            dDV = np.abs(np.median(np.diff(np.sqrt(398600.4418 / (6378.1 + scen_properties.HMid)) * 1000)))  # Example calc
-            vel_bin_idx = np.digitize(dv_vec[fragment_idx], np.arange(-n_shells, n_shells) * dDV / 1000) - 1
-            
-            # Calculate the position index (altitude shell) based on velocity
-            position_idx = collision_index + vel_bin_idx - n_shells // 2
-
-            # Ensure position_idx is within valid bounds
-            if position_idx < 0 or position_idx >= n_shells:
-                continue  # Skip if out of bounds
-
-            # Add fragment to the matrix at the appropriate shell and eccentricity bin
-            fragment_matrix[position_idx, ecc_bin_idx] += 1
-
-        # Add the matrix to the result dictionary with the mass bin as the key
-        result[f"mass_bin_{mass_bin_idx}"] = fragment_matrix.tolist()  # Convert to list for JSON serialization
-
-    return fragment_matrix
+    return fragment_3D_matrix
 
 def calculate_new_altitude(HMid, collision_index, dv, mu=398600.4418):
     """

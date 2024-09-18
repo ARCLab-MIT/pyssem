@@ -233,6 +233,10 @@ if __name__ == "__main__":
 
     scenario_properties.results = results
 
+    # export pickle file
+    with open('scenario-properties-collision.pkl', 'wb') as f:
+        pickle.dump(scenario_properties, f)
+
 
     # # save the scenario properties to a pickle file
     # with open('scenario-properties-collision.pkl', 'wb') as f:
