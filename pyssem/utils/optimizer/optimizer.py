@@ -131,8 +131,8 @@ def run_optimizer(scenario_properties, optimized_species):
       var_name = var + '_0'  # For naming purposes
       # Dynamically calculate the number of variables for each species based on N_shell
       var_initial_guess = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 0  # Initial guess for each species
-      lb_initial = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 1  # Lower bound for each species
-      # lb_initial = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 0.005
+    #   lb_initial = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 1  # Lower bound for each species
+      lb_initial = np.ones(len(scenario_properties.all_symbolic_vars[i * N_shell:(i + 1) * N_shell])) * 0.005
 
       species_list.append(var_initial_guess)
       lb_species_list.append(lb_initial)
@@ -151,8 +151,8 @@ def run_optimizer(scenario_properties, optimized_species):
   x0 = np.concatenate([x0_species, lam_0])
 
   # Handle the lambda variables' lower bounds similarly
-  lb_lam = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 1
-  # lb_lam = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 0.005
+#   lb_lam = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 1
+  lb_lam = np.ones(len(scenario_properties.all_symbolic_vars[start_lambda_idx:])) * 0.005
 
   # Concatenate species lower bounds with lambda lower bounds to form the final lb array
   lb = np.concatenate([lb_species, lb_lam])
@@ -160,7 +160,7 @@ def run_optimizer(scenario_properties, optimized_species):
 
   ## Farilure rate, % = fail_rate / 100
   # make this user define. This is a %. 
-  failure_rate_U = 0.5 # 0.15
+  failure_rate_U = 100 # 0.15, 0.5
   failure_rate_U = failure_rate_U/100
 
   ## Objective function
@@ -178,7 +178,7 @@ def run_optimizer(scenario_properties, optimized_species):
   options = {
       'disp': True,   
       'maxiter': 5e5,  # 5e5
-      'ftol': 1e-1,    # 1e-6, 1e-3 (test_3); 1e-2 (test_2); 1e-1 (test_4)
+      'ftol': 1e-1,    # 1e-6, 1e-3 (test_3); 1e-2 (test_2); 1e-1 (test_4-5-6)
       'eps': 1e-18,    # 1e-18
       # 'finite_diff_rel_step': 1e-13,     
   } # '3-point', 'cs'
@@ -248,7 +248,7 @@ def run_optimizer(scenario_properties, optimized_species):
       return np.array(fun3(x, np.array(lam_opt))).flatten()
 
   # Time span for the solution
-  tf_ss = 1000
+  tf_ss = 10
   tspan1 = np.linspace(0, tf_ss, 100)
 
   # Solve the ODE using solve_ivp
