@@ -427,7 +427,8 @@ class Species:
             positions.append(state.r.to(u.km).value)  # Position in km
 
             # Technically, we are working out the speed not the velocity (magnitude of velocity)
-            velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
+            #velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
+            velocities.append(state.v.to(u.km / u.s).value)  # Speed in km/s
 
         # Convert positions and velocities to numpy arrays
         positions = np.array(positions)
@@ -453,6 +454,7 @@ class Species:
         Returns:
             tuple: Normalized time spent in each shell and average velocity in each shell.
         """
+        # R0_km = R0_km + 6378
         time_in_shell = np.zeros(len(R0_km) - 1)
         velocity_in_shell = np.zeros(len(R0_km) - 1)
 
@@ -550,11 +552,13 @@ class Species:
                 for species in species_group:
                     if species.elliptical:  # hasn't been created yet
                         # Set semi-major axis for this species
-                        species.semi_major_axis_bins = HMid
+                        # add 6378 to each of the values in HMid
+
+                        species.semi_major_axis_bins = HMid + 6378
 
                         # Calculate time spent in each shell for the semi-major axis
                         for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
                             true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
                             time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
                             species.time_per_shells.append(time_in_shell)
-                            species.velocity_per_shells.append(velocity_in_shell)
+                            # species.velocity_per_shells.append(velocity_in_shell)
