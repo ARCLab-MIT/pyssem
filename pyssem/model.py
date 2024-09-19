@@ -225,7 +225,7 @@ if __name__ == "__main__":
 
     ## COLLISION CODE TESTING
 
-    # Open the pickle file
+    # # Open the pickle file
     with open('scenario-properties-elliptical.pkl', 'rb') as f:
         scenario_properties = pickle.load(f)
     
@@ -236,8 +236,3 @@ if __name__ == "__main__":
     # export pickle file
     with open('scenario-properties-collision.pkl', 'wb') as f:
         pickle.dump(scenario_properties, f)
-
-
-    # # save the scenario properties to a pickle file
-    # with open('scenario-properties-collision.pkl', 'wb') as f:
-    #     pickle.dump(scenario_properties, f)

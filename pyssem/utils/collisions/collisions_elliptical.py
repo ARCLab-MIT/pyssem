@@ -7,6 +7,7 @@ from sympy import symbols, Matrix, pi, S, Expr, zeros
 import matplotlib.pyplot as plt
 from copy import deepcopy
 
+
 def create_collision_pairs(scen_properties):
     """
     This function will take each species that is elliptical, then it will search across all other ellitpical objects and shells to assess 
@@ -23,6 +24,8 @@ def create_collision_pairs(scen_properties):
             for j, species2 in enumerate(species_group):
                 if i >= j:  # Skip redundant pairs and self-comparisons
                     continue
+                
+                collision_pair_unique = SpeciesCollisionPair(species1, species2)
 
                 # Loop through the semi-major axis bins (assuming species1 and species2 have the same number of bins)
                 for k in range(len(species1.semi_major_axis_bins)): # back to altitude
@@ -38,17 +41,25 @@ def create_collision_pairs(scen_properties):
                         # Only print if both species spend time in this shell
                         if time_1 > 0 and time_2 > 0:
                             count += 1
-                            print(f"Species {species1.sym_name} and {species2.sym_name} are in shell {shell_index}")
-                            print(f"Time spent: {species1.sym_name}: {time_1}, {species2.sym_name}: {time_2}\n")
+                            # print(f"Species {species1.sym_name} and {species2.sym_name} are in shell {shell_index}")
+                            # print(f"Time spent: {species1.sym_name}: {time_1}, {species2.sym_name}: {time_2}\n")
                             
                             # There is also a check on the mass of the objects, if they are both too small then they will just create dust
                             # this is defined by the LC. LC is the diameter of the smallest object that can be tracked.
                             if species1.mass < scen_properties.LC and species2.mass < scen_properties.LC:
                                 continue
                                     
-                            all_elliptical_collision_species.append(EllipticalCollisionPair(species1, species2, shell_index))
+                            collision_pair_unique.collision_pair_by_shell.append(EllipticalCollisionPair(species1, species2, shell_index))
+                
+                all_elliptical_collision_species.append(collision_pair_unique)
 
-    print(f"Total number of elliptical collision pairs: {count}")
+    print(f"Total number of unique species pairs: {len(all_elliptical_collision_species)}")
+    # loop through each species pair and then sum the collision pairs
+    count = 0
+    for species_pair in all_elliptical_collision_species:
+        count += len(species_pair.collision_pair_by_shell)
+
+    print(f"Total number of collision pairs: {count}")
 
     debris_species = [species for species in scen_properties.species['debris']]
 
@@ -68,15 +79,28 @@ def create_collision_pairs(scen_properties):
 
     # Eccentricity Binning, multiple debris species will have the same eccentricity bins
     binE_ecc = debris_species[0].eccentricity_bins
-    binE_ecc = np.insert(binE_ecc, 0, 0) # Insert 0 at the beginning
-    binE_ecc = np.append(binE_ecc, 1) # Append 1 at end 
+    binE_ecc = np.sort(binE_ecc)
+    # Calculate the midpoints
+    binE_ecc = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+    # Create bin edges starting at 0 and finishing at 1
+    binE_ecc = np.concatenate(([0], binE_ecc, [1]))
 
-
-    args = [(i, species_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven) for i, species_pair in enumerate(all_elliptical_collision_species)]
+    # args = [(i, species_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven) for i, species_pair in enumerate(all_elliptical_collision_species)]
     
-    results = [process_elliptical_collision_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
+    # results = [process_elliptical_collision_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
 
-    return results 
+    # Modify the args creation to loop over each species pair and its nested shell collisions
+    for i, species_pair in enumerate(tqdm(all_elliptical_collision_species, desc="Processing species pairs")):
+    # Add progress bar for the inner loop over shell-specific collisions
+        for shell_collision in tqdm(species_pair.collision_pair_by_shell, desc="Processing shell collisions", leave=False):
+            # Process each shell-specific collision and append result to collision_processed list
+            result = process_elliptical_collision_pair((i, shell_collision, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven))
+            species_pair.collision_processed.append(result)
+
+    # Return the list of all elliptical collision species with processed collision data
+    return all_elliptical_collision_species
+
+ 
 
 def process_elliptical_collision_pair(args):
     """
@@ -132,9 +156,9 @@ def process_elliptical_collision_pair(args):
     # there needs to be some changes here to account for the fact that the shells are already defined
     # set fragment_spreading to True
     v1, v2 = s1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index], s2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
-    fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, s1.eccentricity, s2.eccentricity, [], binE_mass, binE_ecc, [], 
-                            LBgiven, source_sinks, collision_pair.shell_index, RBflag, True, scen_properties.n_shells, scen_properties.R0_km, debris_eccentricity_bins)
+    
 
+    fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
     collision_pair.gammas = gammas
     collision_pair.fragments = fragments
     # collision_pair.catastrophic = catastrophic
@@ -165,85 +189,58 @@ def func_de(R_list, V_list):
     # Return the list of eccentricities
     return eccentricities
 
-def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, e1, e2, binC, binE_mass, binE_ecc, binW, LBdiam, source_sinks, collision_index, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, debris_eccentricity_bins = None): # eventually add stochastic ability
-    
-    SS = 20 # super sampling ratio
+def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_index, n_shells=0):
+    SS = 20  # super sampling ratio
     MU = 398600.4418  # km^3/s^2
     RE = 6378.1  # km
-    altNums = None
-
-    # Bin Center is given
-    if len(binC) > 0 and len(binE_mass) == 0 and len(binW) == 0: 
-        LBm = binC[0] - (binC[1] - binC[0]) / 2  
-        UBm = binC[-1] + (binC[-1] - binC[-2]) / 2 
-        binEd_mass = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
-    
-    # Bin Edges are given
-    elif len(binC) > 0 and len(binW) > 0 and len(binE_mass) == 0: 
-        binEd_mass1 = binC - binW / 2
-        binEd_mass2 = binC + binW / 2
-        binEd_mass = np.sort(np.concatenate((binEd_mass1, binEd_mass2)))
-        
-        # Check for overlapping bin edges
-        if any(np.diff(binC) < binW):
-            errinds = np.where(np.diff(binC) < binW)[0]
-            raise ValueError(f"Overlapping bin edges between bin centered at {binC[errinds[0]]:.1f} and {binC[errinds[0] + 1]:.1f}")
-
-    # Bin Widths are given     
-    elif len(binE_mass) > 0 and len(binC) == 0 and len(binW) == 0:
-        binEd_mass = np.sort(binE_mass)
-
-    # Eccentric Bin Widths are given
-    if len(binE_ecc) > 0:
-        binE_ecc = np.sort(binE_ecc)
-
-    LB = LBdiam
-    objclass = 5 if RBflag == 0 else 0
 
     # Ensure that m1 > m2, if not swap
     if m1 < m2:
         m1, m2 = m2, m1
         r1, r2 = r2, r1
 
-    dv = 10 # this will have to change when velocities are properly introduced
-    catastrophe_ratio = (m2*((dv*1000)**2)/(2*m1*1000)) #J/g = kg*(km/s)^2 / g
+    dv = 7.5
+    catastrophe_ratio = (m2 * ((dv * 1000) ** 2) / (2 * m1 * 1000))  # J/g = kg*(km/s)^2 / g
 
     # If the specific energy is < 40 J/g: non catastrophic collision
     if catastrophe_ratio < 40:
-        M = m2 * dv ** 2 # Correction from ODQN [kg*km^2/s^2]    
+        M = m2 * dv ** 2  # Correction from ODQN [kg*km^2/s^2]
         isCatastrophic = 0
-    else: # Catastrophic collision
+    else:  # Catastrophic collision
         M = m1 + m2
         isCatastrophic = 1
 
+
+    isCatastrophic = 0 # TESTING 
+
     # find the number of fragments generated
-    num = (0.1 * M ** 0.75 * LB ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
+    num = (0.1 * M ** 0.75 * scen_properties.LC ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
     numSS = SS * num
 
     # Create PDF of power law distribution, then sample 'num' selections to find each mass
-    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500)
+    dd_edges = np.logspace(np.log10(scen_properties.LC), np.log10(min(1, 2 * r1)), 500)
     dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
-    
+
     # Cumulative distribution
     nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)
     ndd = np.maximum(0, -np.diff(nddcdf))
-    
+
     # Make sure int, 0 to 1, random number for stochastic sampling of fragment diameters
     repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
     d_pdf = np.repeat(dd_means, repeat_counts)
 
     try:
         dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
-    except ValueError: 
+    except ValueError:
         dss = 0
 
     # Calculate the mass of objects
-    A = 0.556945 * dss ** 2.0047077 # Equation 2.72 
-    Am = func_Am(dss, objclass) # use Am conversion of the larger object
-    
+    A = 0.556945 * dss ** 2.0047077  # Equation 2.72
+    Am = func_Am(dss, 5 if isCatastrophic == 0 else 0)  # use Am conversion of the larger object
+
     # order the output in descending order
     Am = np.sort(Am)[::-1]
-    m = A/Am
+    m = A / Am
 
     # Remove any fragments that are more than the original mass of m1
     m = m[m < m1]
@@ -251,20 +248,6 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, e1, e2, binC, binE_mass
     if max(m) == 0:
         # No fragments bigger the LNT are generated
         return None
-
-    # # Calculate which parent object the fragments came from
-    # mass_ratio1 = m1 / (m1 + m2)
-    # mass_ratio2 = m2 / (m1 + m2)
-
-    # num_fragments = len(m)
-    # num_fragments1 = int(num_fragments * mass_ratio1)
-    # num_fragments2 = int(num_fragments * mass_ratio2)  # Remaining fragments
-
-    # # Split the mass array
-    # fragments_obj1 = m[:num_fragments1]
-    # fragments_obj2 = m[num_fragments1:]
-
-    # m_by_root_species = np.concatenate((fragments_obj1, fragments_obj2))
 
     # Find difference in orbital velocity for shells
     dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
@@ -275,148 +258,134 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, e1, e2, binC, binE_mass
     # Generate random directions for the velocity vectors
     u = np.random.rand(len(dv_values)) * 2 - 1
     theta = np.random.rand(len(dv_values)) * 2 * np.pi
-    v = np.sqrt(1 - u**2)
+    v = np.sqrt(1 - u ** 2)
     p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
     dv_vec = p * dv_values[:, np.newaxis]  # velocity vectors
 
-    # Calculate the new eccentricity of the fragments
-    a = scen_properties.HMid[collision_index] + scen_properties.re
-    r_vec = np.tile([a, 0, 0], (len(m), 1)) # create an R
-    v_vec = [np.linalg.norm(vec) for vec in dv_vec] + v1 # create a v vec
-    v_vec_2d = np.array([[0, v, 0] for v in v_vec])
-    new_ecc = func_de(r_vec, v_vec_2d)
+    # # Calculate the new eccentricity of the fragments
+    if len(m) < 100:
+        a = scen_properties.HMid[collision_index] + scen_properties.re
+        r_vec = np.tile([a, 0, 0], (len(m), 1))  # create an R
+        v_vec = [np.linalg.norm(vec) for vec in dv_vec] + v1  # create a v vec
+        v_vec_2d = np.array([[0, v, 0] for v in v_vec])
+        new_ecc = func_de(r_vec, v_vec_2d)
+        data = np.array([dv_vec.ravel()[:len(m)], m, new_ecc]).T  # Transpose to get the right shape (n_samples, 3)
 
-    # I need to bin the fragments based on the eccentricity change using binEd_ecc
-    binEccIndex = np.digitize(new_ecc, binE_ecc)
+        # Step 3: Define the bins for the 3D histogram
+        binE_vel = np.arange(-n_shells, n_shells) * dDV / 1000
 
-    # # # Generate velocity-mass distribution using 2D histogram - old way
-    # hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-n_shells, n_shells) * dDV / 1000, binEd_mass])
-    # altNums = hc / (SS * 3)
+        zero_index = np.where(binE_vel == 0.0)[0][0]
 
-    # Step 1: Calculate the magnitude of the velocity change from the u, v, w components
-    dv = np.sqrt(dv_vec[:, 0]**2 + dv_vec[:, 1]**2 + dv_vec[:, 2]**2)  # Magnitude of velocity
+        # Step 2: Calculate the shift to align 0 with the collision_index
+        shift_amount = collision_index - zero_index
 
-    # Step 2: Determine the direction (positive or negative) based on the primary velocity component
-    # Assuming the 'u' component tells us the main direction of altitude change.
-    direction_flags = np.sign(dv_vec[:, 0])  # Positive or negative movement along 'u' axis (altitude)
+        # Step 3: Shift the array to make 0 appear at collision_index
+        binE_vel_shifted = np.roll(binE_vel, shift_amount)
 
-    # Step 3: Calculate the number of velocity changes required to reach each shell
-    # Define shell bins based on the velocity differences
-    shell_bins = np.arange(0, n_shells) * dDV / 1000  # Only positive shells, since negative velocities won't reach new altitudes
+        # Step 4: Handle different cases
+        if collision_index > n_shells // 2:
+            binE_vel_selected = binE_vel_shifted[:n_shells]  # Take the first n_shells values (below 0)
+        else:
+            # If the collision index is less than or equal to 5, take values around 0
+            start_index = max(0, collision_index - (n_shells // 2))
+            end_index = start_index + n_shells  # Select the next `n_shells` values
+            binE_vel_selected = binE_vel_shifted[start_index:end_index]
 
-    # Initialize an array to hold the shell index for each fragment
-    n_shell_indices = np.full(len(dv), None)  # Initially set all fragments to None
+        bin_edges = np.zeros(len(binE_vel_selected) + 1)  # Bin edges will be one more than selected values
 
-    # Step 4: For fragments moving in the positive direction (ascending):
-    positive_movement = direction_flags > 0
-    positive_dv = dv[positive_movement]
+        # Calculate the midpoints between consecutive bin values to generate the edges
+        bin_edges[1:-1] = (binE_vel_selected[:-1] + binE_vel_selected[1:]) / 2
+        # For the first and last bin edge, extrapolate slightly beyond the min/max
+        bin_edges[0] = binE_vel_selected[0] - (binE_vel_selected[1] - binE_vel_selected[0]) / 2
+        bin_edges[-1] = binE_vel_selected[-1] + (binE_vel_selected[-1] - binE_vel_selected[-2]) / 2
 
-    # Bin the fragments with positive movement into shell bins based on their velocity magnitude
-    if len(positive_dv) > 0:
-        positive_shell_indices = np.digitize(positive_dv, shell_bins) - 1  # Get the shell index for each fragment
-        n_shell_indices[positive_movement] = collision_index + positive_shell_indices
+        # Slice the array to get the values within the desired range
+        bins = [bin_edges, binE_mass, binE_ecc]
 
-    # Step 5: For fragments moving in the negative direction (descending):
-    # Here, we assume negative velocities won't reach any altitude above the collision point.
-    negative_movement = direction_flags < 0
-    n_shell_indices[negative_movement] = -99  # Fragments moving downward don't reach any higher altitude shell
+        # Step 4: Use np.histogramdd to create the 3D histogram
+        hist, edges = np.histogramdd(data, bins=bins)
 
-    n_shell_indices = np.where((n_shell_indices >= 0) & (n_shell_indices < n_shells-1), n_shell_indices, None)
+        hist = hist/SS
 
-    # bin the mass of the fragments based on the binEd_mass
-    binMassIndex = np.digitize(m, binEd_mass)
+        # Sum over the velocity bins to collapse the 3D histogram into a 2D histogram
+        return hist
 
-    # Create a final matrix, which is for each each fragment, the shell index, the eccentricity index and the mass index
-    fragment_matrix = np.array([n_shell_indices, binEccIndex, binMassIndex]).T
+    else:
+        # Bin the velocities
+        def func_de_single(R, V):
+            mu = 398600.4418  # km^3/s^2
+            V = np.abs(V)
+            h = np.cross(R, V)
+            e_vector = (np.cross(V, h) / mu) - (R / np.linalg.norm(R))
+            e = np.linalg.norm(e_vector)
+            return e
 
-    fragment_3D_matrix = np.zeros((n_shells, len(binEd_mass)-1, len(binE_ecc)-2)) # this is wrong, the eccentricity is 2 more than it should be
+        # Flatten dv_vec
+        flattened_dv_vec = dv_vec.ravel()
 
-    # # Loop through the fragment_matrix and populate the 3D matrix
-    # for row in fragment_matrix:
-    #     shell_idx = row[0]      # n_shell_indices
-    #     ecc_idx = row[1]         # binEccIndex
-    #     mass_idx = row[2]    # binMassIndex
-        
-    #     # Increment the count at the corresponding shell, mass, and eccentricity bin
-    #     if shell_idx != -99 and shell_idx is not None:
-    #         fragment_3D_matrix[shell_idx-1, mass_idx-1, ecc_idx-2] += 1
-    
-    return fragment_3D_matrix
+        # Take only the values up to the length of m
+        sliced_dv_vec = flattened_dv_vec[:len(m)]
 
-def calculate_new_altitude(HMid, collision_index, dv, mu=398600.4418):
-    """
-    Calculate the new altitude of a fragment based on its initial altitude and change in velocity.
-    HMid: array of midpoints (altitudes in km) of the shells.
-    collision_index: index representing the original shell of the fragment.
-    dv: change in velocity (km/s) of the fragment.
-    mu: gravitational parameter (default is Earth's gravitational parameter in km^3/s^2).
-    
-    Returns the new altitude after the velocity change.
-    """
-    # Initial altitude corresponding to the collision_index
-    r_initial = HMid[collision_index]
+        # Define the number of bins
+        num_bins = 100  # Adjust this number based on your needs
 
-    # Orbital energy before and after the velocity change
-    v_initial = np.sqrt(mu / r_initial)  # Circular orbit velocity at the initial altitude
-    v_new = v_initial + dv  # New velocity after collision
+        # Bin the velocities
+        dv_bins = np.linspace(np.min(sliced_dv_vec), np.max(sliced_dv_vec), num_bins)
+        # bin the masses
+        m_bins = np.linspace(np.min(m), np.max(m), num_bins)
 
-    # Calculate the new orbital radius based on the energy change
-    r_new = mu / (v_new**2)
-    return np.linalg.norm(r_new) + 6378.1
+        # Create a single R vector
+        a = scen_properties.HMid[collision_index] + scen_properties.re
+        r_vec = np.array([a, 0, 0])  # create a single R
 
+        # create new v vectors
+        v_vec = [np.linalg.norm(vec) for vec in dv_bins] + v1  # create a v vec
 
+        # Compute eccentricities for each bin
+        new_ecc = [func_de_single(r_vec, np.array([0, v, 0])) for v in v_vec]
 
-def simulateCollision(mass1=1000, mass2=10, a=450+6371, e=0, i=0, omega_AP=0, omega_LAN=0, EA=0):
-    
-    fragments, catastrophic = createFragmentsLikeNASAdata(mass1, mass2, 100, printOut=0)
-    #trackable = pullTrackableObjects(fragments)
-    
-    #print ("{} fragments to simulate".format(numpy.sum(trackable[:,1])))
-    
-    rInit, vInit = kep_2_cart(a,e,i,omega_AP,omega_LAN, EA) #Initial location and speed of collision
-    
-    cartesianStore = []
-    
-    #for fragmentsgroup in trackable: #Loop over trackable fragment groups (mutliples of objects inside):
-    for fragmentsgroup in fragments: #Loop over trackable fragment groups (mutliples of objects inside):
-        for fragment in range(int(fragmentsgroup[1])): #each individual fragment
-            
-            rInitcurr = deepcopy(rInit)
-            
-            dV = numpy.real(fragmentsgroup[6]) * random_three_vector() #dV vector with random direction
-            
-            new_velocity = vInit + dV
-            #print (rInitcurr, new_velocity)
-            
-            newCart = cart_2_kep(rInitcurr,new_velocity,rInit, vInit, fragmentsgroup[6], dV)
-            cartesianStore += [newCart]
-            
-    return numpy.array(cartesianStore)
+        # Combine the data into a single array and transpose to get the right shape (n_samples, 3)
+        data = np.array([dv_bins, m_bins, new_ecc]).T
 
-def pullTrackableObjects(fragments):
-    
-    trackable = []
-    
-    for fragment in fragments:
-        if fragment[2]>0.1:
-            trackable += [fragment]
+        # Step 3: Define the bins for the 3D histogram
+        binE_vel = np.arange(-n_shells, n_shells) * dDV / 1000
 
-    return numpy.array(trackable)
+        zero_index = np.where(binE_vel == 0.0)[0][0]
 
-def random_three_vector():
-    """
-    Generates a random 3D unit vector (direction) with a uniform spherical distribution
-    Algo from http://stackoverflow.com/questions/5408276/python-uniform-spherical-distribution
-    :return:
-    """
-    phi = numpy.random.uniform(0,numpy.pi*2)
-    costheta = numpy.random.uniform(-1,1)
+        # Step 2: Calculate the shift to align 0 with the collision_index
+        shift_amount = collision_index - zero_index
 
-    theta = numpy.arccos( costheta )
-    x = numpy.sin( theta) * numpy.cos( phi )
-    y = numpy.sin( theta) * numpy.sin( phi )
-    z = numpy.cos( theta )
-    return numpy.array((x,y,z))
+        # Step 3: Shift the array to make 0 appear at collision_index
+        binE_vel_shifted = np.roll(binE_vel, shift_amount)
+
+        # Step 4: Handle different cases
+        if collision_index > n_shells // 2:
+            # If the collision index is greater than 5, take the bottom values (below 0)
+            binE_vel_selected = binE_vel_shifted[:n_shells]  # Take the first n_shells values (below 0)
+        else:
+            # If the collision index is less than or equal to 5, take values around 0
+            start_index = max(0, collision_index - (n_shells // 2))
+            end_index = start_index + n_shells  # Select the next `n_shells` values
+            binE_vel_selected = binE_vel_shifted[start_index:end_index]
+
+        bin_edges = np.zeros(len(binE_vel_selected) + 1)  # Bin edges will be one more than selected values
+
+        # Calculate the midpoints between consecutive bin values to generate the edges
+        bin_edges[1:-1] = (binE_vel_selected[:-1] + binE_vel_selected[1:]) / 2
+        # For the first and last bin edge, extrapolate slightly beyond the min/max
+        bin_edges[0] = binE_vel_selected[0] - (binE_vel_selected[1] - binE_vel_selected[0]) / 2
+        bin_edges[-1] = binE_vel_selected[-1] + (binE_vel_selected[-1] - binE_vel_selected[-2]) / 2
+
+        # Slice the array to get the values within the desired range
+        bins = [bin_edges, binE_mass, binE_ecc]
+
+        # Use np.histogramdd to create the 3D histogram
+        hist, edges = np.histogramdd(data, bins=bins)
+
+        # Normalize the histogram
+        hist = hist / SS
+
+        return hist, edges
 
 class EllipticalCollisionPair:
     def __init__(self, species1, species2, index) -> None:
@@ -446,3 +415,10 @@ class EllipticalCollisionPair:
         self.altE = None
 
         self.debris_eccentrcity_bins = None
+
+class SpeciesCollisionPair:
+    def __init__(self, species1, species2) -> None:
+        self.species1 = species1
+        self.species2 = species2
+        self.collision_pair_by_shell = []
+        self.collision_processed = []

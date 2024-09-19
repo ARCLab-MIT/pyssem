@@ -454,7 +454,7 @@ class Species:
         Returns:
             tuple: Normalized time spent in each shell and average velocity in each shell.
         """
-        # R0_km = R0_km + 6378
+        R0_km = R0_km + 6378
         time_in_shell = np.zeros(len(R0_km) - 1)
         velocity_in_shell = np.zeros(len(R0_km) - 1)
 
@@ -463,7 +463,8 @@ class Species:
             in_shell = (radii >= R0_km[i]) & (radii < R0_km[i + 1])
             time_in_shell[i] = np.sum(in_shell)
             if np.sum(in_shell) > 0:
-                velocity_in_shell[i] = np.mean(velocities[in_shell])
+                # velocity_in_shell[i] = np.mean(velocities[in_shell])
+                velocity_in_shell[i] = 7.5  # Placeholder value for now
 
         # Normalize the time_in_shell array
         total_time = np.sum(time_in_shell)
@@ -561,4 +562,4 @@ class Species:
                             true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
                             time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
                             species.time_per_shells.append(time_in_shell)
-                            # species.velocity_per_shells.append(velocity_in_shell)
+                            species.velocity_per_shells.append(velocity_in_shell)

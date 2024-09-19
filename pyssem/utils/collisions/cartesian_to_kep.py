@@ -6,7 +6,7 @@ import numpy as np
 
 mu = G.value*M_earth.value
 Re = R_earth.value/1000
-print(Re)
+# print(Re)
 t = 0  
 
 def cart_2_kep(r_vec,v_vec,rInit, vInit, dVMult, dV):

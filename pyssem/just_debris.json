@@ -25,7 +25,7 @@
         {
             "sym_name": "N",
             "Cd": 2.2,
-            "mass": [0.00141372, 500],
+            "mass": [0.00141372, 500], 
             "radius": [0.01, 2],
             "A": "Calculated based on radius",
             "active": false,
@@ -42,7 +42,7 @@
             "pmd_func": "pmd_func_derelict",
             "drag_func": "drag_func_exp",
             "elliptical": true,
-            "eccentricity_bins": [0.00625, 0.018750000000000003, 0.03125, 0.043750000000000004, 0.05625, 0.06875, 0.08125000000000002, 0.09375]
+            "eccentricity_bins": [0.00625, 0.018750000000000003, 0.03125, 0.043750000000000004, 0.05625, 0.06875, 0.08, 0.09375]
         },
         {
             "sym_name": "B",
