@@ -5,13 +5,16 @@ from tqdm import tqdm
 from utils.collisions.cartesian_to_kep import cart_2_kep, kep_2_cart
 from sympy import symbols, Matrix, pi, S, Expr, zeros
 import matplotlib.pyplot as plt
-from copy import deepcopy
-
+import re
 
 def create_collision_pairs(scen_properties):
     """
     This function will take each species that is elliptical, then it will search across all other ellitpical objects and shells to assess 
     which other objects it could collide with. 
+
+    This function relies on two main classes:
+    - SpeciesCollisionPair: This is the parent houser for all objects that could collide
+    - EllipticalCollisionPair: This is the individual shell and eccentricity pairing of all possible outcomes. 
     
     """
 
@@ -25,7 +28,7 @@ def create_collision_pairs(scen_properties):
                 if i >= j:  # Skip redundant pairs and self-comparisons
                     continue
                 
-                collision_pair_unique = SpeciesCollisionPair(species1, species2)
+                collision_pair_unique = SpeciesCollisionPair(species1, species2, scen_properties)
 
                 # Loop through the semi-major axis bins (assuming species1 and species2 have the same number of bins)
                 for k in range(len(species1.semi_major_axis_bins)): # back to altitude
@@ -63,7 +66,6 @@ def create_collision_pairs(scen_properties):
 
     debris_species = [species for species in scen_properties.species['debris']]
 
-
     # Mass Binning
     binC_mass = np.zeros(len(debris_species))
     binE_mass = np.zeros(2 * len(debris_species))
@@ -85,22 +87,167 @@ def create_collision_pairs(scen_properties):
     # Create bin edges starting at 0 and finishing at 1
     binE_ecc = np.concatenate(([0], binE_ecc, [1]))
 
-    # args = [(i, species_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven) for i, species_pair in enumerate(all_elliptical_collision_species)]
-    
-    # results = [process_elliptical_collision_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
-
     # Modify the args creation to loop over each species pair and its nested shell collisions
     for i, species_pair in enumerate(tqdm(all_elliptical_collision_species, desc="Processing species pairs")):
-    # Add progress bar for the inner loop over shell-specific collisions
         for shell_collision in tqdm(species_pair.collision_pair_by_shell, desc="Processing shell collisions", leave=False):
             # Process each shell-specific collision and append result to collision_processed list
-            result = process_elliptical_collision_pair((i, shell_collision, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven))
-            species_pair.collision_processed.append(result)
+            gamma = process_elliptical_collision_pair((i, shell_collision, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven))
+            species_pair.collision_processed.append(gamma)
 
-    # Return the list of all elliptical collision species with processed collision data
+    debris_species_names = [species.sym_name for species in scen_properties.species['debris']]
+    pattern = re.compile(r'^N_[^_]+kg')
+    unique_names = set()
+
+    for name in debris_species_names:
+        match = pattern.match(name)
+        if match:
+            unique_names.add(match.group())
+
+    # Count the unique occurrences
+    unique_names = list(unique_names)
+    len_debris = len(unique_names)
+
+    # Now need to create all of the species pair class
+    for species_pair in all_elliptical_collision_species:
+        gamma_matrix = np.zeros((scen_properties.n_shells, len_debris))
+
+        for elliptical_pair in species_pair.collision_processed:
+            fragments = elliptical_pair.fragments 
+            
+            # Check if fragments is not None
+            if fragments is not None:
+                for shell_index in range(scen_properties.n_shells):
+                    for species_index in range(len_debris):  # Assuming two species per pair
+                        for eccentricity_index in range(len(debris_species[0].eccentricity_bins)):  # Assuming 8 eccentricity bins
+                            try:
+                                frags = fragments[shell_index, species_index, eccentricity_index]
+                                
+                                # Only add if frags is valid
+                                if frags is not None:
+                                    # Identify correct index in gamma_matrix based on species name
+                                    species_name = elliptical_pair.species1.sym_name if species_index == 0 else elliptical_pair.species2.sym_name
+                                    match = pattern.match(species_name)
+                                    if match: # absolutely crazy way of doing this
+                                        extracted_name = match.group()
+                                        if extracted_name in unique_names:
+                                            debris_index = unique_names.index(extracted_name)
+                                            gamma_matrix[shell_index, debris_index] += frags
+                            except Exception as e:
+                                print(f"Error accessing fragments: {e}")
+                                print(f"shell_index: {shell_index}, species_index: {species_index}, eccentricity_index: {eccentricity_index}")
+
+    # Store the gamma_matrix for the current species_pair
+        species_pair.gammas = gamma_matrix
+
+    for collision_pair in all_elliptical_collision_species:
+        # Ensure gamma is a sympy matrix
+        gamma_sympy = collision_pair.gamma
+        
+        # Start inserting new columns after the existing ones
+        insert_index = gamma_sympy.shape[1]
+        
+        for i in range(len_debris):
+            # Extract the column as a numpy array
+            column = collision_pair.gammas[:, i] # flip sign
+            
+            # Convert the numpy column to a sympy matrix
+            column_sympy = Matrix(column)
+            
+            # Use col_insert to add the new column. Insert at the current insert_index
+            gamma_sympy = gamma_sympy.col_insert(insert_index, column_sympy)
+            
+            # Increment the insert_index for the next column
+            insert_index += 1
+        
+        # Update collision_pair.gamma with the new value
+        collision_pair.gamma = gamma_sympy
+
+    return generate_collision_equations(all_elliptical_collision_species, scen_properties)
+
+def is_catastrophic(mass1, mass2, vels):
+    """
+    Determines if a collision is catastropic or non-catastrophic by calculating the 
+    relative kinetic energy. If the energy is greater than 40 J/g, the collision is
+    catastrophic from Johnson et al. 2001 (Collision Section)
+
+    Args:
+        mass1 (float): mass of species 1, kg
+        mass2 (float): mass of species 2, kg
+        vels (np.ndarray): array of the relative velocities (km/s) for each shell
+    
+    Returns:
+        shell-wise list of bools (true if catastrophic, false if not catastrophic)
+    """
+
+    if mass1 <= mass2:
+        smaller_mass = mass1
+    else:
+        smaller_mass = mass2
+    
+    smaller_mass_g = smaller_mass * (1000) # kg to g
+    energy = [0.5 * smaller_mass * (v)**2 for v in vels] # Need to also convert km/s to m/s
+    is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
+
+    return is_catastrophic
+
+def generate_collision_equations(all_elliptical_collision_species, scen_properties):
+
+    for collision_pair in all_elliptical_collision_species:
+        species1, species2 = collision_pair.species1, collision_pair.species2
+
+        collision_pair.eqs = Matrix(scen_properties.n_shells, scen_properties.species_length, lambda i, j: 0)
+
+        meter_to_km = 1/1000
+
+        collision_pair.sigma = (species1.radius * meter_to_km + species2.radius * meter_to_km) ** 2
+
+        collision_pair.phi = pi * scen_properties.v_imp2 / (scen_properties.V * meter_to_km**3) * collision_pair.sigma * S(86400) * S(365.25)
+
+        catastrophic = is_catastrophic(species1.mass, species2.mass, scen_properties.v_imp2)
+
+        nf = zeros(len(scen_properties.v_imp2), 1)
+
+
+        for i, dv in enumerate(scen_properties.v_imp2):
+            if catastrophic[i]:
+                # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
+                n_f_catastrophic = 0.1 * scen_properties.LC**(-S(1.71)) * (species1.mass + species2.mass)**(S(0.75))
+                nf[i] = n_f_catastrophic
+            else:
+                # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
+                n_f_damaging = 0.1 * scen_properties.LC**(-S(1.71)) * (min(species1.mass, species2.mass) * dv**2)**(S(0.75))
+                nf[i] = n_f_damaging
+
+        collision_pair.nf = nf.transpose()
+
+
+        if isinstance(collision_pair.phi, (int, float, Expr)):
+                phi_matrix = Matrix([collision_pair.phi] * len(collision_pair.gamma))
+        else:
+            phi_matrix = Matrix(collision_pair.phi)
+
+        for i in range(collision_pair.gamma.shape[1]):
+            gamma_col = collision_pair.gamma[:, i]
+            eq_index = None
+
+            for idx, spec in enumerate(scen_properties.species_names):
+                if spec == collision_pair.source_sinks[i].sym_name:
+                    eq_index = idx
+                    break
+
+            if eq_index is None:
+                    raise ValueError(f"Equation index not found for {collision_pair.source_sinks[i].sym_name}")
+            
+            n_f = symbols(f'n_f:{scen_properties.n_shells}')
+
+            eq = gamma_col.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+
+            for j, val in enumerate(n_f):
+                eq = eq.subs(n_f[j], val)
+
+            collision_pair.eqs[:, eq_index] = collision_pair.eqs[:, eq_index] + eq
+    
     return all_elliptical_collision_species
-
- 
 
 def process_elliptical_collision_pair(args):
     """
@@ -112,60 +259,16 @@ def process_elliptical_collision_pair(args):
     m1, m2 = collision_pair.species1.mass, collision_pair.species2.mass
     r1, r2 = collision_pair.species1.radius, collision_pair.species2.radius
 
-    # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
-    gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
-
-    # Create a list of source sinks, first two are the active species
-    source_sinks = [collision_pair.species1, collision_pair.species2]
-
-    s1 = collision_pair.species1
-    s2 = collision_pair.species2
-
-    # Implementing logic for gammas calculations based on species properties
-    if s1.maneuverable and s2.maneuverable:
-        # Multiplying each element in the first column of gammas by the product of alpha_active values
-        gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
-        if s1.slotted and s2.slotted:
-            # Applying the minimum slotting effectiveness if both are slotted
-            gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
-
-    elif (s1.maneuverable and not s2.maneuverable) or (s2.maneuverable and not s1.maneuverable):
-        if s1.trackable and s2.maneuverable:
-            gammas[:, 0] = gammas[:, 0] * s2.alpha
-        elif s2.trackable and s1.maneuverable:
-            gammas[:, 0] = gammas[:, 0] * s1.alpha
-
-    # Applying symmetric loss to both colliding species
-    gammas[:, 1] = gammas[:, 0]
-
-    # Rocket Body Flag - 1: RB; 0: not RB
-    # Will be 0 if both are None type
-    if s1.RBflag is None and s2.RBflag is None:
-        RBflag = 0
-    elif s1.RBflag is None:
-        RBflag = s2.RBflag
-    elif s2.RBflag is None:
-        RBflag = s1.RBflag
-    else:
-        RBflag = max(s1.RBflag, s2.RBflag)
-
-    dv1, dv2 = 10, 10 # this will have to change when velocities are properly introduced
-
-    debris_eccentricity_bins = debris_species[0].eccentricity_bins
 
     # there needs to be some changes here to account for the fact that the shells are already defined
     # set fragment_spreading to True
-    v1, v2 = s1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index], s2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    v1 = collision_pair.species1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    v2 = collision_pair.species2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     
 
     fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
-    collision_pair.gammas = gammas
     collision_pair.fragments = fragments
-    # collision_pair.catastrophic = catastrophic
-    # collision_pair.binOut = binOut
-    # collision_pair.altA = altA # This tells you which new shells the fragments end up in
-    # collision_pair.altE = altE # This tells you which new elliptical shells the fragments end up in
-
+    
     return collision_pair
 
 def func_de(R_list, V_list):
@@ -245,10 +348,14 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
     # Remove any fragments that are more than the original mass of m1
     m = m[m < m1]
 
-    if max(m) == 0:
-        # No fragments bigger the LNT are generated
+    try:
+        if max(m) == 0:
+            # No fragments bigger the LNT are generated
+            return None
+    except ValueError:
+        # Where no fragments are made
         return None
-
+    
     # Find difference in orbital velocity for shells
     dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
 
@@ -269,7 +376,7 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         v_vec = [np.linalg.norm(vec) for vec in dv_vec] + v1  # create a v vec
         v_vec_2d = np.array([[0, v, 0] for v in v_vec])
         new_ecc = func_de(r_vec, v_vec_2d)
-        data = np.array([dv_vec.ravel()[:len(m)], m, new_ecc]).T  # Transpose to get the right shape (n_samples, 3)
+        scen_properties = np.array([dv_vec.ravel()[:len(m)], m, new_ecc]).T  # Transpose to get the right shape (n_samples, 3)
 
         # Step 3: Define the bins for the 3D histogram
         binE_vel = np.arange(-n_shells, n_shells) * dDV / 1000
@@ -303,11 +410,12 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         bins = [bin_edges, binE_mass, binE_ecc]
 
         # Step 4: Use np.histogramdd to create the 3D histogram
-        hist, edges = np.histogramdd(data, bins=bins)
+        hist, edges = np.histogramdd(scen_properties, bins=bins)
 
         hist = hist/SS
 
         # Sum over the velocity bins to collapse the 3D histogram into a 2D histogram
+
         return hist
 
     else:
@@ -344,8 +452,8 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         # Compute eccentricities for each bin
         new_ecc = [func_de_single(r_vec, np.array([0, v, 0])) for v in v_vec]
 
-        # Combine the data into a single array and transpose to get the right shape (n_samples, 3)
-        data = np.array([dv_bins, m_bins, new_ecc]).T
+        # Combine the scen_properties into a single array and transpose to get the right shape (n_samples, 3)
+        scen_properties = np.array([dv_bins, m_bins, new_ecc]).T
 
         # Step 3: Define the bins for the 3D histogram
         binE_vel = np.arange(-n_shells, n_shells) * dDV / 1000
@@ -380,12 +488,12 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         bins = [bin_edges, binE_mass, binE_ecc]
 
         # Use np.histogramdd to create the 3D histogram
-        hist, edges = np.histogramdd(data, bins=bins)
+        hist, edges = np.histogramdd(scen_properties, bins=bins)
 
         # Normalize the histogram
         hist = hist / SS
 
-        return hist, edges
+        return hist
 
 class EllipticalCollisionPair:
     def __init__(self, species1, species2, index) -> None:
@@ -407,7 +515,7 @@ class EllipticalCollisionPair:
         self.min_TIS = min(self.species1_TIS, self.species2_TIS)
         self.max_TIS = max(self.species1_TIS, self.species2_TIS)
 
-        self.gammas = None 
+        self.gamma = None 
         self.fragments = None
         self.catastrophic = None
         self.binOut = None
@@ -417,8 +525,94 @@ class EllipticalCollisionPair:
         self.debris_eccentrcity_bins = None
 
 class SpeciesCollisionPair:
-    def __init__(self, species1, species2) -> None:
+    def __init__(self, species1, species2, scen_properties) -> None:
         self.species1 = species1
         self.species2 = species2
         self.collision_pair_by_shell = []
         self.collision_processed = []
+
+        # # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
+        self.gamma = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
+
+        # Create a list of source sinks, first two are the active species then the active speices
+        self.source_sinks = [species1, species2] + scen_properties.species['debris']
+
+        # Implementing logic for gammas calculations based on species properties
+        if species1.maneuverable and species2.maneuverable:
+            # Multiplying each element in the first column of gammas by the product of alpha_active values
+            self.gamma[:, 0] = self.gamma[:, 0] * species1.alpha_active * species2.alpha_active
+            if species1.slotted and species2.slotted:
+                # Applying the minimum slotting effectiveness if both are slotted
+                self.gamma[:, 0] = self.gamma[:, 0] * min(species1.slotting_effectiveness, species2.slotting_effectiveness)
+
+        elif (species1.maneuverable and not species2.maneuverable) or (species2.maneuverable and not species1.maneuverable):
+            if species1.trackable and species2.maneuverable:
+                self.gamma[:, 0] = self.gamma[:, 0] * species2.alpha
+            elif s2.trackable and species1.maneuverable:
+                self.gamma[:, 0] = self.gamma[:, 0] * species1.alpha
+
+        # Applying symmetric loss to both colliding species
+        self.gamma[:, 1] = self.gamma[:, 0]
+
+        # Rocket Body Flag - 1: RB; 0: not RB
+        # Will be 0 if both are None type
+        if species1.RBflag is None and s2.RBflag is None:
+            self.RBflag = 0
+        elif species2.RBflag is None:
+            self.RBflag = s2.RBflag
+        elif species2.RBflag is None:
+            self.RBflag = species1.RBflag
+        else:
+            self.RBflag = max(species1.RBflag, species2.RBflag)
+
+        self.phi = None # Proabbility of collision, based on v_imp, shell volumen and object_radii
+        self.catastrophic = None # Catastrophic flag for each shell
+        self.eqs = None # All Symbolic equations 
+        self.nf = None # Initial symbolic equations for the number of fragments
+        self.sigma = None # Square of the impact parameter
+
+
+if __name__ == "__main__":
+    import pickle 
+    
+    # open scnario properties
+    with open(r'C:\Users\IT\Documents\UCL\pyssem\scenario-properties-collision.pkl', 'rb') as f:
+        scen_properties = pickle.load(f)
+
+    s1, s2 = scen_properties.species['rocket_body'][0], scen_properties.species['debris'][0]
+    v1, v2 = s1.velocity_per_shells[6][6], s2.velocity_per_shells[6][6]
+    debris_species = [species for species in scen_properties.species['debris']]
+
+    # Mass Binning
+    binC_mass = np.zeros(len(debris_species))
+    binE_mass = np.zeros(2 * len(debris_species))
+    binW_mass = np.zeros(len(debris_species))
+    LBgiven = scen_properties.LC
+
+    for index, debris in enumerate(debris_species):
+        binC_mass[index] = debris.mass
+        binE_mass[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
+        binW_mass[index] = debris.mass_ub - debris.mass_lb
+
+    binE_mass = np.unique(binE_mass)
+
+    # Eccentricity Binning, multiple debris species will have the same eccentricity bins
+    binE_ecc = debris_species[0].eccentricity_bins
+    binE_ecc = np.sort(binE_ecc)
+    # Calculate the midpoints
+    binE_ecc = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+    # Create bin edges starting at 0 and finishing at 1
+    binE_ecc = np.concatenate(([0], binE_ecc, [1]))
+
+    m1 = 1250  # kg
+    m2 = 6  # kg
+    r1 = 4  # radius in some units
+    r2 = 0.11  # radius in some units
+    collision_index = 6  # example collision index
+
+
+    results = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, 5, n_shells=10)
+
+    print(results.shape)
+
+

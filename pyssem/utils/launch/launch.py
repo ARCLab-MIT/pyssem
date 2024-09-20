@@ -141,116 +141,6 @@ def julian_to_datetime(julian_date):
         print(f"Date conversion error: {e}")
         return None
 
-# def ADEPT_traffic_model(scen_properties, file_path):
-#     """
-#     From an initial population and future model csv, this function will create for the starting population, 
-#     then one for each time step in the future model.
-
-#     The output matrices will be in the form of a matrix, with the species as columns and the number of orbital shells as rows based on alt_bin.
-#     e.g. if you have 5 species and 10 shells, the matrix will be 10x5.
-
-#     :param scen_properties: Scenario properties
-#     :type scen_properties: ScenarioProperties
-#     :param file_path: Local File Path of CSV
-#     :type file_path: str
-#     :return: The initial population and future launch model
-#     :rtype:  pandas.DataFrame, pandas.DataFrame
-#     """
-#     # Load the traffic model data
-#     T = pd.read_csv(file_path)
-    
-#     # T['epoch_start_datime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
-
-#     # if 'obj_class' not in T.columns:
-#     #     T = define_object_class(T)  # Make sure this function is defined and imported
-
-#     # # Calculate Apogee, Perigee, and Altitude
-#     # convert sma ecc apogee and perigee to numerical
-    
-
-#     T['apogee'] = T['sma'] * (1 + T['ecc'])
-#     T['perigee'] = T['sma'] * (1 - T['ecc'])
-#     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
-
-#     # # Map species type based on object class
-#     species_dict = {
-#         "Non-station-keeping Satellite": "Sns",
-#         "Rocket Body": "B",
-#         "Station-keeping Satellite": "Su",
-#         "Coordinated Satellite": "S",
-#         "Debris": "N",
-#         "Candidate Satellite": "C"
-#     }
-
-#     T['species_class'] = T['obj_class'].map(species_dict)
-
-#     # # Initialize an empty DataFrame for new data
-#     T_new = pd.DataFrame()
-
-#     # Loop through object classes and assign species based on mass
-#     for obj_class in T['obj_class'].unique():
-#         species_class = species_dict.get(obj_class)
-#         if species_class in scen_properties.species_cells:
-#             if len(scen_properties.species_cells[species_class]) == 1:
-#                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-#                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-#                 T_new = pd.concat([T_new, T_obj_class])
-#             else:
-#                 species_cells = scen_properties.species_cells[species_class]
-#                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-#                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-#                 T_new = pd.concat([T_new, T_obj_class])
-
-#     # Assign objects to corresponding altitude bins
-#     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
-
-#     # Filter T_new to include only species present in scen_properties
-#     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
-
-#     # Initial population
-#     T_new['epoch_start_datetime'] = pd.to_datetime(T_new['epoch_start_datetime'])
-#     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
-
-#     # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-
-#     # Create a pivot table, keep alt_bin
-#     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
-
-#     # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
-#     x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
-#     x0_summary.index.name = 'alt_bin'
-
-#     # Merge the two dataframes
-#     for column in df.columns:
-#         if column in x0_summary.columns:
-#             x0_summary[column] = df[column]
-
-#     # fill NaN with 0
-#     x0_summary.fillna(0, inplace=True)
-
-#     # Future Launch Model
-#     flm_steps = pd.DataFrame()
-
-#     time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
-
-#     time_steps = [scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
-#                   for i in range(scen_properties.steps + 1)]    
-
-#     for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps)-1, desc="Processing Time Steps"):
-#         flm_step = T_new[(T_new['epoch_start_datetime'] >= start) & (T_new['epoch_start_datetime'] < end)]
-#         flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-
-#         # All objects aren't always in shells, so you need to these back in. 
-#         flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
-
-#         flm_summary.reset_index(inplace=True)
-#         flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
-
-#         flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
-#         flm_steps = pd.concat([flm_steps, flm_summary])
-    
-#     return x0_summary, flm_steps
-
 def ADEPT_traffic_model(scen_properties, file_path):
     """
     From an initial population and future model csv, this function will create for the starting population, 
@@ -268,55 +158,41 @@ def ADEPT_traffic_model(scen_properties, file_path):
     """
     # Load the traffic model data
     T = pd.read_csv(file_path)
-
-    print(f"Total Objects from launch file: {len(T)}")
     
-    # convert epoch_start_datetime to datetime
-    T['epoch_start_datetime'] = pd.to_datetime(T['epoch_start_datetime'], errors='coerce')
+    # T['epoch_start_datime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
 
-    # Calculate Apogee, Perigee, and Altitude
+    # if 'obj_class' not in T.columns:
+    #     T = define_object_class(T)  # Make sure this function is defined and imported
+
+    # # Calculate Apogee, Perigee, and Altitude
+    # convert sma ecc apogee and perigee to numerical
+    
+
     T['apogee'] = T['sma'] * (1 + T['ecc'])
     T['perigee'] = T['sma'] * (1 - T['ecc'])
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
-    # Map species type based on object class
+    # # Map species type based on object class
     species_dict = {
         "Non-station-keeping Satellite": "Sns",
         "Rocket Body": "B",
-        "CRC Station-keeping Satellite": "S",
-        "Non-CRC Station-keeping Satellite": "Su",
-        "Trackable Debris": "N",
-        "LNT" : "N",
+        "Station-keeping Satellite": "Su",
+        "Coordinated Satellite": "S",
+        "Debris": "N",
         "Candidate Satellite": "C"
     }
 
     T['species_class'] = T['obj_class'].map(species_dict)
 
-    # print a count of each of the species_classes
-    print(T['species_class'].value_counts())
-
-    # Initialize an empty DataFrame for new data
+    # # Initialize an empty DataFrame for new data
     T_new = pd.DataFrame()
 
     # Loop through object classes and assign species based on mass
-    # for obj_class in T['obj_class'].unique():
-    #     species_class = species_dict.get(obj_class)
-    #     if species_class in scen_properties.species_cells:
-    #         if len(scen_properties.species_cells[species_class]) == 1:
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-    #             T_new = pd.concat([T_new, T_obj_class])
-    #         else:
-    #             species_cells = scen_properties.species_cells[species_class]
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-    #             T_new = pd.concat([T_new, T_obj_class])
-
     for obj_class in T['obj_class'].unique():
         species_class = species_dict.get(obj_class)
         
         if species_class in scen_properties.species_cells:     
-            if species_class == 'B':
+            if species_class == 'B' or species_class == 'N':
                 # Handle the case where species_class is 'B' and match by mass bin
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
                 species_cells = scen_properties.species_cells[species_class]
@@ -338,25 +214,17 @@ def ADEPT_traffic_model(scen_properties, file_path):
                     T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
                     T_new = pd.concat([T_new, T_obj_class])
 
-
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
-
-    print(f"Total Objects after altitude bin: {len(T_new)}")
 
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
 
-    # print the count of each species in species_class
-    print(T_new['species'].value_counts())
-
     # Initial population
+    T_new['epoch_start_datetime'] = pd.to_datetime(T_new['epoch_start_datetime'])
     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
 
-    print(f"Initial Population: {len(x0)}")
-
     # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-    x0.to_csv('x0_test.csv')
 
     # Create a pivot table, keep alt_bin
     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
@@ -393,10 +261,155 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
         flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
         flm_steps = pd.concat([flm_steps, flm_summary])
-
-    print(f"Future Launch Model: {len(flm_steps)}")
     
     return x0_summary, flm_steps
+
+# def ADEPT_traffic_model(scen_properties, file_path):
+#     """
+#     From an initial population and future model csv, this function will create for the starting population, 
+#     then one for each time step in the future model.
+
+#     The output matrices will be in the form of a matrix, with the species as columns and the number of orbital shells as rows based on alt_bin.
+#     e.g. if you have 5 species and 10 shells, the matrix will be 10x5.
+
+#     :param scen_properties: Scenario properties
+#     :type scen_properties: ScenarioProperties
+#     :param file_path: Local File Path of CSV
+#     :type file_path: str
+#     :return: The initial population and future launch model
+#     :rtype:  pandas.DataFrame, pandas.DataFrame
+#     """
+#     # Load the traffic model data
+#     T = pd.read_csv(file_path)
+
+#     print(f"Total Objects from launch file: {len(T)}")
+    
+#     # convert epoch_start_datetime to datetime
+#     T['epoch_start_datetime'] = pd.to_datetime(T['epoch_start_datetime'], errors='coerce')
+
+#     # Calculate Apogee, Perigee, and Altitude
+#     T['apogee'] = T['sma'] * (1 + T['ecc'])
+#     T['perigee'] = T['sma'] * (1 - T['ecc'])
+#     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+
+#     # Map species type based on object class
+#     species_dict = {
+#         "Non-station-keeping Satellite": "Sns",
+#         "Rocket Body": "B",
+#         "CRC Station-keeping Satellite": "S",
+#         "Non-CRC Station-keeping Satellite": "Su",
+#         "Trackable Debris": "N",
+#         "LNT" : "N",
+#         "Candidate Satellite": "C"
+#     }
+
+#     T['species_class'] = T['obj_class'].map(species_dict)
+
+#     # print a count of each of the species_classes
+#     print(T['species_class'].value_counts())
+
+#     # Initialize an empty DataFrame for new data
+#     T_new = pd.DataFrame()
+
+#     # Loop through object classes and assign species based on mass
+#     # for obj_class in T['obj_class'].unique():
+#     #     species_class = species_dict.get(obj_class)
+#     #     if species_class in scen_properties.species_cells:
+#     #         if len(scen_properties.species_cells[species_class]) == 1:
+#     #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+#     #             T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+#     #             T_new = pd.concat([T_new, T_obj_class])
+#     #         else:
+#     #             species_cells = scen_properties.species_cells[species_class]
+#     #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+#     #             T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+#     #             T_new = pd.concat([T_new, T_obj_class])
+
+#     for obj_class in T['obj_class'].unique():
+#         species_class = species_dict.get(obj_class)
+        
+#         if species_class in scen_properties.species_cells:     
+#             if species_class == 'B' or species_class == 'N':
+#                 # Handle the case where species_class is 'B' and match by mass bin
+#                 T_obj_class = T[T['obj_class'] == obj_class].copy()
+#                 species_cells = scen_properties.species_cells[species_class]
+                      
+#                 T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
+                
+#                 T_new = pd.concat([T_new, T_obj_class])
+            
+#             else:
+#                 # General case for all other species_class
+#                 if len(scen_properties.species_cells[species_class]) == 1:
+#                     T_obj_class = T[T['obj_class'] == obj_class].copy()
+
+#                     T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+#                     T_new = pd.concat([T_new, T_obj_class])
+#                 else:
+#                     T_obj_class = T[T['obj_class'] == obj_class].copy()
+#                     species_cells = scen_properties.species_cells[species_class]
+#                     T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
+#                     T_new = pd.concat([T_new, T_obj_class])
+
+
+#     # Assign objects to corresponding altitude bins
+#     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
+
+#     print(f"Total Objects after altitude bin: {len(T_new)}")
+
+#     # Filter T_new to include only species present in scen_properties
+#     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
+
+#     # print the count of each species in species_class
+#     print(T_new['species'].value_counts())
+
+#     # Initial population
+#     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
+
+#     print(f"Initial Population: {len(x0)}")
+
+#     # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+#     x0.to_csv('x0_test.csv')
+
+#     # Create a pivot table, keep alt_bin
+#     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+
+#     # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
+#     x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
+#     x0_summary.index.name = 'alt_bin'
+
+#     # Merge the two dataframes
+#     for column in df.columns:
+#         if column in x0_summary.columns:
+#             x0_summary[column] = df[column]
+
+#     # fill NaN with 0
+#     x0_summary.fillna(0, inplace=True)
+
+#     # Future Launch Model
+#     flm_steps = pd.DataFrame()
+
+#     time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
+
+#     time_steps = [scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
+#                   for i in range(scen_properties.steps + 1)]    
+
+#     for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps)-1, desc="Processing Time Steps"):
+#         flm_step = T_new[(T_new['epoch_start_datetime'] >= start) & (T_new['epoch_start_datetime'] < end)]
+#         flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+#         # All objects aren't always in shells, so you need to these back in. 
+#         flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
+
+#         flm_summary.reset_index(inplace=True)
+#         flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+
+#         flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
+#         flm_steps = pd.concat([flm_steps, flm_summary])
+
+#     print(f"Future Launch Model: {len(flm_steps)}")
+    
+#     return x0_summary, flm_steps
 
 def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     """
