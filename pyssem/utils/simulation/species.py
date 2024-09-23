@@ -454,17 +454,29 @@ class Species:
         Returns:
             tuple: Normalized time spent in each shell and average velocity in each shell.
         """
+        # Ensure velocities array has the correct length
+        radii = radii[:500]  
+        velocities = velocities[:500]  # This is because it does one full loop, so is in each shell twice. Going in opposite direction, so the mean comes out as 0.
+        
+        # Adjust R0_km to include Earth's radius
         R0_km = R0_km + 6378
+        
+        # Initialize arrays for time and velocity in each shell
         time_in_shell = np.zeros(len(R0_km) - 1)
         velocity_in_shell = np.zeros(len(R0_km) - 1)
 
         for i in range(len(R0_km) - 1):
             # Check if the radius falls within the shell boundaries
             in_shell = (radii >= R0_km[i]) & (radii < R0_km[i + 1])
+            
+            # Ensure the dimensions match
+            if in_shell.shape[0] != velocities.shape[0]:
+                raise ValueError(f"Dimension mismatch: in_shell has dimension {in_shell.shape[0]} but velocities has dimension {velocities.shape[0]}")
+
             time_in_shell[i] = np.sum(in_shell)
             if np.sum(in_shell) > 0:
-                # velocity_in_shell[i] = np.mean(velocities[in_shell])
-                velocity_in_shell[i] = 7.5  # Placeholder value for now
+                # velocity_in_shell[i] = np.mean(np.linalg.norm(velocities[in_shell]))
+                velocity_in_shell[i] = 7.5 # placeholder value
 
         # Normalize the time_in_shell array
         total_time = np.sum(time_in_shell)
@@ -553,9 +565,9 @@ class Species:
                 for species in species_group:
                     if species.elliptical:  # hasn't been created yet
                         # Set semi-major axis for this species
-                        # add 6378 to each of the values in HMid
+                        # add 6371 to each of the values in HMid
 
-                        species.semi_major_axis_bins = HMid + 6378
+                        species.semi_major_axis_bins = HMid + 6371
 
                         # Calculate time spent in each shell for the semi-major axis
                         for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
@@ -563,3 +575,51 @@ class Species:
                             time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
                             species.time_per_shells.append(time_in_shell)
                             species.velocity_per_shells.append(velocity_in_shell)
+                    else:
+                        species.semi_major_axis_bins = HMid + 6371
+                        for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell_circular(None, None, R0_km, a)
+                            species.time_per_shells.append(time_in_shell)
+                            species.velocity_per_shells.append(velocity_in_shell)
+
+
+    def calculate_time_and_velocity_in_shell_circular(self, radii, velocities, R0_km, a):
+        """
+        Calculate the time spent in a specific shell and average velocity for circular species
+        where time is 1 in the shell corresponding to the semi-major axis 'a' and 0 for others.
+
+        Args:
+            radii (np.ndarray): Array of orbital radii (not used in this version).
+            velocities (np.ndarray): Array of orbital velocities (not used in this version).
+            R0_km (np.ndarray): Array of shell boundary altitudes in km.
+            a (float): Semi-major axis (in km) for the orbit.
+
+        Returns:
+            tuple: Time spent in each shell (1 for the shell containing 'a', 0 for others) and 
+                average velocity in each shell (7.5 for the shell containing 'a', 0 for others).
+        """
+        # Adjust R0_km to include Earth's radius
+        R0_km = R0_km + 6378
+
+        # Initialize arrays for time and velocity in each shell
+        num_shells = len(R0_km) - 1
+        time_in_shell = np.zeros(num_shells)
+        velocity_in_shell = np.zeros(num_shells)
+
+        # Find the shell corresponding to the semi-major axis 'a'
+        for i in range(num_shells):
+            if R0_km[i] <= a < R0_km[i + 1]:
+                # Set time to 1 for the corresponding shell
+                time_in_shell[i] = 1
+
+                # Set velocity to 7.5 for the corresponding shell
+                velocity_in_shell[i] = 7.5
+
+                # Exit the loop since the correct shell is found
+                break
+
+        # All other shell values remain 0
+        return time_in_shell, velocity_in_shell
+
+
+

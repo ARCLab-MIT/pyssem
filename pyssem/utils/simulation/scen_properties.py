@@ -194,7 +194,7 @@ class ScenarioProperties:
         if all_symbolic_vars:
             self.all_symbolic_vars = all_symbolic_vars
 
-    def add_collision_pairs(self, collision_pairs: list):
+    def add_collision_pairs(self, collision_pairs):
         """
         Adds a list of collision pairs to the overall scenario properties. 
 
@@ -262,8 +262,8 @@ class ScenarioProperties:
         Returns: None
         """
 
-        # launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'start_full_V2_new.asem.csv')
+        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        # launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'start_full_V2_new.asem.csv')
 
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):

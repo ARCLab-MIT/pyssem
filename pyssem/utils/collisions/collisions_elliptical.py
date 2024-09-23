@@ -18,6 +18,12 @@ def create_collision_pairs(scen_properties):
     
     """
 
+
+    ########################################
+    # Create the species pairs and Elliptical Collision Pairs
+    # Species Pairs will be the unique number of species in the simulation that could collide
+    # Elliptical Collision Pairs will be the unique number of species pairs that could collide in each shell
+    ########################################
     all_elliptical_collision_species = []
 
     for species_group in scen_properties.species.values():
@@ -25,10 +31,12 @@ def create_collision_pairs(scen_properties):
         # For every pair of species in the same group
         for i, species1 in enumerate(species_group):
             for j, species2 in enumerate(species_group):
-                if i >= j:  # Skip redundant pairs and self-comparisons
-                    continue
                 
                 collision_pair_unique = SpeciesCollisionPair(species1, species2, scen_properties)
+
+                # Make some initial checks to save computation time for now, we will have to back to this later
+                if species1.maneuverable or species2.maneuverable:
+                    continue
 
                 # Loop through the semi-major axis bins (assuming species1 and species2 have the same number of bins)
                 for k in range(len(species1.semi_major_axis_bins)): # back to altitude
@@ -44,8 +52,6 @@ def create_collision_pairs(scen_properties):
                         # Only print if both species spend time in this shell
                         if time_1 > 0 and time_2 > 0:
                             count += 1
-                            # print(f"Species {species1.sym_name} and {species2.sym_name} are in shell {shell_index}")
-                            # print(f"Time spent: {species1.sym_name}: {time_1}, {species2.sym_name}: {time_2}\n")
                             
                             # There is also a check on the mass of the objects, if they are both too small then they will just create dust
                             # this is defined by the LC. LC is the diameter of the smallest object that can be tracked.
@@ -63,6 +69,12 @@ def create_collision_pairs(scen_properties):
         count += len(species_pair.collision_pair_by_shell)
 
     print(f"Total number of collision pairs: {count}")
+
+
+    ########################################
+    # Fragmentation Code
+    # This code will calculate the number of fragments that are generaed if the two objects were to collide at each shell. 
+    ########################################
 
     debris_species = [species for species in scen_properties.species['debris']]
 
@@ -107,60 +119,85 @@ def create_collision_pairs(scen_properties):
     unique_names = list(unique_names)
     len_debris = len(unique_names)
 
-    # Now need to create all of the species pair class
-    for species_pair in all_elliptical_collision_species:
-        gamma_matrix = np.zeros((scen_properties.n_shells, len_debris))
+    ####################################################
+    # Equation Building
+    # For each of the species pairs, we need to take each of the collision equations and then build the gamma matrix
+    ####################################################
+    # for species_pair in all_elliptical_collision_species:
+    #     gamma_matrix = np.zeros((scen_properties.n_shells, len_debris))
 
-        for elliptical_pair in species_pair.collision_processed:
-            fragments = elliptical_pair.fragments 
+    #     for elliptical_pair in species_pair.collision_processed:
+    #         fragments = elliptical_pair.fragments 
             
-            # Check if fragments is not None
+    #         # Check if fragments is not None
+    #         if fragments is not None:
+    #             for shell_index in range(scen_properties.n_shells):
+    #                 for species_index in range(len_debris):  # Assuming two species per pair
+    #                     for eccentricity_index in range(len(debris_species[0].eccentricity_bins)):  # Assuming 8 eccentricity bins
+    #                         try:
+    #                             frags = fragments[shell_index, species_index, eccentricity_index]
+                                
+    #                             # Only add if frags is valid
+    #                             if frags is not None:
+    #                                 # Identify correct index in gamma_matrix based on species name
+    #                                 species_name = elliptical_pair.species1.sym_name if species_index == 0 else elliptical_pair.species2.sym_name
+    #                                 match = pattern.match(species_name)
+    #                                 if match: # absolutely crazy way of doing this
+    #                                     extracted_name = match.group()
+    #                                     if extracted_name in unique_names:
+    #                                         debris_index = unique_names.index(extracted_name)
+    #                                         gamma_matrix[shell_index, debris_index] += frags
+    #                         except Exception as e:
+    #                             print(f"Error accessing fragments: {e}")
+    #                             print(f"shell_index: {shell_index}, species_index: {species_index}, eccentricity_index: {eccentricity_index}")
+    debris_species = scen_properties.species['debris']
+    n_shells = scen_properties.n_shells
+    n_mass_bins = 3  # Assuming there are 4 mass bins
+    n_eccentricity_bins = len(debris_species[0].eccentricity_bins)
+    n_debris_species = n_mass_bins * n_eccentricity_bins
+
+    for species_pair in all_elliptical_collision_species:
+        for elliptical_pair in species_pair.collision_processed:
+            elliptical_pair.gamma = np.zeros((n_shells, n_debris_species))
+            fragments = elliptical_pair.fragments
+
             if fragments is not None:
-                for shell_index in range(scen_properties.n_shells):
-                    for species_index in range(len_debris):  # Assuming two species per pair
-                        for eccentricity_index in range(len(debris_species[0].eccentricity_bins)):  # Assuming 8 eccentricity bins
+                for shell_index in range(n_shells):
+                    for species_index in range(n_mass_bins):
+                        for eccentricity_index in range(n_eccentricity_bins):
                             try:
                                 frags = fragments[shell_index, species_index, eccentricity_index]
-                                
-                                # Only add if frags is valid
+
                                 if frags is not None:
-                                    # Identify correct index in gamma_matrix based on species name
-                                    species_name = elliptical_pair.species1.sym_name if species_index == 0 else elliptical_pair.species2.sym_name
-                                    match = pattern.match(species_name)
-                                    if match: # absolutely crazy way of doing this
-                                        extracted_name = match.group()
-                                        if extracted_name in unique_names:
-                                            debris_index = unique_names.index(extracted_name)
-                                            gamma_matrix[shell_index, debris_index] += frags
+                                    debris_index = species_index * n_eccentricity_bins + eccentricity_index
+                                    elliptical_pair.gamma[shell_index, debris_index] += frags
                             except Exception as e:
                                 print(f"Error accessing fragments: {e}")
                                 print(f"shell_index: {shell_index}, species_index: {species_index}, eccentricity_index: {eccentricity_index}")
 
-    # Store the gamma_matrix for the current species_pair
-        species_pair.gammas = gamma_matrix
 
-    for collision_pair in all_elliptical_collision_species:
-        # Ensure gamma is a sympy matrix
-        gamma_sympy = collision_pair.gamma
-        
-        # Start inserting new columns after the existing ones
-        insert_index = gamma_sympy.shape[1]
-        
-        for i in range(len_debris):
-            # Extract the column as a numpy array
-            column = collision_pair.gammas[:, i] # flip sign
-            
-            # Convert the numpy column to a sympy matrix
-            column_sympy = Matrix(column)
-            
-            # Use col_insert to add the new column. Insert at the current insert_index
-            gamma_sympy = gamma_sympy.col_insert(insert_index, column_sympy)
-            
-            # Increment the insert_index for the next column
-            insert_index += 1
-        
-        # Update collision_pair.gamma with the new value
-        collision_pair.gamma = gamma_sympy
+    # for collision_pair in all_elliptical_collision_species:
+    #     # Convert gamma to a sympy matrix
+    #     gamma_sympy = Matrix(collision_pair.gamma)
+
+    #     # Start inserting new columns after the existing ones
+    #     insert_index = gamma_sympy.shape[1]
+
+    #     for i in range(n_debris_species):
+    #         # Extract the column as a numpy array and flip sign
+    #         column = -collision_pair.gamma[:, i]
+
+    #         # Convert the numpy column to a sympy matrix
+    #         column_sympy = Matrix(column)
+
+    #         # Use col_insert to add the new column at the current insert_index
+    #         gamma_sympy = gamma_sympy.col_insert(insert_index, column_sympy)
+
+    #         # Increment the insert_index for the next column
+    #         insert_index += 1
+
+    #     # Update collision_pair.gamma with the new sympy matrix
+    #     collision_pair.gamma = gamma_sympy
 
     return generate_collision_equations(all_elliptical_collision_species, scen_properties)
 
@@ -191,61 +228,185 @@ def is_catastrophic(mass1, mass2, vels):
     return is_catastrophic
 
 def generate_collision_equations(all_elliptical_collision_species, scen_properties):
+    n_shells = scen_properties.n_shells
 
-    for collision_pair in all_elliptical_collision_species:
-        species1, species2 = collision_pair.species1, collision_pair.species2
+    # Define mass bins and eccentricity bins
+    mass_bins = ['0.00141372kg', '2kg', '20kg', '750kg']  # 4 mass bins
+    ecc_bins = ['0.00625', '0.01875', '0.04375', '0.06875', '0.09375']  # 5 ecc bins
 
-        collision_pair.eqs = Matrix(scen_properties.n_shells, scen_properties.species_length, lambda i, j: 0)
+    # Initialize debris species lists
+    debris_species_names = []
+    debris_symbolic_vars = []
 
-        meter_to_km = 1/1000
+    for s in range(n_shells):
+        for mass_value in mass_bins:
+            for ecc_value in ecc_bins:
+                debris_species_name = f'N_{mass_value}_e{ecc_value}_{s + 1}'
+                debris_species_names.append(debris_species_name)
+                debris_var = symbols(debris_species_name)
+                debris_symbolic_vars.append(debris_var)
 
+    # Ensure that debris species variables are included in 'all_symbolic_vars'
+    all_symbolic_vars = scen_properties.all_symbolic_vars
+
+    for debris_var in debris_symbolic_vars:
+        if debris_var not in all_symbolic_vars:
+            all_symbolic_vars.append(debris_var)
+
+    # Rebuild the mappings to include the debris species
+    species_name_to_idx = {str(var): idx for idx, var in enumerate(all_symbolic_vars)}
+    species_sym_vars = {str(var): var for var in all_symbolic_vars}
+
+    # Initialize the equations matrix
+    n_species = len(all_symbolic_vars)
+    equations = Matrix.zeros(n_shells, n_species)
+
+    phi_matrix = None
+
+    for collision_pair in tqdm(all_elliptical_collision_species):
+        # Map out the major components
+        species1 = collision_pair.species1
+        species2 = collision_pair.species2
+        species1_name = species1.sym_name
+        species2_name = species2.sym_name
+
+        # Conversion factor
+        meter_to_km = 1 / 1000
+
+        # Compute collision cross-section (sigma)
         collision_pair.sigma = (species1.radius * meter_to_km + species2.radius * meter_to_km) ** 2
 
-        collision_pair.phi = pi * scen_properties.v_imp2 / (scen_properties.V * meter_to_km**3) * collision_pair.sigma * S(86400) * S(365.25)
+        # Compute collision rate (phi) for each shell
+        collision_pair.phi = (
+            pi * scen_properties.v_imp2
+            / (scen_properties.V * meter_to_km**3)
+            * collision_pair.sigma
+            * S(86400)
+            * S(365.25)
+        )
+        phi_matrix = collision_pair.phi
 
+        # Determine if the collision is catastrophic for each shell
+        # 'is_catastrophic' should be defined elsewhere in your code
         catastrophic = is_catastrophic(species1.mass, species2.mass, scen_properties.v_imp2)
 
-        nf = zeros(len(scen_properties.v_imp2), 1)
-
-
+        # Compute the number of fragments (nf) for each shell
+        nf = np.zeros(len(scen_properties.v_imp2), dtype=object)
         for i, dv in enumerate(scen_properties.v_imp2):
             if catastrophic[i]:
-                # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
-                n_f_catastrophic = 0.1 * scen_properties.LC**(-S(1.71)) * (species1.mass + species2.mass)**(S(0.75))
+                n_f_catastrophic = 0.1 * scen_properties.LC ** (-S(1.71)) * (
+                    species1.mass + species2.mass
+                ) ** (S(0.75))
                 nf[i] = n_f_catastrophic
             else:
-                # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
-                n_f_damaging = 0.1 * scen_properties.LC**(-S(1.71)) * (min(species1.mass, species2.mass) * dv**2)**(S(0.75))
+                n_f_damaging = 0.1 * scen_properties.LC ** (-S(1.71)) * (
+                    min(species1.mass, species2.mass) * dv ** 2
+                ) ** (S(0.75))
                 nf[i] = n_f_damaging
+        collision_pair.nf = nf  # 'nf' is now a NumPy array
 
-        collision_pair.nf = nf.transpose()
+        # Now loop over each of the EllipticalCollisionPairs in this collision_pair
+        for elliptical_pair in collision_pair.collision_pair_by_shell:
+            s_source = elliptical_pair.shell_index  # Source shell index (0-based)
+
+            # Get species variable names including shell number
+            species1_var_name = f'{species1_name}_{s_source + 1}'
+            species2_var_name = f'{species2_name}_{s_source + 1}'
+
+            # Get symbolic variables
+            N_species1_s = species_sym_vars.get(species1_var_name)
+            N_species2_s = species_sym_vars.get(species2_var_name)
+
+            if N_species1_s is None or N_species2_s is None:
+                continue  # Skip if species variables are not found
+
+            phi_s = collision_pair.phi[s_source]
+            nf_s = collision_pair.nf[s_source]
+
+            # Process fragments from the collision
+            fragments = elliptical_pair.fragments  # Should be an array of shape [n_destination_shells, n_mass_bins, n_ecc_bins]
+
+            if fragments is not None:
+                n_destination_shells, n_mass_bins, n_ecc_bins = fragments.shape
+
+                for s_destination in range(n_destination_shells):
+                    fragments_sd = fragments[s_destination]  # Fragments ending up in shell s_destination
+                    for mass_bin_index in range(n_mass_bins):
+                        for ecc_bin_index in range(n_ecc_bins):
+                            num_frags = fragments_sd[mass_bin_index, ecc_bin_index]
+                            if num_frags != 0:
+                                mass_value = mass_bins[mass_bin_index]
+                                ecc_value = ecc_bins[ecc_bin_index]
+                                # Generate debris species variable name including destination shell number
+                                debris_species_name = f'N_{mass_value}_e{ecc_value}_{s_destination + 1}'
+                                idx_debris = species_name_to_idx.get(debris_species_name)
+                                if idx_debris is not None:
+                                    debris_var = species_sym_vars[debris_species_name]
+                                    # Compute delta gain for debris species (symbolic)
+                                    delta_gain = phi_s * N_species1_s * N_species2_s * nf_s * num_frags
+                                    equations[s_destination, idx_debris] += delta_gain
+            else:
+                continue  # If fragments are None, skip to the next elliptical_pair
+
+        # After processing the collision pair, 'equations' contains the accumulated symbolic equations for all species
+
+        # Now, extract the equations for the debris species and store them in a (10, 20) matrix
+        # Initialize the debris equations matrix
+        debris_length = len(mass_bins) * len(ecc_bins)  # Should be 20
+        equations_debris = Matrix.zeros(n_shells, debris_length)
+
+        # Map debris species variable names to indices within the shell
+        debris_species_idx_within_shell = {}
+        for idx_within_shell, debris_species_name in enumerate(debris_species_names[:debris_length]):
+            base_name = '_'.join(debris_species_name.split('_')[:-1])
+            debris_species_idx_within_shell[base_name] = idx_within_shell
+
+        # Populate the debris equations matrix
+        for s in range(n_shells):
+            for mass_value in mass_bins:
+                for ecc_value in ecc_bins:
+                    debris_species_name = f'N_{mass_value}_e{ecc_value}_{s + 1}'
+                    base_name = f'N_{mass_value}_e{ecc_value}'
+                    idx_species = species_name_to_idx.get(debris_species_name)
+                    idx_debris = debris_species_idx_within_shell.get(base_name)
+                    if idx_species is not None and idx_debris is not None:
+                        eq = equations[s, idx_species]
+                        equations_debris[s, idx_debris] += eq
+
+    species_names = scen_properties.species_names
+    species1_idx = species_names.index(species1.sym_name)
+    species2_idx = species_names.index(species2.sym_name)
+    # print(species1_idx, species2_idx)
+    # find the start of the debris species index, which will be the first item in species_names that starts with 'N_'
+    debris_start_idx = next(i for i, name in enumerate(species_names) if name.startswith('N_'))
+    # print(debris_start_idx)
+
+    try:
+        # Attempt to use the first column of gamma
+        print(collision_pair.gamma)
+        eq_s1 = collision_pair.gamma[:, 1].multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+        eq_s2 = collision_pair.gamma[:, 1].multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+    except Exception as e:
+        print(f"Exception caught: {e}")
+        # Reshape gamma to ensure compatibility
+        gamma_reshaped = collision_pair.gamma.reshape(-1, 1)
+        eq_s1 = gamma_reshaped.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+        eq_s2 = gamma_reshaped.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+        
+
+    eqs = Matrix(zeros(n_shells, scen_properties.species_length))
+
+    # # add in eq_1 at species1_idx and eq_2 at species2_idx
+    eqs[:, species1_idx] = eq_s1
+    eqs[:, species2_idx] += eq_s2
 
 
-        if isinstance(collision_pair.phi, (int, float, Expr)):
-                phi_matrix = Matrix([collision_pair.phi] * len(collision_pair.gamma))
-        else:
-            phi_matrix = Matrix(collision_pair.phi)
-
-        for i in range(collision_pair.gamma.shape[1]):
-            gamma_col = collision_pair.gamma[:, i]
-            eq_index = None
-
-            for idx, spec in enumerate(scen_properties.species_names):
-                if spec == collision_pair.source_sinks[i].sym_name:
-                    eq_index = idx
-                    break
-
-            if eq_index is None:
-                    raise ValueError(f"Equation index not found for {collision_pair.source_sinks[i].sym_name}")
-            
-            n_f = symbols(f'n_f:{scen_properties.n_shells}')
-
-            eq = gamma_col.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
-
-            for j, val in enumerate(n_f):
-                eq = eq.subs(n_f[j], val)
-
-            collision_pair.eqs[:, eq_index] = collision_pair.eqs[:, eq_index] + eq
+        # Loop through each debris species
+    for i in range(len(scen_properties.species['debris'])):
+        # Calculate the corresponding index in the overall species list
+        deb_index = debris_start_idx + i
+        # Assign the columns from equations_debris to the appropriate columns in eqs
+        eqs[:, deb_index] = equations_debris[:, i]
     
     return all_elliptical_collision_species
 
@@ -548,7 +709,7 @@ class SpeciesCollisionPair:
         elif (species1.maneuverable and not species2.maneuverable) or (species2.maneuverable and not species1.maneuverable):
             if species1.trackable and species2.maneuverable:
                 self.gamma[:, 0] = self.gamma[:, 0] * species2.alpha
-            elif s2.trackable and species1.maneuverable:
+            elif species2.trackable and species1.maneuverable:
                 self.gamma[:, 0] = self.gamma[:, 0] * species1.alpha
 
         # Applying symmetric loss to both colliding species
@@ -556,10 +717,10 @@ class SpeciesCollisionPair:
 
         # Rocket Body Flag - 1: RB; 0: not RB
         # Will be 0 if both are None type
-        if species1.RBflag is None and s2.RBflag is None:
+        if species1.RBflag is None and species2.RBflag is None:
             self.RBflag = 0
         elif species2.RBflag is None:
-            self.RBflag = s2.RBflag
+            self.RBflag = species2.RBflag
         elif species2.RBflag is None:
             self.RBflag = species1.RBflag
         else:

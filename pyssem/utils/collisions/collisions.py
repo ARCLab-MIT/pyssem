@@ -279,7 +279,7 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
     # Binning via histcounts
     nums, _ = np.histogram(m, bins=binEd)
     nums = nums / SS # Correct for super sampling
-
+    
     # Define binOut based on the option chosen for bin setup
     binOut = []
     if binC is not None and binE is None and binW is None:  # Option 1: bin center given; output = edges

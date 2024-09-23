@@ -24,6 +24,7 @@
     "simulation_name": "Indigo",
     "species": [
         {
+            "sym_name": "S",
             "A": 4.9564,
             "active": true,
             "alpha": 0.2,
@@ -41,7 +42,6 @@
             "RBflag": 0,
             "slotted": false,
             "slotting_effectiveness": 0,
-            "sym_name": "S",
             "trackable": true
         },
         {
@@ -73,8 +73,6 @@
             "radius": 1.2561,
             "active": false,
             "slotted": false,
-            "slotting_effectiveness": 1,
-            "drag_effected": true,
             "Pm": 0,
             "alpha": 0,
             "alpha_active": 0,

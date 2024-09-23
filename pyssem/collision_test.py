@@ -1,6 +1,7 @@
 import pickle
 import numpy as np
-from utils.collisions.collisions import func_dv, func_Am
+from utils.collisions.collisions import func_Am
+import matplotlib.pyplot as plt
 
 def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     """
@@ -33,28 +34,37 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
         M = p1_mass + p2_mass
         isCatastrophic = True
     
-    # Compute number of fragments based on the NASA breakup model
-    num = np.floor(0.1 * M ** 0.75 * LB ** (-1.71) - 0.1 * M ** 0.75 * min([1, 2 * p1_radius]) ** (-1.71))
+    # # Compute number of fragments based on the NASA breakup model
+    # num = np.floor(0.1 * M ** 0.75 * LB ** (-1.71) - 0.1 * M ** 0.75 * min([1, 2 * p1_radius]) ** (-1.71))
+    min_value =
+    num = np.floor(0.1 * M ** 0.75 * LB ** (-1.71) - 0.1 * M ** 0.75 *  min(1, 2 * p1_radius) ** (-1.71))
+
+
     
     # Create debris size distribution
-    dd_edges = np.logspace(np.log10(LB), np.log10(min([1, 2 * p1_radius])), 200)
+    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * p1_radius)), 200)  # logspace in Python
     log10_dd = np.log10(dd_edges)
-    dd_means = 10 ** (log10_dd[:-1] + np.diff(log10_dd) / 2)
+    dd_means = 10 ** (log10_dd[:-1] + np.diff(log10_dd) / 2)  # Calculate mean of diameter edges
+
     
     nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)
-    ndd = np.maximum(0, -np.diff(nddcdf))
-    floor_ndd = np.floor(ndd)
-    
-    rand_sampling = np.random.rand(len(ndd))
-    add_sampling = rand_sampling > (1 - (ndd - floor_ndd))
-    
-    d_pdf = np.repeat(dd_means, floor_ndd + add_sampling.astype(int))
-    d = np.random.permutation(d_pdf)
+    ndd = np.maximum(0, -np.diff(nddcdf))  # Ensure no negative values
+    floor_ndd = np.floor(ndd).astype(int)  # Convert to integer for np.repeat
+    rand_sampling = np.random.rand(len(ndd))  # Random numbers
+    add_sampling = rand_sampling > (1 - (ndd - floor_ndd))  # Stochastic sampling
+    d_pdf = np.repeat(dd_means, floor_ndd + add_sampling.astype(int))  # Final PDF
+
+    # Repeat dd_means based on floor_ndd and add_sampling_int
+    d = np.random.permutation(d_pdf) 
+
+    print(f"Number of fragments: {len(d_pdf)}")
     
     # Calculate mass of objects [LB, 1 m]
     A = 0.556945 * d ** 2.0047077
     Am = func_Am(d, p1_objclass)
     m = A / Am
+
+    print(f"Number of fragments: {len(m)}")
     
     # Handle remnant mass and fragment assignment based on collision type
     if np.sum(m) < M:
@@ -141,8 +151,73 @@ def func_create_tlesv2_vec(ep, r, v, objclass, fragments, param):
     return fragments
 
 if __name__ == "__main__":
-    # open pickle file
-    with open(r'C:\Users\IT\Documents\UCL\pyssem\scenario-properties-collision.pkl', 'rb') as f:
-        data = pickle.load(f)
+    # Define p1_in and p2_in
+    p1_in = 1.0e+03 * np.array([1.2500, 0.0040, 2.8016, 2.7285, 6.2154, -0.0055, -0.0030, 0.0038, 0.0010])
 
-    handle_gammas(data)
+    p2_in = 1.0e+03 * np.array([0.0060, 0.0001, 2.8724, 2.7431, 6.2248, 0.0032, 0.0054, -0.0039, 0.0010])
+
+    # Define the param dictionary
+    param = {
+        'req': 6.3781e+03,
+        'mu': 3.9860e+05,
+        'j2': 0.0011,
+        'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+        'maxID': 0,
+        'density_profile': 'static'
+    }
+
+    # Lower bound (LB)
+    LB = 0.1  # Assuming this is the lower bound in meters
+
+    debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
+
+    print(len(debris1), len(debris2), isCatastrophic)
+
+    # Extract indices (You'll need to map the correct indices for `idx_a` and `idx_ecco`)
+    idx_a = 1  # Replace with actual index for SMA
+    idx_ecco = 2  # Replace with actual index for Eccentricity
+
+    # 1D Histogram for SMA (semi-major axis)
+    plt.figure()
+    plt.hist((debris1[:, idx_a] - 1) * 6371, bins=np.arange(0, 5000 + 100, 100))  # Bin size of 100
+    plt.title('SMA as altitude (km)')
+    plt.xlabel('SMA as altitude (km)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # 1D Histogram for Eccentricity
+    plt.figure()
+    plt.hist(debris1[:, idx_ecco], bins=50)  # Default bin size or specify as needed
+    plt.title('Eccentricity')
+    plt.xlabel('Eccentricity')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # 2D Histogram using histogram2d (equivalent to histogram2 in MATLAB)
+    plt.figure()
+    H, xedges, yedges = np.histogram2d((debris1[:, idx_a] - 1) * 6371, debris1[:, idx_ecco], bins=[np.arange(0, 5000 + 100, 100), np.arange(0, 1 + 0.01, 0.01)])
+
+    plt.pcolormesh(xedges, yedges, H.T, norm=plt.Normalize(vmin=1), shading='auto')
+    plt.yscale('log')
+    plt.xlim([0, 3000])
+    plt.xlabel('SMA as altitude (km)')
+    plt.ylabel('Eccentricity')
+    plt.colorbar(label='Counts')
+    plt.grid(True)
+    plt.show()
+
+    # 2D Histogram using surf (equivalent to surf in MATLAB)
+    n, xedges, yedges = np.histogram2d((debris1[:, idx_a] - 1) * 6371, debris1[:, idx_ecco], bins=[np.arange(0, 5000 + 100, 100), np.arange(0, 0.5 + 0.01, 0.01)])
+
+    X, Y = np.meshgrid(xedges[:-1], yedges[:-1])
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, n.T, cmap='viridis')
+
+    ax.set_zscale('log')
+    ax.set_zlim([2, 100000])
+    ax.set_xlabel('SMA as altitude (km)')
+    ax.set_ylabel('Eccentricity')
+    ax.set_zlabel('Counts')
+    ax.view_init(54, 134)
+    plt.show()

@@ -112,11 +112,11 @@ class Model:
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
-            # with open('scenario-properties-elliptical.pkl', 'wb') as f:
-            #     pickle.dump(self.scenario_properties, f)
-
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+
+            with open('scenario-properties-elliptical.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
 
             # Merge elliptical back to main species
             # species_list.merge_elliptical_to_main()
@@ -219,22 +219,18 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    results = model.run_model()
+    # results = model.run_model()
 
-    model.create_plots()
+    # model.create_plots()
 
     ## COLLISION CODE TESTING
 
-    # # # # Open the pickle file
+    # # # Open the pickle file
     # with open('scenario-properties-elliptical.pkl', 'rb') as f:
     #     scenario_properties = pickle.load(f)
     
-    # # results = create_collision_pairs(scenario_properties)
-
-    # scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
-
     # # export pickle file
-    # with open('scenario-properties-collision.pkl', 'wb') as f:
+    # with open('scenario-properties-elliptical.pkl', 'wb') as f:
     #     pickle.dump(scenario_properties, f)
 
 
