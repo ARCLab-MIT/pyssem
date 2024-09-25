@@ -301,7 +301,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
         "Rocket Body": "B",
         "CRC Station-keeping Satellite": "S",
         "Non-CRC Station-keeping Satellite": "Su",
-        "Trackable Debris": "N",
+        "Debris": "N",
         "LNT" : "N",
         "Candidate Satellite": "C"
     }
@@ -328,31 +328,21 @@ def ADEPT_traffic_model(scen_properties, file_path):
                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                 T_new = pd.concat([T_new, T_obj_class])
 
+
     # for obj_class in T['obj_class'].unique():
     #     species_class = species_dict.get(obj_class)
         
-    #     if species_class in scen_properties.species_cells:     
-    #         if species_class == 'B' or species_class == 'N':
-    #             # Handle the case where species_class is 'B' and match by mass bin
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             species_cells = scen_properties.species_cells[species_class]
-                      
-    #             T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
-                
-    #             T_new = pd.concat([T_new, T_obj_class])
+    #     if species_class in scen_properties.species_cells:
+    #         T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #         species_cells = scen_properties.species_cells[species_class]
             
-    #         else:
-    #             # General case for all other species_class
-    #             if len(scen_properties.species_cells[species_class]) == 1:
-    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #         # Apply the new function to assign species based on mass and eccentricity
+    #         T_obj_class['species'] = T_obj_class.apply(
+    #             lambda row: find_species_by_mass_and_eccentricity(row['mass'], row['ecc'], scen_properties, species_cells), 
+    #             axis=1
+    #         )
 
-    #                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-    #                 T_new = pd.concat([T_new, T_obj_class])
-    #             else:
-    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #                 species_cells = scen_properties.species_cells[species_class]
-    #                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
-    #                 T_new = pd.concat([T_new, T_obj_class])
+    #         T_new = pd.concat([T_new, T_obj_class])
 
 
     # Assign objects to corresponding altitude bins
@@ -414,6 +404,29 @@ def ADEPT_traffic_model(scen_properties, file_path):
     
     return x0_summary, flm_steps
 
+def find_species_by_mass_and_eccentricity(mass, eccentricity, scen_properties, species_cell):
+    """
+    Find the species based on both mass and eccentricity.
+
+    :param mass: Mass of the object in kg
+    :type mass: float
+    :param eccentricity: Eccentricity of the object's orbit
+    :type eccentricity: float
+    :param scen_properties: The scenario properties object
+    :type scen_properties: ScenarioProperties
+    :param species_cell: The species cell to find the species for
+    :type species_cell: list
+    :return: The species name based on mass and eccentricity
+    :rtype: str
+    """
+    for species in species_cell:
+        # Check if both mass and eccentricity fall within the range
+        if species.mass_lb <= mass < species.mass_ub and species.ecc_lb <= eccentricity < species.ecc_ub:
+            return species.sym_name
+    
+    print(f"Could not find a species for mass: {mass} and eccentricity: {eccentricity}")
+    return None
+
 def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     """
     Find the eccentricity bin for a given eccentricity.
@@ -431,6 +444,8 @@ def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     for species in species_cell:
         if species.ecc_lb <= eccentricity < species.ecc_ub:
             return species.sym_name
+        
+    print(f"Could not find eccentricity bin for {eccentricity}")
 
 
 def find_mass_bin(mass, scen_properties, species_cell):

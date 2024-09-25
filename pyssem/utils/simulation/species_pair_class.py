@@ -23,6 +23,8 @@ class SpeciesPairClass:
             source_sinks (list): A list of species that are either sources or sinks in the collision
             scen_properties (ScenarioProperties): The scenario properties object
         """
+
+        self.fragments = fragsMadeDV
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")
     

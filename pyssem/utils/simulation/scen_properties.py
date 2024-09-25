@@ -12,6 +12,7 @@ from pkg_resources import resource_filename
 import pandas as pd
 import os
 import multiprocessing
+import re
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
@@ -110,6 +111,8 @@ class ScenarioProperties:
         self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
         self.species_names = []
+        self.debris_names = []
+        self.debris_length = 0
         self.species_length = 0
         self.all_symbolic_vars = []
         
@@ -387,13 +390,24 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
+        # for equation in self.equations:
+        #     variables = list(equation.free_symbols)
+        #     missing_vars = set(self.all_symbolic_vars) - set(variables)
+
+        #     # Print the missing variables for inspection
+        #     if missing_vars:
+        #         print(f"Equation: {equation}")
+        #         print(f"Free symbols (variables) used: {variables}")
+        #         print(f"Missing in equation: {missing_vars}")
+
+
         equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
 
         # Convert the equations to lambda functions
         if self.parallel_processing:
             equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
         else:
-            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy', dummify=False) for eq in equations_flattened]
 
         # Launch rates
         full_lambda_flattened = []
