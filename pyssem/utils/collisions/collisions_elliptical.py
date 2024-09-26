@@ -346,11 +346,12 @@ def process_elliptical_collision_pair(args):
     t1 = collision_pair.species1.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     t2 = collision_pair.species2.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     min_TIS = min(t1, t2)
+    print(m1, m2, min_TIS)
 
     fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
     
     if fragments is not None:
-        collision_pair.fragments = fragments * min_TIS
+        collision_pair.fragments = fragments # * min_TIS
     else: 
         collision_pair.fragments = fragments
 
@@ -388,7 +389,7 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         m1, m2 = m2, m1
         r1, r2 = r2, r1
 
-    dv = 7.5
+    dv = 10
     catastrophe_ratio = (m2 * ((dv * 1000) ** 2) / (2 * m1 * 1000))  # J/g = kg*(km/s)^2 / g
 
     # If the specific energy is < 40 J/g: non catastrophic collision
