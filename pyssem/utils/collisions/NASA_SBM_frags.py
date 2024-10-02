@@ -6,6 +6,12 @@ from poliastro.bodies import Earth
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+from mpl_toolkits.mplot3d import Axes3D
+import pickle
+
 
 def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     """
@@ -230,16 +236,28 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     # Compute dv vectors
     if not isCatastrophic:
         # Find remnant mass of parent object; add to *_rem object
-        p1remnantmass = p1_mass + p2_mass - np.sum(np.concatenate((m, m_rem)))  # could be larger than p1_mass..!
+        try:                
+            p1remnantmass = p1_mass + p2_mass - np.sum(np.concatenate((m, m_rem)))  # could be larger than p1_mass..!
+        except ValueError:
+            m_rem = np.array([m_rem])
+            p1remnantmass = p1_mass + p2_mass - np.sum(np.concatenate((m, m_rem)))
+
         m_rem = np.concatenate((m_rem, [p1remnantmass]))
         d_rem = np.concatenate((d_rem, [p1_radius * 2]))
         A_rem = np.concatenate((A_rem, [np.pi * p1_radius**2]))  # area not used for func_create_tlesv2_vec
         Am_rem = np.concatenate((Am_rem, [np.pi * p1_radius**2 / p1remnantmass]))  # AMR used only for Bstar in func_create_tlesv2_vec
-        dv = np.concatenate((dv, [0]))  # no change from parent object
+        dv = np.concatenate((dv))  # no change from parent object
         dv_vec = np.vstack((dv_vec, [0, 0, 0]))
+        total_debris_mass = np.sum(np.concatenate((m, m_rem)))
 
-    # Calculate the sum of m and m_rem
-    total_debris_mass = np.sum(np.concatenate((m, m_rem)))
+    else:
+        try:
+            if len(m_rem) == 1:
+                m_rem = np.array(m_rem)
+        except TypeError:
+            # Case where there are no fragments
+            return np.array([]), np.array([]), isCatastrophic
+        total_debris_mass = np.sum(np.concatenate((m, m_rem)))
 
     # Calculate the sum of p1_mass and p2_mass
     original_mass = p1_mass + p2_mass
@@ -440,10 +458,35 @@ def filter_objclass_fragments_int(class_parent):
 # Example usage
 if __name__ == "__main__":
     # Define p1_in and p2_in
-    p1_in = 1.0e+03 * np.array([1.2500, 0.0040, 2.8016, 2.7285, 6.2154, -0.0055, -0.0030, 0.0038, 0.0010])
+    # p1_in = 1.0e+03 * np.array([1.2500, 0.0040, 2.8016, 2.7285, 6.2154, -0.0055, -0.0030, 0.0038, 0.0010])
 
-    p2_in = 1.0e+03 * np.array([0.0060, 0.0001, 2.8724, 2.7431, 6.2248, 0.0032, 0.0054, -0.0039, 0.0010])
+    # p2_in = 1.0e+03 * np.array([0.0060, 0.0001, 2.8724, 2.7431, 6.2248, 0.0032, 0.0054, -0.0039, 0.0010])
 
+    p1_in = np.array([
+        1250,  # mass in kg
+        4.0,     # radius in meters
+        2372.4,  # r_x in km
+        2743.1,  # r_y in km
+        6224.8,  # r_z in km
+        -5.5,    # v_x in km/s
+        -3.0,    # v_y in km/s
+        3.8,     # v_z in km/s
+        1.0      # object_class (dimensionless)
+    ])
+
+    p2_in = np.array([
+        6,     # mass in kg
+        0.1,     # radius in meters
+        2372.4,  # r_x in km
+        2743.1,  # r_y in km
+        6224.8,  # r_z in km
+        3.2,     # v_x in km/s
+        5.4,     # v_y in km/s
+        -3.9,    # v_z in km/s
+        1.0      # object_class (dimensionless)
+    ])
+
+    
     # Define the param dictionary
     param = {
         'req': 6.3781e+03,
@@ -459,70 +502,188 @@ if __name__ == "__main__":
 
     debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
 
-    print(f"Debris1 count: {len(debris1)}")
-    print(f"Debris2 count: {len(debris2)}")
-    print(f"Is Catastrophic: {isCatastrophic}")
+    # if debris 1 is empty then contine
+    if debris1.size == 0:
+        print("No debris fragments were generated")
+        exit()
+
+    # Assuming debris1 is already defined
     idx_a = 0
     idx_ecco = 1
 
+    # 1. 1D Histogram for SMA (semi-major axis)
     plt.figure()
     plt.hist((debris1[:, idx_a] - 1) * 6371, bins=np.arange(0, 5001, 100))
-    plt.title('SMA')
+    plt.title('SMA as altitude (km)')
     plt.xlabel('SMA as altitude (km)')
     plt.ylabel('Frequency')
     plt.grid(True)
+    plt.show()
 
+    # 2. 1D Histogram for Eccentricity
     plt.figure()
     plt.hist(debris1[:, idx_ecco], bins=50)
-    plt.title('Ecco')
+    plt.title('Eccentricity')
     plt.xlabel('Eccentricity')
     plt.ylabel('Frequency')
     plt.grid(True)
+    plt.show()
 
-    # 2D histogram using histogram2d
+    # 3. 2D Histogram using histogram2d with LogNorm for color scale
     plt.figure()
-    hist, xedges, yedges = np.histogram2d((debris1[:, idx_a] - 1) * 6371, debris1[:, idx_ecco], bins=[np.arange(0, 5001, 100), np.arange(0, 1.01, 0.01)])
-    plt.imshow(hist.T, origin='lower', norm=LogNorm(), extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='auto')
-    plt.colorbar(label='Count')
+    hist, xedges, yedges = np.histogram2d(
+        (debris1[:, idx_a] - 1) * 6371, debris1[:, idx_ecco],
+        bins=[np.arange(0, 5001, 100), np.arange(0, 1.01, 0.01)]
+    )
+
+    # Avoid any zero counts for logarithmic color scaling
+    hist[hist == 0] = np.nan  # Replace zeros with NaNs to avoid LogNorm issues
+
+    # Plotting the 2D histogram
+    mappable = plt.imshow(
+        hist.T, origin='lower', norm=LogNorm(), 
+        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='auto'
+    )
+    plt.colorbar(mappable, label='Count')
     plt.xlim([0, 3000])
     plt.xlabel('SMA as altitude (km)')
     plt.ylabel('Eccentricity')
-    plt.title(f'Debris Fragments from Collision between 1250kg and 6kg at 1100 alt')
+    plt.title('2D Histogram of SMA and Eccentricity')
     plt.grid(True)
     plt.show()
 
-    # 2D histogram using surf-like plot
-    hist, xedges, yedges = np.histogram2d((debris1[:, idx_a] - 1) * 6371, debris1[:, idx_ecco], bins=[np.arange(0, 5001, 100), np.arange(0, 0.51, 0.01)])
-    Xm, Ym = np.meshgrid(xedges[:-1], yedges[:-1])
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Xm, Ym, hist.T, norm=LogNorm(), cmap='viridis')
-    ax.set_zlim(2, 100000)
-    ax.set_xlabel('SMA as altitude (km)')
-    ax.set_ylabel('Eccentricity')
-    ax.set_zlabel('Count')
-    ax.view_init(54, 134)
-    ax.set_zscale('log')
-    plt.title('3D Histogram of SMA and Eccentricity')
-    plt.grid(True)
-    plt.show()
+    # with open(r'C:\Users\IT\Documents\UCL\pyssem\scenario-properties-elliptical.pkl', 'rb') as f:
+    #     scen_properties = pickle.load(f)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    x = (debris1[:, idx_a] - 1) * 6371
-    y = debris1[:, idx_ecco]
-    hist, xedges, yedges = np.histogram2d(x, y, bins=[np.arange(0, 5001, 100), np.arange(0, 1.01, 0.01)])
-    xpos, ypos = np.meshgrid(xedges[:-1] + 50, yedges[:-1] + 0.005)
-    xpos = xpos.flatten()
-    ypos = ypos.flatten()
-    zpos = np.zeros_like(xpos)
-    dx = dy = np.ones_like(zpos) * 100
-    dz = hist.flatten()
+    # all_elliptical_collision_species = scen_properties.collision_pairs
 
-    ax.bar3d(xpos, ypos, zpos, dx, dy, dz, zsort='average', norm=LogNorm(), cmap='viridis')
-    ax.set_xlabel('SMA as altitude (km)')
-    ax.set_ylabel('Eccentricity')
-    ax.set_zlabel('Count')
-    ax.set_zscale('log')
-    ax.set_title('3D Plot of SMA, Eccentricity, and Count')
-    plt.show()
+    # debris_species = [species for species in scen_properties.species['debris']]
+
+    # # Mass Binning
+    # binC_mass = np.zeros(len(debris_species))
+    # binE_mass = np.zeros(2 * len(debris_species))
+    # binW_mass = np.zeros(len(debris_species))
+    # LBgiven = scen_properties.LC
+
+    # for index, debris in enumerate(debris_species):
+    #     binC_mass[index] = debris.mass
+    #     binE_mass[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
+    #     binW_mass[index] = debris.mass_ub - debris.mass_lb
+
+    # binE_mass = np.unique(binE_mass)
+
+    # # Eccentricity Binning, multiple debris species will have the same eccentricity bins
+    # binE_ecc = debris_species[0].eccentricity_bins
+    # binE_ecc = np.sort(binE_ecc)
+    # # Calculate the midpoints
+    # binE_ecc = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+    # # Create bin edges starting at 0 and finishing at 1
+    # binE_ecc = np.concatenate(([0], binE_ecc, [1]))
+
+        
+    # def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_index, n_shells=0):
+        
+    #     # Need to now follow the NASA SBM route, first we need to create p1_in and p2_in
+    #     #  Parameters:
+    #     # - ep: Epoch
+    #     # - p1_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+    #     # - p2_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+    #     # - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID', etc.
+    #     # - LB: Lower bound for fragment sizes (meters)
+
+    #     p1_in = np.array([
+    #         1250.0,  # mass in kg
+    #         4.0,     # radius in meters
+    #         2372.4,  # r_x in km, 1000 km
+    #         2743.1,  # r_y in km
+    #         6224.8,  # r_z in km
+    #         -5.5,    # v_x in km/s
+    #         -3.0,    # v_y in km/s
+    #         3.8,     # v_z in km/s
+    #         1      # object_class (dimensionless)
+    #     ])
+
+    #     p2_in = np.array([
+    #         6.0,     # mass in kg
+    #         0.1,     # radius in meters
+    #         2372.4,  # r_x in km
+    #         2743.1,  # r_y in km
+    #         6224.8,  # r_z in km
+    #         3.2,     # v_x in km/s
+    #         5.4,     # v_y in km/s
+    #         -3.9,    # v_z in km/s
+    #         1      # object_class (dimensionless)
+    #     ])
+
+    #     param = {
+    #         'req': 6.3781e+03,
+    #         'mu': 3.9860e+05,
+    #         'j2': 0.0011,
+    #         'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+    #         'maxID': 0,
+    #         'density_profile': 'static'
+    #     }
+        
+    #     a = scen_properties.HMid[collision_index] 
+
+    #     # up to correct mass too
+    #     if m1 < m2:
+    #         m1, m2 = m2, m1
+    #         r1, r2 = r2, r1
+
+    #     p1_in[0], p2_in[0] = m1, m2 
+    #     p1_in[1], p2_in[1] = r1, r2
+
+    #     # remove a from r_x from both p1_in and p2_in
+    #     p1_in[2] = p1_in[2] - a
+    #     p2_in[2] = p2_in[2] - a
+            
+    #     LB = 0.1
+
+    #     debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
+
+    #     print(len(debris1), len(debris2))
+
+
+    # def process_elliptical_collision_pair(args):
+    #     """
+    #     A similar function to the process_species_pair, apart from it as the shells are already defined and the velocity, 
+    #     you are able to calculate evolve bins just once. 
+
+    #     """
+    #     i, collision_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
+    #     m1, m2 = collision_pair.species1.mass, collision_pair.species2.mass
+    #     r1, r2 = collision_pair.species1.radius, collision_pair.species2.radius
+
+
+    #     # there needs to be some changes here to account for the fact that the shells are already defined
+    #     # set fragment_spreading to True
+    #     v1 = collision_pair.species1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    #     v2 = collision_pair.species2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+
+    #     # This the time per shell for each species - the output still assumes that it is always there, so you need to divide
+    #     t1 = collision_pair.species1.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    #     t2 = collision_pair.species2.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    #     min_TIS = min(t1, t2)
+    #     print(m1, m2, min_TIS)
+
+    #     if m1 < 1 or m2 < 1:
+    #         fragments = None
+    #     else:
+    #         fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
+        
+    #     if fragments is not None:
+    #         collision_pair.fragments = fragments # * min_TIS
+    #     else: 
+    #         collision_pair.fragments = fragments
+
+    #     return collision_pair
+
+
+    
+    # for i, species_pair in enumerate(tqdm(all_elliptical_collision_species, desc="Processing species pairs")):
+    #     for shell_collision in tqdm(species_pair.collision_pair_by_shell, desc="Processing shell collisions", leave=False):
+            
+    #         # Process each shell-specific collision and append result to collision_processed list
+    #         gamma = process_elliptical_collision_pair((i, shell_collision, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven))
+    #         species_pair.collision_processed.append(gamma)

@@ -8,13 +8,60 @@ import numpy as np
 import multiprocessing as mp
 
 
+# def func_Am(d, ObjClass):
+#     """
+#     Calculates the area-to-mass ratio for spacecraft fragments based on NASA's new breakup model of evolve 4.0.
+    
+#     Parameters:
+#     d : ndarray
+#         Array of diameters in meters.
+#     ObjClass : int or float
+#         Object class indicating whether the object is a rocket body or not.
+    
+#     Returns:
+#     out : ndarray
+#         Area-to-mass ratio for each fragment.
+#     """
+#     # convert d to np.array if not 
+#     if not isinstance(d, np.ndarray):
+#         d = np.array([d])
+
+#     try:
+#         numObj = d.size
+#     except AttributeError:
+#         numObj = 1
+#         d = np.array([d])
+#     logds = np.log10(d)
+#     amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
+
+#     try:
+#         if 4.5 < ObjClass < 8.5:  # Rocket-body related
+#             for ind, logd in enumerate(logds):
+#                 alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_for_rocket_body(logd)
+#                 amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+#         else:  # Not rocket body
+#             for ind, logd in enumerate(logds):
+#                 alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_not_rocket_body(logd)
+#                 amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+#     except:
+#         print("Error in calculating amsms")
+
+#     N1 = amsms[:, 1] + amsms[:, 2] * np.random.randn(numObj)
+#     N2 = amsms[:, 3] + amsms[:, 4] * np.random.randn(numObj)
+
+#     out = 10 ** (amsms[:, 0] * N1 + (1 - amsms[:, 0]) * N2)
+
+#     return out
+
+import numpy as np
+
 def func_Am(d, ObjClass):
     """
     Calculates the area-to-mass ratio for spacecraft fragments based on NASA's new breakup model of evolve 4.0.
     
     Parameters:
-    d : ndarray
-        Array of diameters in meters.
+    d : ndarray or float
+        Array of diameters in meters or a single diameter.
     ObjClass : int or float
         Object class indicating whether the object is a rocket body or not.
     
@@ -22,23 +69,35 @@ def func_Am(d, ObjClass):
     out : ndarray
         Area-to-mass ratio for each fragment.
     """
+    # Ensure d is a NumPy array
     try:
         numObj = d.size
     except AttributeError:
         numObj = 1
         d = np.array([d])
     logds = np.log10(d)
+    numObj = d.size
+
+    logds = np.log10(d)
     amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
 
-    if 4.5 < ObjClass < 8.5:  # Rocket-body related
-        for ind, logd in enumerate(logds):
-            alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_for_rocket_body(logd)
-            amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
-    else:  # Not rocket body
-        for ind, logd in enumerate(logds):
-            alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_not_rocket_body(logd)
-            amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+    try:
+        if 4.5 < ObjClass < 8.5:  # Rocket-body related
+            if isinstance(logds, (int, float)):  # Check if logds is a single value
+                logds = [logds]  # Convert single value to list
+            for ind, logd in enumerate(logds):
+                alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_for_rocket_body(logd)
+                amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+        else:  # Not rocket body
+            if isinstance(logds, (int, float)):  # Check if logds is a single value
+                logds = [logds]  # Convert single value to list
+            for ind, logd in enumerate(logds):
+                alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_not_rocket_body(logd)
+                amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+    except Exception as e:
+        print(f"Error in calculating amsms: {e}")
 
+        
     N1 = amsms[:, 1] + amsms[:, 2] * np.random.randn(numObj)
     N2 = amsms[:, 3] + amsms[:, 4] * np.random.randn(numObj)
 

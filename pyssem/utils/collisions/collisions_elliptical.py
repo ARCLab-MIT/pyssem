@@ -1,4 +1,5 @@
 from utils.collisions.collisions import func_Am, func_dv
+from utils.collisions.NASA_SBM_frags import frag_col_SBM_vec_lc2
 from utils.collisions.NASA_SBN6 import *
 import numpy as np
 from tqdm import tqdm
@@ -17,7 +18,6 @@ def create_collision_pairs(scen_properties):
     - EllipticalCollisionPair: This is the individual shell and eccentricity pairing of all possible outcomes. 
     
     """
-
 
     ########################################
     # Create the species pairs and Elliptical Collision Pairs
@@ -346,9 +346,12 @@ def process_elliptical_collision_pair(args):
     t1 = collision_pair.species1.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     t2 = collision_pair.species2.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     min_TIS = min(t1, t2)
-    print(m1, m2, min_TIS)
 
-    fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
+    # This will have to change 
+    if m1 < 1 or m2 < 1:
+        fragments = None
+    else:
+        fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
     
     if fragments is not None:
         collision_pair.fragments = fragments # * min_TIS
@@ -379,205 +382,93 @@ def func_de(R_list, V_list):
     return eccentricities
 
 def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_index, n_shells=0):
+        
+        # Need to now follow the NASA SBM route, first we need to create p1_in and p2_in
+        #  Parameters:
+        # - ep: Epoch
+        # - p1_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+        # - p2_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+        # - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID', etc.
+        # - LB: Lower bound for fragment sizes (meters)
+        # Super sampling ratio
+        SS = 20
 
-    SS = 20  # super sampling ratio
-    MU = 398600.4418  # km^3/s^2
-    RE = 6378.1  # km
+        p1_in = np.array([
+            1250.0,  # mass in kg
+            4.0,     # radius in meters
+            2372.4,  # r_x in km, 1000 km
+            2743.1,  # r_y in km
+            6224.8,  # r_z in km
+            -5.5,    # v_x in km/s
+            -3.0,    # v_y in km/s
+            3.8,     # v_z in km/s
+            1      # object_class (dimensionless)
+        ])
 
-    # Ensure that m1 > m2, if not swap
-    if m1 < m2:
-        m1, m2 = m2, m1
-        r1, r2 = r2, r1
+        p2_in = np.array([
+            6.0,     # mass in kg
+            0.1,     # radius in meters
+            2372.4,  # r_x in km
+            2743.1,  # r_y in km
+            6224.8,  # r_z in km
+            3.2,     # v_x in km/s
+            5.4,     # v_y in km/s
+            -3.9,    # v_z in km/s
+            1      # object_class (dimensionless)
+        ])
 
-    dv = 10
-    catastrophe_ratio = (m2 * ((dv * 1000) ** 2) / (2 * m1 * 1000))  # J/g = kg*(km/s)^2 / g
+        param = {
+            'req': 6.3781e+03,
+            'mu': 3.9860e+05,
+            'j2': 0.0011,
+            'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+            'maxID': 0,
+            'density_profile': 'static'
+        }
+        
+        a = scen_properties.HMid[collision_index] 
 
-    # If the specific energy is < 40 J/g: non catastrophic collision
-    if catastrophe_ratio < 40:
-        M = m2 * dv ** 2  # Correction from ODQN [kg*km^2/s^2]
-        isCatastrophic = 0
-    else:  # Catastrophic collision
-        M = m1 + m2
-        isCatastrophic = 1
+        # up to correct mass too
+        if m1 < m2:
+            m1, m2 = m2, m1
+            r1, r2 = r2, r1
 
+        p1_in[0], p2_in[0] = m1, m2 
+        p1_in[1], p2_in[1] = r1, r2
 
-    isCatastrophic = 0 # TESTING 
+        # remove a from r_x from both p1_in and p2_in
+        p1_in[2] = p1_in[2] - a
+        p2_in[2] = p2_in[2] - a
+            
+        LB = 0.1
 
-    # find the number of fragments generated
-    num = (0.1 * M ** 0.75 * scen_properties.LC ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
-    numSS = SS * num
+        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
 
-    # Create PDF of power law distribution, then sample 'num' selections to find each mass
-    dd_edges = np.logspace(np.log10(scen_properties.LC), np.log10(min(1, 2 * r1)), 500)
-    dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2)
+        print(len(debris1), len(debris2))
 
-    # Cumulative distribution
-    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)
-    ndd = np.maximum(0, -np.diff(nddcdf))
+        # Loop through 
+        frag_a = []
+        frag_e = []
+        frag_mass = []
 
-    # Make sure int, 0 to 1, random number for stochastic sampling of fragment diameters
-    repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
-    d_pdf = np.repeat(dd_means, repeat_counts)
+        for debris in debris1:
+            frag_a.append((debris[0] - 1) * 6371) 
+            frag_e.append(debris[1])
+            frag_mass.append(debris[7])
+        
+        for debris in debris2:
+            frag_a.append((debris[0] - 1) * 6371)
+            frag_e.append(debris[1])
+            frag_mass.append(debris[7])
 
-    try:
-        dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
-    except ValueError:
-        dss = 0
+        frag_properties = np.array([frag_a, frag_mass, frag_e]).T
 
-    # Calculate the mass of objects
-    A = 0.556945 * dss ** 2.0047077  # Equation 2.72
-    Am = func_Am(dss, 5 if isCatastrophic == 0 else 0)  # use Am conversion of the larger object
+        binE_alt = np.linspace(scen_properties.min_altitude, scen_properties.max_altitude, n_shells + 1)  # We add 1 for bin edges
 
-    # order the output in descending order
-    Am = np.sort(Am)[::-1]
-    m = A / Am
+        bins = [binE_alt, binE_mass, binE_ecc]
 
-    # Remove any fragments that are more than the original mass of m1
-    m = m[m < m1]
+        hist, edges = np.histogramdd(frag_properties, bins=bins)
 
-    try:
-        if max(m) == 0:
-            # No fragments bigger the LNT are generated
-            return None
-    except ValueError:
-        # Where no fragments are made
-        return None
-    
-    # Find difference in orbital velocity for shells
-    dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + scen_properties.HMid)) * 1000)))
-
-    # Compute delta-v for the fragments
-    dv_values = func_dv(Am, 'col') / 1000  # km/s
-
-    # Generate random directions for the velocity vectors
-    u = np.random.rand(len(dv_values)) * 2 - 1
-    theta = np.random.rand(len(dv_values)) * 2 * np.pi
-    v = np.sqrt(1 - u ** 2)
-    p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
-    dv_vec = p * dv_values[:, np.newaxis]  # velocity vectors
-
-    # # Calculate the new eccentricity of the fragments
-    if len(m) < 100:
-        a = scen_properties.HMid[collision_index] + scen_properties.re
-        r_vec = np.tile([a, 0, 0], (len(m), 1))  # create an R
-        v_vec = [np.linalg.norm(vec) for vec in dv_vec] + v1  # create a v vec
-        v_vec_2d = np.array([[0, v, 0] for v in v_vec])
-        new_ecc = func_de(r_vec, v_vec_2d)
-        scen_properties = np.array([dv_vec.ravel()[:len(m)], m, new_ecc]).T  # Transpose to get the right shape (n_samples, 3)
-
-        # Step 3: Define the bins for the 3D histogram
-        binE_vel = np.arange(-n_shells, n_shells) * dDV / 1000
-
-        zero_index = np.where(binE_vel == 0.0)[0][0]
-
-        # Step 2: Calculate the shift to align 0 with the collision_index
-        shift_amount = collision_index - zero_index
-
-        # Step 3: Shift the array to make 0 appear at collision_index
-        binE_vel_shifted = np.roll(binE_vel, shift_amount)
-
-        # Step 4: Handle different cases
-        if collision_index > n_shells // 2:
-            binE_vel_selected = binE_vel_shifted[:n_shells]  # Take the first n_shells values (below 0)
-        else:
-            # If the collision index is less than or equal to 5, take values around 0
-            start_index = max(0, collision_index - (n_shells // 2))
-            end_index = start_index + n_shells  # Select the next `n_shells` values
-            binE_vel_selected = binE_vel_shifted[start_index:end_index]
-
-        bin_edges = np.zeros(len(binE_vel_selected) + 1)  # Bin edges will be one more than selected values
-
-        # Calculate the midpoints between consecutive bin values to generate the edges
-        bin_edges[1:-1] = (binE_vel_selected[:-1] + binE_vel_selected[1:]) / 2
-        # For the first and last bin edge, extrapolate slightly beyond the min/max
-        bin_edges[0] = binE_vel_selected[0] - (binE_vel_selected[1] - binE_vel_selected[0]) / 2
-        bin_edges[-1] = binE_vel_selected[-1] + (binE_vel_selected[-1] - binE_vel_selected[-2]) / 2
-
-        # Slice the array to get the values within the desired range
-        bins = [bin_edges, binE_mass, binE_ecc]
-
-        # Step 4: Use np.histogramdd to create the 3D histogram
-        hist, edges = np.histogramdd(scen_properties, bins=bins)
-
-        hist = hist/SS
-
-        # Sum over the velocity bins to collapse the 3D histogram into a 2D histogram
-
-        return hist
-
-    else:
-        # Bin the velocities
-        def func_de_single(R, V):
-            mu = 398600.4418  # km^3/s^2
-            V = np.abs(V)
-            h = np.cross(R, V)
-            e_vector = (np.cross(V, h) / mu) - (R / np.linalg.norm(R))
-            e = np.linalg.norm(e_vector)
-            return e
-
-        # Flatten dv_vec
-        flattened_dv_vec = dv_vec.ravel()
-
-        # Take only the values up to the length of m
-        sliced_dv_vec = flattened_dv_vec[:len(m)]
-
-        # Define the number of bins
-        num_bins = 100  # Adjust this number based on your needs
-
-        # Bin the velocities
-        dv_bins = np.linspace(np.min(sliced_dv_vec), np.max(sliced_dv_vec), num_bins)
-        # bin the masses
-        m_bins = np.linspace(np.min(m), np.max(m), num_bins)
-
-        # Create a single R vector
-        a = scen_properties.HMid[collision_index] + scen_properties.re
-        r_vec = np.array([a, 0, 0])  # create a single R
-
-        # create new v vectors
-        v_vec = [np.linalg.norm(vec) for vec in dv_bins] + v1  # create a v vec
-
-        # Compute eccentricities for each bin
-        new_ecc = [func_de_single(r_vec, np.array([0, v, 0])) for v in v_vec]
-
-        # Combine the scen_properties into a single array and transpose to get the right shape (n_samples, 3)
-        scen_properties = np.array([dv_bins, m_bins, new_ecc]).T
-
-        # Step 3: Define the bins for the 3D histogram
-        binE_vel = np.arange(-n_shells, n_shells) * dDV / 1000
-
-        zero_index = np.where(binE_vel == 0.0)[0][0]
-
-        # Step 2: Calculate the shift to align 0 with the collision_index
-        shift_amount = collision_index - zero_index
-
-        # Step 3: Shift the array to make 0 appear at collision_index
-        binE_vel_shifted = np.roll(binE_vel, shift_amount)
-
-        # Step 4: Handle different cases
-        if collision_index > n_shells // 2:
-            # If the collision index is greater than 5, take the bottom values (below 0)
-            binE_vel_selected = binE_vel_shifted[:n_shells]  # Take the first n_shells values (below 0)
-        else:
-            # If the collision index is less than or equal to 5, take values around 0
-            start_index = max(0, collision_index - (n_shells // 2))
-            end_index = start_index + n_shells  # Select the next `n_shells` values
-            binE_vel_selected = binE_vel_shifted[start_index:end_index]
-
-        bin_edges = np.zeros(len(binE_vel_selected) + 1)  # Bin edges will be one more than selected values
-
-        # Calculate the midpoints between consecutive bin values to generate the edges
-        bin_edges[1:-1] = (binE_vel_selected[:-1] + binE_vel_selected[1:]) / 2
-        # For the first and last bin edge, extrapolate slightly beyond the min/max
-        bin_edges[0] = binE_vel_selected[0] - (binE_vel_selected[1] - binE_vel_selected[0]) / 2
-        bin_edges[-1] = binE_vel_selected[-1] + (binE_vel_selected[-1] - binE_vel_selected[-2]) / 2
-
-        # Slice the array to get the values within the desired range
-        bins = [bin_edges, binE_mass, binE_ecc]
-
-        # Use np.histogramdd to create the 3D histogram
-        hist, edges = np.histogramdd(scen_properties, bins=bins)
-
-        # Normalize the histogram
         hist = hist / SS
 
         return hist
