@@ -76,7 +76,7 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     Am = func_Am(d, p1_objclass)
     m = A / Am
     
-    print(f"Number of fragments: {len(m)}")
+    # print(f"Number of fragments: {len(m)}")
     
     # Initialize remnant indices
     idx_rem1 = np.array([], dtype=int)
@@ -388,7 +388,7 @@ def func_create_tlesv2_vec(ep, r_parent, v_parent, class_parent, fragments, para
     mo_list = []
 
     # Loop through each fragment and compute orbital elements
-    for i in tqdm(range(n_frag)):
+    for i in range(n_frag):
         a, ecc, incl, nodeo, argpo, mo = rv2coe(k, r[i], v[i])
         a_list.append(a)
         ecc_list.append(ecc)
@@ -464,8 +464,8 @@ if __name__ == "__main__":
 
     p1_in = np.array([
         1250,  # mass in kg
-        4.0,     # radius in meters
-        2372.4,  # r_x in km
+        1,     # radius in meters
+        2743.4,  # r_x in km
         2743.1,  # r_y in km
         6224.8,  # r_z in km
         -5.5,    # v_x in km/s
@@ -475,9 +475,9 @@ if __name__ == "__main__":
     ])
 
     p2_in = np.array([
-        6,     # mass in kg
-        0.1,     # radius in meters
-        2372.4,  # r_x in km
+        1250,     # mass in kg
+        1,     # radius in meters
+        2743.4,  # r_x in km
         2743.1,  # r_y in km
         6224.8,  # r_z in km
         3.2,     # v_x in km/s

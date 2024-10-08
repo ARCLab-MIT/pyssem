@@ -377,6 +377,16 @@ class Species:
 
             for deb_spec in debris_species:
                 if spec_mass == deb_spec.mass:
+                    if active_spec.elliptical:
+                        # find the closest eccentricity bin to current eccentricity
+                        ecc_bins = deb_spec.eccentricity_bins
+                        ecc_diffs = [abs(ecc - active_spec.eccentricity) for ecc in ecc_bins]
+                        closest_ecc_idx = ecc_diffs.index(min(ecc_diffs))
+
+                        # if the current debris eccentricity is not the same, continue the loop
+                        if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
+                            continue
+
                     deb_spec.pmd_func = pmd_func_derelict
                     deb_spec.pmd_linked_species = []                
                     deb_spec.pmd_linked_species.append(active_spec)
@@ -496,8 +506,8 @@ class Species:
         
         # Calculate time spent in each shell for the semi-major axis
         for a in species.semi_major_axis_bins:
-            true_anomalies, radii, velocities = propagate_orbit(a, species.eccentricity, mu)
-            time_in_shell, velocity_in_shell = calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
+            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
             species.time_per_shells.append(time_in_shell)
             species.velocity_per_shells.append(velocity_in_shell)
         
@@ -542,45 +552,45 @@ class Species:
                     processed_species.add(species.sym_name)
                     species_group.remove(species)
 
-        if parellel_processing:
-                # Prepare arguments for parallel processing
-                args_list = [
-                    (species, mu, R0_km, HMid, self.propagate_orbit, self.calculate_time_and_velocity_in_shell)
-                    for species_group in self.species.values()
-                    for species in species_group
-                    if species.elliptical
-                ]
+        # if parellel_processing:
+        #         # Prepare arguments for parallel processing
+        #         args_list = [
+        #             (species, mu, R0_km, HMid, self.propagate_orbit, self.calculate_time_and_velocity_in_shell)
+        #             for species_group in self.species.values()
+        #             for species in species_group
+        #             if species.elliptical
+        #         ]
 
-                # Use ProcessPoolExecutor for parallel execution
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    results = list(tqdm(
-                        executor.map(self.process_elliptical_species, args_list),
-                        total=len(args_list),
-                        desc="Propagating elliptical orbits to find time and velocity in shells"
-                    ))
+        #         # Use ProcessPoolExecutor for parallel execution
+        #         with concurrent.futures.ProcessPoolExecutor() as executor:
+        #             results = list(tqdm(
+        #                 executor.map(self.process_elliptical_species, args_list),
+        #                 total=len(args_list),
+        #                 desc="Propagating elliptical orbits to find time and velocity in shells"
+        #             ))
 
-        else:
+        # else:
             # Sequential processing
-            for species_group in self.species.values():
-                for species in species_group:
-                    if species.elliptical:  # hasn't been created yet
-                        # Set semi-major axis for this species
-                        # add 6371 to each of the values in HMid
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.elliptical:  # hasn't been created yet
+                    # Set semi-major axis for this species
+                    # add 6371 to each of the values in HMid
 
-                        species.semi_major_axis_bins = HMid + 6371
+                    species.semi_major_axis_bins = HMid + 6371
 
-                        # Calculate time spent in each shell for the semi-major axis
-                        for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
-                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
-                            species.time_per_shells.append(time_in_shell)
-                            species.velocity_per_shells.append(velocity_in_shell)
-                    else:
-                        species.semi_major_axis_bins = HMid + 6371
-                        for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell_circular(None, None, R0_km, a)
-                            species.time_per_shells.append(time_in_shell)
-                            species.velocity_per_shells.append(velocity_in_shell)
+                    # Calculate time spent in each shell for the semi-major axis
+                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                        true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
+                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+                        species.time_per_shells.append(time_in_shell)
+                        species.velocity_per_shells.append(velocity_in_shell)
+                else:
+                    species.semi_major_axis_bins = HMid + 6371
+                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell_circular(None, None, R0_km, a)
+                        species.time_per_shells.append(time_in_shell)
+                        species.velocity_per_shells.append(velocity_in_shell)
 
 
     def calculate_time_and_velocity_in_shell_circular(self, radii, velocities, R0_km, a):

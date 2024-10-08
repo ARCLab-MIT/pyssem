@@ -4,7 +4,7 @@
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-from utils.collisions.collisions_elliptical import *
+from utils.collisions.collisions import *
 from utils.optimizer.optimizer import run_optimizer
 from datetime import datetime
 from utils.plotting.plotting import create_plots, results_to_json
@@ -98,12 +98,15 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+
+            # with open('scenario-properties-elliptical.pkl', 'wb') as f:
+            #     pickle.dump(self.scenario_properties, f)
 
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Create symbolic variables for the species
+            # Create symbolic variables for the #species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -114,9 +117,6 @@ class Model:
 
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
-            with open('scenario-properties-elliptical.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
 
             # Merge elliptical back to main species
             # species_list.merge_elliptical_to_main()
@@ -150,9 +150,9 @@ class Model:
 
 
             self.scenario_properties.run_model()
-            
-            # save the scenario properties to a pickle file
-            with open('scenario-properties-elliptical.pkl', 'wb') as f:
+
+            self.scenario_properties.collision_pairs = None
+            with open('scenario-properties-not-elliptical.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
 
             return self.scenario_properties
@@ -197,51 +197,56 @@ class Model:
 
 if __name__ == "__main__":
 
-    # with open(os.path.join('pyssem', 'just_debris.json')) as f:
-    #     simulation_data = json.load(f)
+    with open(os.path.join('pyssem', 'just_debris.json')) as f:
+        simulation_data = json.load(f)
 
-    # scenario_props = simulation_data["scenario_properties"]
+    scenario_props = simulation_data["scenario_properties"]
 
-    # # Create an instance of the pySSEM_model with the simulation parameters
-    # model = Model(
-    #     start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
-    #     simulation_duration=scenario_props["simulation_duration"],
-    #     steps=scenario_props["steps"],
-    #     min_altitude=scenario_props["min_altitude"],
-    #     max_altitude=scenario_props["max_altitude"],
-    #     n_shells=scenario_props["n_shells"],
-    #     launch_function=scenario_props["launch_function"],
-    #     integrator=scenario_props["integrator"],
-    #     density_model=scenario_props["density_model"],
-    #     LC=scenario_props["LC"],
-    #     v_imp = scenario_props.get("v_imp", None),
-    #     fragment_spreading=scenario_props.get("fragment_spreading", True),
-    #     parallel_processing=scenario_props.get("parallel_processing", False),
-    #     baseline=scenario_props.get("baseline", False)
-    # )
+    # Create an instance of the pySSEM_model with the simulation parameters
+    model = Model(
+        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+        simulation_duration=scenario_props["simulation_duration"],
+        steps=scenario_props["steps"],
+        min_altitude=scenario_props["min_altitude"],
+        max_altitude=scenario_props["max_altitude"],
+        n_shells=scenario_props["n_shells"],
+        launch_function=scenario_props["launch_function"],
+        integrator=scenario_props["integrator"],
+        density_model=scenario_props["density_model"],
+        LC=scenario_props["LC"],
+        v_imp = scenario_props.get("v_imp", None),
+        fragment_spreading=scenario_props.get("fragment_spreading", True),
+        parallel_processing=scenario_props.get("parallel_processing", False),
+        baseline=scenario_props.get("baseline", False)
+    )
 
-    # species = simulation_data["species"]
-    # species_list = model.configure_species(species)
+    species = simulation_data["species"]
+    species_list = model.configure_species(species)
 
-    # results = model.run_model()
+    results = model.run_model()
 
-    # model.create_plots()
+    model.create_plots()
 
     ## COLLISION CODE TESTING
 
     # # # # Open the pickle file
-    with open('scenario-properties-elliptical.pkl', 'rb') as f:
-        scenario_properties = pickle.load(f)
+    # with open('scenario-properties-elliptical.pkl', 'rb') as f:
+    #     scenario_properties = pickle.load(f)
 
-    scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+    # print(scenario_properties.n_shells)
 
-    scenario_properties.initial_pop_and_launch(baseline=True)
-    scenario_properties.build_model()
+    # scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
 
-    with open('scenario-properties-elliptical.pkl', 'wb') as f:
-        pickle.dump(scenario_properties, f)
+    # scenario_properties.initial_pop_and_launch(baseline=True)
+    # scenario_properties.build_model()
+
+    # with open('scenario-properties-elliptical-2.pkl', 'wb') as f:
+    #     pickle.dump(scenario_properties, f)
 
     # scenario_properties.run_model()
+
+    # with open('scenario-properties-elliptical-2.pkl', 'wb') as f:
+    #     pickle.dump(scenario_properties, f)
 
 
     # create_plots(scenario_properties)

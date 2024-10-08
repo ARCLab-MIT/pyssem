@@ -8,10 +8,10 @@
     "scenario_properties": {
       "start_date": "01/03/2024",   
       "simulation_duration": 200,              
-      "steps": 100,                            
+      "steps": 50,                            
       "min_altitude": 200,                   
       "max_altitude": 1400,                   
-      "n_shells": 40,                         
+      "n_shells": 20,                         
       "launch_function": "Constant", 
       "integrator": "BDF",                
       "density_model": "static_exp_dens_func", 
@@ -38,34 +38,14 @@
         "slotted": false, 
         "slotting_effectiveness": 1.0,
         "drag_effected": true,
+        "RBflag": 0,
         "launch_func": "launch_func_constant",
         "lambda_constant": [0, 0, 0],
         "launch_altitude" : [0, 0, 0],
         "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"
-    },
-    {
-        "sym_name": "Su",
-        "Cd": 2.2,
-        "mass": [260, 473],
-        "A": [1.6652, 13.5615],
-        "radius": [0.728045069, 2.077681285],
-        "active": false,
-        "maneuverable": false,
-        "trackable": false,
-        "deltat": [8, 8],
-        "Pm": 0.65,
-        "alpha": 1e-5,
-        "alpha_active": 1e-5,
-        "RBflag": 0,
-        "slotting_effectiveness": 1.0,
-        "drag_effected": true,
-        "drag_effected": false,
-        "launch_func": "launch_func_constant",
-        "lambda_constant": [0, 0],
-        "launch_altitude" : [0, 0],
-        "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"
+        "drag_func": "drag_func_exp",
+        "elliptical" : true,
+        "eccentricity_bins": [0]
     },
     {
         "sym_name": "Sns",
@@ -80,13 +60,16 @@
         "alpha": 0,
         "alpha_active": 0,
         "slotted" : false, 
+        "RBflag": 0,
         "slotting_effectiveness": 0,
         "drag_effected": true,
         "launch_func": "launch_func_constant",
         "lambda_constant": 0,  
         "launch_altitude" : 0,     
         "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"
+        "drag_func": "drag_func_exp",
+        "elliptical" : true,
+        "eccentricity_bins": [0]
     },
     {
         "sym_name": "N",
@@ -106,28 +89,9 @@
         "drag_effected": true,
         "launch_func": "launch_func_null",
         "pmd_func": "pmd_func_derelict",
-        "drag_func": "drag_func_exp"
-    },
-    {
-        "sym_name": "Sns",
-        "Cd": 2.2,
-        "mass": 6,
-        "radius": 0.105550206,
-        "A": 0.035,
-        "active": false,
-        "maneuverable": false,
-        "deltat": 3,
-        "Pm": 0,
-        "alpha": 0,
-        "alpha_active": 0,
-        "slotted" : false, 
-        "slotting_effectiveness": 0,
-        "drag_effected": false,
-        "launch_func": "launch_func_constant",
-        "lambda_constant": 500,  
-        "launch_altitude" : 350,     
-        "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"
+        "drag_func": "drag_func_exp",
+        "elliptical" : true,
+        "eccentricity_bins": [0.01875, 0.03125, 0.05625, 0.06875, 0.2]
     },
     {
         "sym_name": "B",
@@ -145,7 +109,9 @@
         "alpha_active": 0, 
         "trackable": true,
         "pmd_func": "pmd_func_none",
-        "drag_func": "drag_func_exp"
+        "drag_func": "drag_func_exp",
+        "elliptical" : true,
+        "eccentricity_bins": [0.05625, 0.075, 0.15]
     }
   ]
 }
