@@ -1,5 +1,5 @@
 from sympy import symbols, Matrix, pi, S, Expr, zeros
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 
 class SpeciesPairClass:
@@ -23,6 +23,8 @@ class SpeciesPairClass:
             source_sinks (list): A list of species that are either sources or sinks in the collision
             scen_properties (ScenarioProperties): The scenario properties object
         """
+
+        self.fragments = fragsMadeDV
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")
     
@@ -121,13 +123,13 @@ class SpeciesPairClass:
                         eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
 
                         # Plotting (similar to MATLAB's imagesc)
-                        plt.figure(100)
-                        plt.clf()
-                        plt.imshow(fragsMade2D, aspect='auto', interpolation='none')
-                        plt.colorbar()
-                        plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=10)
-                        plt.gca().invert_yaxis()
-                        plt.savefig(f"figures/frag_spread/fragsMade2D_{source_sinks[i].sym_name}.png")
+                        # plt.figure(100)
+                        # plt.clf()
+                        # plt.imshow(fragsMade2D, aspect='auto', interpolation='none')
+                        # plt.colorbar()
+                        # plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=10)
+                        # plt.gca().invert_yaxis()
+                        # plt.savefig(f"figures/frag_spread/fragsMade2D_{source_sinks[i].sym_name}.png")
                         # print(f"eq: {eq}")
                     except Exception as e:
                         if fragsMadeDV == 0:
