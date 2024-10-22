@@ -1,13 +1,13 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
-# from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import create_plots, results_to_json
+from utils.collisions.collisions import *
+from utils.optimizer.optimizer import run_optimizer
 from datetime import datetime
+from utils.plotting.plotting import create_plots, results_to_json
 import json
 import os
 import pickle
@@ -98,12 +98,15 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
-            
+            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+
+            # with open('scenario-properties-elliptical.pkl', 'wb') as f:
+            #     pickle.dump(self.scenario_properties, f)
+
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Create symbolic variables for the species
+            # Create symbolic variables for the #species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -117,6 +120,7 @@ class Model:
 
             # Merge elliptical back to main species
             # species_list.merge_elliptical_to_main()
+
 
             return species_list
         except json.JSONDecodeError:
@@ -139,13 +143,18 @@ class Model:
         try:
 
             self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
+
+            
             self.scenario_properties.build_model()
+            
+
+
             self.scenario_properties.run_model()
 
-            # save the scenario properties to a pickle file
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
+            self.scenario_properties.collision_pairs = None
+            with open('scenario-properties-not-elliptical.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
-            
+
             return self.scenario_properties
         
         except Exception as e:
@@ -175,11 +184,20 @@ class Model:
             return results_to_json(self)
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
+        
+    def optimize(self):
+        """
+            Run the optimizer. 
+        """
+        try:
+            run_optimizer(self.scenario_properties)
+        except Exception as e:
+            raise RuntimeError(f"Failed to run optimizer: {str(e)}")
 
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'just_debris.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -203,9 +221,42 @@ if __name__ == "__main__":
     )
 
     species = simulation_data["species"]
-
     species_list = model.configure_species(species)
 
     results = model.run_model()
 
     model.create_plots()
+
+    ## COLLISION CODE TESTING
+
+    # # # # Open the pickle file
+    # with open('scenario-properties-elliptical.pkl', 'rb') as f:
+    #     scenario_properties = pickle.load(f)
+
+    # print(scenario_properties.n_shells)
+
+    # scenario_properties.add_collision_pairs(create_collision_pairs(scenario_properties))
+
+    # scenario_properties.initial_pop_and_launch(baseline=True)
+    # scenario_properties.build_model()
+
+    # with open('scenario-properties-elliptical-2.pkl', 'wb') as f:
+    #     pickle.dump(scenario_properties, f)
+
+    # scenario_properties.run_model()
+
+    # with open('scenario-properties-elliptical-2.pkl', 'wb') as f:
+    #     pickle.dump(scenario_properties, f)
+
+
+    # create_plots(scenario_properties)
+    
+    # export pickle file
+    
+
+    # # # # # # Open the pickle file
+    # with open('scenario-properties-collision.pkl', 'rb') as f:
+    #     scenario_properties = pickle.load(f)
+
+    # scenario_properties.run_model()
+

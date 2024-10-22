@@ -7,10 +7,12 @@ import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model, launch_func_constant
 from ..handlers.handlers import download_file_from_google_drive
+from ..optimizer.optimizer import *
 from pkg_resources import resource_filename
 import pandas as pd
 import os
 import multiprocessing
+import re
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
@@ -20,6 +22,7 @@ def parallel_lambdify(equations_flattened, all_symbolic_vars):
     from loky import get_reusable_executor
 
     # Prepare arguments for parallel processing
+    from loky import get_reusable_executor
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
     # Determine the number of available CPU cores
@@ -108,6 +111,8 @@ class ScenarioProperties:
         self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
         self.species_names = []
+        self.debris_names = []
+        self.debris_length = 0
         self.species_length = 0
         self.all_symbolic_vars = []
         
@@ -192,7 +197,7 @@ class ScenarioProperties:
         if all_symbolic_vars:
             self.all_symbolic_vars = all_symbolic_vars
 
-    def add_collision_pairs(self, collision_pairs: list):
+    def add_collision_pairs(self, collision_pairs):
         """
         Adds a list of collision pairs to the overall scenario properties. 
 
@@ -260,7 +265,8 @@ class ScenarioProperties:
         Returns: None
         """
 
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        # launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'start_full_V2_new.asem.csv')
 
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
@@ -384,13 +390,24 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
+        # for equation in self.equations:
+        #     variables = list(equation.free_symbols)
+        #     missing_vars = set(self.all_symbolic_vars) - set(variables)
+
+        #     # Print the missing variables for inspection
+        #     if missing_vars:
+        #         print(f"Equation: {equation}")
+        #         print(f"Free symbols (variables) used: {variables}")
+        #         print(f"Missing in equation: {missing_vars}")
+
+
         equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
 
         # Convert the equations to lambda functions
         if self.parallel_processing:
             equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
         else:
-            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy', dummify=False) for eq in equations_flattened]
 
         # Launch rates
         full_lambda_flattened = []
@@ -542,5 +559,11 @@ class ScenarioProperties:
             dN_dt[i] += equations[i](*N)
 
         return dN_dt
+    
+    def optimizer(self):
+        """
+        More parameters to be added in the future.
+        """
+
 
 
