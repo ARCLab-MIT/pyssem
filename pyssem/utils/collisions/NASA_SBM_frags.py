@@ -463,10 +463,10 @@ if __name__ == "__main__":
     # p2_in = 1.0e+03 * np.array([0.0060, 0.0001, 2.8724, 2.7431, 6.2248, 0.0032, 0.0054, -0.0039, 0.0010])
 
     p1_in = np.array([
-        1250,  # mass in kg
-        1,     # radius in meters
-        2743.4,  # r_x in km
-        2743.1,  # r_y in km
+        5000000,  # mass in kg
+        5,     # radius in meters
+        2100.4,  # r_x in km
+        2100.1,  # r_y in km
         6224.8,  # r_z in km
         -5.5,    # v_x in km/s
         -3.0,    # v_y in km/s
@@ -475,10 +475,10 @@ if __name__ == "__main__":
     ])
 
     p2_in = np.array([
-        1250,     # mass in kg
-        1,     # radius in meters
-        2743.4,  # r_x in km
-        2743.1,  # r_y in km
+        5000000,     # mass in kg
+        5,     # radius in meters
+        2100.4,  # r_x in km
+        2100.1,  # r_y in km
         6224.8,  # r_z in km
         3.2,     # v_x in km/s
         5.4,     # v_y in km/s
