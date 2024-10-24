@@ -35,12 +35,12 @@
             "maneuverable": true,
             "mass": 192.9379,
             "Pm": 0.9,
-            "pmd_func": "pmd_func_sat",
+            "pmd_func": "pmd_func_none",
             "radius": 1.2561,
             "RBflag": 0,
             "slotted": false,
             "slotting_effectiveness": 0,
-            "sym_name": "S",
+            "sym_name": "Su",
             "trackable": true
         },
         {
@@ -64,16 +64,13 @@
             "drag_func": "drag_func_exp"
         },
         {
-            "sym_name": "B",
-            "RBflag" : 1,
+            "sym_name": "D",
             "Cd": 2.2,
             "mass": 192.9379,
             "A": 4.9564,
             "radius": 1.2561,
             "active": false,
             "slotted": false,
-            "slotting_effectiveness": 1,
-            "drag_effected": true,
             "Pm": 0,
             "alpha": 0,
             "alpha_active": 0,
@@ -82,9 +79,7 @@
             "drag_effected": true,
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_none",
-            "drag_func": "drag_func_exp",
-            "elliptical": true, 
-            "eccentricity_bins": [0.1, 0.2]
+            "drag_func": "drag_func_exp"
         }
     ],
     "status": "not started"
