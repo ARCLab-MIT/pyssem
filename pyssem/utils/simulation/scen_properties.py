@@ -2,7 +2,7 @@ import numpy as np
 from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
-from scipy.spatial import KDTree
+from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model, launch_func_constant
@@ -10,9 +10,6 @@ from ..handlers.handlers import download_file_from_google_drive
 from pkg_resources import resource_filename
 import pandas as pd
 import os
-import multiprocessing as mp
-from loky import get_reusable_executor
-import concurrent.futures
 import multiprocessing
 
 def lambdify_equation(all_symbolic_vars, eq):
@@ -20,6 +17,8 @@ def lambdify_equation(all_symbolic_vars, eq):
 
 # Function to parallelize lambdification using loky
 def parallel_lambdify(equations_flattened, all_symbolic_vars):
+    from loky import get_reusable_executor
+
     # Prepare arguments for parallel processing
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
@@ -136,6 +135,9 @@ class ScenarioProperties:
         # Baseline Scenario
         self.baseline = baseline    
 
+        # Progress bar for the final integration
+        self.progress_bar = None
+
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
         months_per_step = self.simulation_duration / self.steps
@@ -232,14 +234,22 @@ class ScenarioProperties:
                 # Convert spec_FLM to interpolating functions (lambdadot) for each shell
                 # Remember indexing starts at 0 (40th shell is index 39)
                 species.lambda_funs = []
+                
+                if species.launch_altitude is not None:
+                    closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
 
                 for shell in range(self.n_shells):
                     y = species_FLM.loc[shell, :].values / time_step  
-        
+
+                    if species.launch_altitude is not None and shell == closest_shell:
+                        # Add the lambda_constant to each value in the array y
+                        y += species.lambda_constant
+
                     if np.all(y == 0):
                         species.lambda_funs.append(None)  
                     else:
                         species.lambda_funs.append(np.array(y))
+
 
                          
     def initial_pop_and_launch(self, baseline=False):
@@ -279,6 +289,9 @@ class ScenarioProperties:
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0
         self.FLM_steps = FLM_steps
+
+        # Export x0 to csv
+        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
         if not baseline:
             self.future_launch_model(FLM_steps)
@@ -366,7 +379,7 @@ class ScenarioProperties:
 
         :return: None
         """
-        print("Conversion of equations to lambda functions...")
+        print("Preparing equations for integration (Lambdafying) ...")
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
@@ -415,24 +428,27 @@ class ScenarioProperties:
             print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
+                            t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
 
         else:
-            print("Integrating equations...")
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
-                            t_eval=self.scen_times, method='BDF')
-                
+                            t_eval=self.scen_times, method=self.integrator)
+            
+            self.progress_bar.close()
+            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+
         if output.success:
             print(f"Model run completed successfully.")
         else:
             print(f"Model run failed: {output.message}")
 
-        # Process results
-        self.output = output
+        self.output = output # Save
 
         return 
 
@@ -502,7 +518,9 @@ class ScenarioProperties:
 
         :return: Rate of change of population at the given timestep, t. 
         """
-        print(t)
+        # Update the progress bar
+        if self.progress_bar is not None:
+            self.progress_bar.update(t - self.progress_bar.n)
 
         # Initialize the rate of change array
         dN_dt = np.zeros_like(N)
