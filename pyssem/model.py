@@ -150,6 +150,22 @@ class Model:
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
         
+    def build_sym_model(self):
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+
+            self.scenario_properties.build_model()
+
+            # save the scenario properties to a pickle file
+            with open('scenario-properties-test-no-run.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
+            
+            return self.scenario_properties
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to run model: {str(e)}")
+        
     def create_plots(self):
         """
         Create plots for the simulation results.
@@ -178,7 +194,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species_case3.json')) as f:
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -205,7 +221,8 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    results = model.run_model()
+    results = model.build_sym_model()
+    # results = model.run_model()
 
     # model.create_plots()
 

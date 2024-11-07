@@ -123,6 +123,7 @@ class ScenarioProperties:
         self.drag_term_upper = None
         self.drag_term_cur = None
         self.sym_drag = False
+        self.full_control = sp.Matrix([])
         
         # Outputs
         self.output = None
@@ -311,21 +312,29 @@ class ScenarioProperties:
 
         species_list = [species for group in self.species.values() for species in group]
         self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
-        self.full_lambda = []
+        # self.full_lambda = []
+        self.full_lambda = sp.zeros(self.n_shells, self.species_length)
         self.full_coll = sp.zeros(self.n_shells, self.species_length)
         self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
         self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
+        self.full_control = sp.zeros(self.n_shells, self.species_length)
 
         # Equations are going to be a matrix of symbolic expressions
         # Each row corresponds to a shell, and each column corresponds to a species
         for i, species in enumerate(species_list):
 
-            lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
-            self.full_lambda.append(lambda_expr)
+            # lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+            # self.full_lambda.append(lambda_expr)
+            lambda_expr = species.launch_func(t, self.HMid, species, self)
+            self.full_lambda[:, i] = lambda_expr
 
             # Post mission Disposal
             Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
             self.full_Cdot_PMD[:, i] = Cdot_PMD
+
+            # Control
+            U = species.control_func(t, self.HMid, species, self)
+            self.full_control[:, i] = U
 
             # Drag
             [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
@@ -340,7 +349,8 @@ class ScenarioProperties:
             self.full_coll += i.eqs
 
         self.equations = sp.zeros(self.n_shells, self.species_length)      
-        self.equations = self.full_Cdot_PMD + self.full_coll
+        # self.equations = self.full_Cdot_PMD + self.full_coll
+        self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
 
 
         # Recalculate objects based on density, as this is time varying 
@@ -440,7 +450,7 @@ class ScenarioProperties:
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
-            
+            # output = 1
             self.progress_bar.close()
             self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
 

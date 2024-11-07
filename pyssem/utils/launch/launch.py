@@ -37,12 +37,21 @@ def launch_func_null(t, h, species_properties, scen_properties):
 
     Lambdadot = zeros(scen_properties.n_shells, 1)
 
-    for k in range(scen_properties.n_shell):
+    for k in range(scen_properties.n_shells):
         Lambdadot[k, 0] = 0 * species_properties.sym[k]
 
-    Lambdadot_list = [Lambdadot[k, 0] for k in range(scen_properties.n_shell)]
+    Lambdadot_list = [Lambdadot[k, 0] for k in range(scen_properties.n_shells)]
 
     return Lambdadot_list
+
+def launch_lambda_sym(t, h, species_properties, scen_properties):
+
+    Lambdadot = zeros(scen_properties.n_shells, 1)
+
+    for k in range(scen_properties.n_shells):
+        Lambdadot[k, 0] = symbols(f'lambda_{k+1}')
+
+    return Lambdadot
 
 def launch_func_constant(t, h, species_properties, scen_properties):
     """

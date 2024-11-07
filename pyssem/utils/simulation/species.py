@@ -10,6 +10,7 @@ import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
+from ..control.control import *
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -79,6 +80,7 @@ class SpeciesProperties:
         self.launch_func = None
         self.pmd_func = None
         self.drag_func = None
+        self.control_func = None
 
         self.trackable_radius_threshold = 0.05  # m
 
@@ -312,6 +314,10 @@ class Species:
                     species.pmd_func = pmd_func_derelict
                 elif species.pmd_func == "pmd_func_sat":
                     species.pmd_func = pmd_func_sat
+                elif species.pmd_func == "pmd_func_sat_sym":
+                    species.pmd_func = pmd_func_sat_sym
+                elif species.pmd_func == "pmd_func_derelict_sym":
+                    species.pmd_func = pmd_func_derelict_sym 
                 else:
                     species.pmd_func = pmd_func_none
 
@@ -324,7 +330,19 @@ class Species:
                 #     species.launch_func = launch_func_constant
                 # else:
                 #     species.launch_func = launch_func_lambda_fun   
-                species.launch_func = launch_func_lambda_fun 
+                if species.launch_func == 'launch_lambda_sym':
+                    species.launch_func = launch_lambda_sym
+                elif species.launch_func == 'launch_func_null':
+                    species.launch_func = launch_func_null
+                else:
+                    species.launch_func = launch_func_lambda_fun 
+
+                if species.control_func == 'control_launch_sym':
+                    species.control_func = control_launch_sym
+                elif species.control_func == 'control_adr_sym':
+                    species.control_func = control_adr_sym
+                else:
+                    species.control_func = control_none 
 
         return
 
@@ -368,10 +386,13 @@ class Species:
         for active_spec in active_species:
             found_mass_match_debris = False
             spec_mass = active_spec.mass
-
+            
             for deb_spec in debris_species:
                 if spec_mass == deb_spec.mass:
-                    deb_spec.pmd_func = pmd_func_derelict
+                    if active_spec.Pm == []:
+                        deb_spec.pmd_func = pmd_func_derelict_sym
+                    else:
+                        deb_spec.pmd_func = pmd_func_derelict
                     deb_spec.pmd_linked_species = []                
                     deb_spec.pmd_linked_species.append(active_spec)
                     print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
