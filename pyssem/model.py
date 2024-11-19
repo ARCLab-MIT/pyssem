@@ -1,12 +1,12 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import create_plots, results_to_json
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.plotting.plotting import create_plots, results_to_json
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.plotting.plotting import create_plots, results_to_json
 from datetime import datetime
 import json
 import os
@@ -179,7 +179,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
