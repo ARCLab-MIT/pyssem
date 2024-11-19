@@ -126,7 +126,6 @@ Download the python package using pip (currently Test Environment) and install t
 pip3 install pyssem
 ```
 
-
 To create a Model you need the following JSON (simple 3 species model). The two key elements are the scenario_properties and the species list:
 ```json
 {
