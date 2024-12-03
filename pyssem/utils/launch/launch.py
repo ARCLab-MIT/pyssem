@@ -148,7 +148,7 @@ def find_bin_index(bin_edges, value):
             return i
     return -1  # Return an invalid index if not found
 
-def ADEPT_traffic_model(scen_properties, file_path):
+def ADEPT_traffic_model(scen_properties, file_path, baseline):
     """
     From an initial population and future model csv, this function will create for the starting population, 
     then one for each time step in the future model.
@@ -256,6 +256,10 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
+
+    if baseline:
+        # No need to calculate the launch model
+        return x0_summary, None
 
     # Future Launch Model
     flm_steps = pd.DataFrame()

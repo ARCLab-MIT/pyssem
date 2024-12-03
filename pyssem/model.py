@@ -1,12 +1,12 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import create_plots, results_to_json
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.plotting.plotting import create_plots, results_to_json
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.plotting.plotting import create_plots, results_to_json
 from datetime import datetime
 import json
 import os
@@ -113,7 +113,7 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            # self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Merge elliptical back to main species
             # species_list.merge_elliptical_to_main()
@@ -151,6 +151,48 @@ class Model:
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
         
+    def initial_population(self):
+        """
+            Initialize the population of the species in the simulation.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            # If this function is called, only create x0. 
+            self.scenario_properties.initial_pop_and_launch(baseline=True)
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize population: {str(e)}")
+
+
+    def build_model(self):
+        """
+            Build the model for the simulation.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.build_model()
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to build model: {str(e)}")
+        
+
+    def integrate(self, times):
+        """
+            This is when you would like to integrate a specific time frame."""
+        
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            population = self.scenario_properties.x0.T.values.flatten()
+            results = self.scenario_properties.integrate(population, times)
+            return results
+        except Exception as e:
+            raise RuntimeError(f"Failed to integrate: {str(e)}")
+                                                           
     def create_plots(self):
         """
         Create plots for the simulation results.
@@ -179,7 +221,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -206,6 +248,13 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    results = model.run_model()
+    model.initial_population()
+    model.build_model()
 
-    model.create_plots()
+    times = [0, 1, 2, 3, 4, 5]
+
+    output = model.integrate(times)
+
+    # results = model.run_model()
+
+    # model.create_plots()

@@ -10,7 +10,7 @@ class SpeciesPairClass:
         in gamma and the species in source_sinks.
 
         If the symbolic argument "n_f" is passed, it will be replaced with the n_f value
-        for a collision involved species1 and species2 at each dv in scen_properties.v_imp2
+        for a collision involved species1 and species2 at each dv in scen_properties.v_imp_all
 
         Other species will gain from a collision - e.g. debris. 
 
@@ -40,19 +40,19 @@ class SpeciesPairClass:
                       species2.radius * meter_to_km) ** 2
 
         # Scaling based on v_imp, shell volume, and object radii
-        self.phi = pi * scen_properties.v_imp2 / (scen_properties.V * meter_to_km**3) * self.sigma * S(86400) * S(365.25)
+        self.phi = pi * scen_properties.v_imp_all / (scen_properties.V * meter_to_km**3) * self.sigma * S(86400) * S(365.25)
 
         # Check if collision is catastrophic
-        self.catastrophic = self.is_catastrophic(species1.mass, species2.mass, scen_properties.v_imp2)
+        self.catastrophic = self.is_catastrophic(species1.mass, species2.mass, scen_properties.v_imp_all)
 
         # Fragment generation equations
         M1 = species1.mass
         M2 = species2.mass
         LC = scen_properties.LC
         
-        nf = zeros(len(scen_properties.v_imp2), 1)
+        nf = zeros(len(scen_properties.v_imp_all), 1)
 
-        for i, dv in enumerate(scen_properties.v_imp2):
+        for i, dv in enumerate(scen_properties.v_imp_all):
             if self.catastrophic[i]:
                 # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
                 n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
