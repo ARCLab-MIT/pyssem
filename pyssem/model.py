@@ -112,17 +112,25 @@ class Model:
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
-            # Create Collision Pairs
-            # self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
-            # Merge elliptical back to main species
-            # species_list.merge_elliptical_to_main()
-
             return species_list
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
         except Exception as e:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
+        
+    def calculate_collisions(self):
+        """
+        Calculate the collisions between species in the simulation.
+        
+        Parameters:
+        - scenario_properties (ScenarioProperties): Scenario properties object.
+        """
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+        except Exception as e:
+            raise ValueError(f"An error occurred calculating collisions: {str(e)}")
 
     def run_model(self):
         """
