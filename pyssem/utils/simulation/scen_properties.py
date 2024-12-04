@@ -375,7 +375,7 @@ class ScenarioProperties:
             
         return
     
-    def lambdify_equations(self, save_locally):
+    def lambdify_equations(self):
         """
             Convert the Sympy symbolic equations to lambda functions, this allows for a quicker integration for SciPy.
 
@@ -392,7 +392,7 @@ class ScenarioProperties:
 
         return equations
 
-    def lamdify_launch(self):
+    def lambdify_launch(self):
         """ 
             Convert the Numpy launch rates to Scipy lambdified functions for integration.
         
@@ -424,7 +424,7 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
-        equations, full_lambda_flattened = self.lambdify_equations(), self.lamdify_launch()       
+        equations, full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
 
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
