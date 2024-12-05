@@ -1,12 +1,12 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import create_plots, results_to_json
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.plotting.plotting import create_plots, results_to_json
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.plotting.plotting import create_plots, results_to_json
 from datetime import datetime
 import json
 import os
@@ -97,9 +97,6 @@ class Model:
             
             species_list.add_species_from_json(species_json)
 
-            # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
-            
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
@@ -114,9 +111,6 @@ class Model:
 
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
-            # Merge elliptical back to main species
-            # species_list.merge_elliptical_to_main()
 
             return species_list
         except json.JSONDecodeError:
@@ -208,4 +202,4 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    # model.create_plots()
+    model.create_plots()
