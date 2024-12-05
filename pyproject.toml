@@ -34,7 +34,7 @@ dependencies = [
     "tqdm>=4.65",
     "gdown>=4.0.0",
     "requests>=2.0",
-    "bs4>=4.0.0",
+    "bs4",
     "matplotlib>=3.0.0",
     "loky>=3.0.0",
     "imageio>=2.0.0"
