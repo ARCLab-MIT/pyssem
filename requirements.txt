@@ -5,8 +5,8 @@ scipy>=1.10
 sympy>=1.11
 tqdm>=4.65
 gdown>=4.0.0
-requests
-bs4
-matplotlib
-loky
-imageio
+requests>=2.0
+bs4>=4.0.0
+matplotlib>=3.0.0
+loky>=3.0.0
+imageio>=2.0.0
