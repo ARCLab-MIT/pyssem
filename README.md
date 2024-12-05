@@ -123,8 +123,9 @@ Ensure that you have a Python version above 3.8 before running the package.
 Download the python package using pip (currently Test Environment) and install the required packages:
 
 ```bash
-pip3 install pyssem
+pip install pyssem
 ```
+If you have any issues with the other package installments. You can manually install the packages using this [requirements](https://github.com/ARCLab-MIT/pyssem/blob/pypi-production/requirements.txt) file:  
 
 To create a Model you need the following JSON (simple 3 species model). The two key elements are the scenario_properties and the species list:
 ```json
@@ -140,7 +141,10 @@ To create a Model you need the following JSON (simple 3 species model). The two 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
-    "v_imp": 10.0                          
+    "v_imp": 10.0,
+    "baseline": false,
+    "fragment_spreading": false,
+    "parallel_processing": false                               
   },
   "species": [
       {
