@@ -256,6 +256,8 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
+    model.calculate_collisions()
+
     # model.initial_population()
     # model.build_model()
 
