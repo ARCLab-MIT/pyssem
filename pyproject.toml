@@ -13,7 +13,7 @@ dynamic = ["version"]
 description = "A source sink model to support the study of the long-term sustainability of Low Earth Orbit (LEO)"
 readme = "README.md"
 authors = [{name = "Indigo Brownhall", email = "indigo.brownhall.20@ucl.ac.uk"}]
-license = "MIT"
+license = {file = "LICENSE"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
