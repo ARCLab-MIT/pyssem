@@ -76,8 +76,6 @@ class SpeciesPairClass:
         if scen_properties.fragment_spreading:
             product_sym = species1.sym.multiply_elementwise(species2.sym).T
 
-
-
         # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 
         # derelicsts, etc.) We increment the eqs matrix with the gamma * phi * species1 * species2.
         for i in range(gammas.shape[1]):
