@@ -121,6 +121,7 @@ class ScenarioProperties:
         self.drag_term_upper = None
         self.drag_term_cur = None
         self.sym_drag = False
+        self.coll_eqs_lambd = None # Used for OPUS when only collision equations are required
         
         # Outputs
         self.output = None
@@ -348,6 +349,7 @@ class ScenarioProperties:
         self.equations = sp.zeros(self.n_shells, self.species_length)      
         self.equations = self.full_Cdot_PMD + self.full_coll
 
+        
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: # static density
@@ -372,7 +374,13 @@ class ScenarioProperties:
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
-            
+
+        # Lambdify the equations to be used for Scipy integration
+        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+  
         return
     
     def lambdify_equations(self):
@@ -432,8 +440,6 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
-        equations, full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
-
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
             drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
@@ -459,7 +465,7 @@ class ScenarioProperties:
 
             print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(full_lambda_flattened, equations, self.scen_times),
+                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
@@ -469,7 +475,7 @@ class ScenarioProperties:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(full_lambda_flattened, equations, self.scen_times),
+                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
             self.progress_bar.close()
@@ -496,8 +502,8 @@ class ScenarioProperties:
             :return: results_matrix
         """
         # check to see if the equations have already been lamdified
-        # if not hasattr(self, 'equations'):
-        self.equations = self.lambdify_equations()
+        if self.equations is None:
+            self.equations = self.lambdify_equations()
 
         # if launch is not None:
         #     full_lambda_flattened = self.lambdify_launch(launch)

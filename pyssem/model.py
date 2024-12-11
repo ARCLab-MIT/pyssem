@@ -1,12 +1,12 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import create_plots, results_to_json
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.plotting.plotting import create_plots, results_to_json
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.plotting.plotting import create_plots, results_to_json
 import numpy as np
 from datetime import datetime
 import json
@@ -153,6 +153,12 @@ class Model:
 
             # save the scenario properties to a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
+
+                # first remove the lambdified equations as pickle cannot serialize them
+                self.scenario_properties.equations = None
+                self.scenario_properties.coll_eqs_lambd = None
+                self.scenario_properties.full_lambda_flattened = None
+            
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties
@@ -234,7 +240,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -263,51 +269,52 @@ if __name__ == "__main__":
 
     model.calculate_collisions()
 
-    # model.run_model()
+    model.run_model()
+    model.create_plots()
 
-    model.initial_population()
-    model.build_model()
+    # model.initial_population()
+    # model.build_model()
 
-    times = [0, 2.5, 5, 7.5, 10]
+    # times = [0, 2.5, 5, 7.5, 10]
 
-    # x0 = np.array([   1,    2,   11,   31,   83,  130,  171,  133,  238,   96,   99,
-    #     189,   53,   17,   25,    9,   20,  368,  239,   26,    9,   41,
-    #      98,  373, 2294,  301,   63,   46,   94,   11,   35,    1,   22,
-    #      10,  357,    0,    2,    0,   19,    0,    4,   24,   72,  142,
-    #     214,  374,  588, 1083, 1575, 1449,  783,  605,  369,  268,  144,
-    #     260,  140,  166,  264,  202])
+    # # x0 = np.array([   1,    2,   11,   31,   83,  130,  171,  133,  238,   96,   99,
+    # #     189,   53,   17,   25,    9,   20,  368,  239,   26,    9,   41,
+    # #      98,  373, 2294,  301,   63,   46,   94,   11,   35,    1,   22,
+    # #      10,  357,    0,    2,    0,   19,    0,    4,   24,   72,  142,
+    # #     214,  374,  588, 1083, 1575, 1449,  783,  605,  369,  268,  144,
+    # #     260,  140,  166,  264,  202])
     
-    lam = [[0.2], [0.4], [2.2], [6.2], [16.6], [26.0], [34.2], [26.6], [47.6], [19.200000000000003], [19.8], [37.800000000000004], [10.600000000000001], [3.4000000000000004], [5.0], [1.8], [4.0], [73.60000000000001], [47.800000000000004], [5.2], [0.05], [0.1], [0.55], [1.55], [4.15], [6.5], [8.55], [6.65], [11.9], [4.800000000000001], [4.95], [9.450000000000001], [2.6500000000000004], [0.8500000000000001], [1.25], [0.45], [1.0], [18.400000000000002], [11.950000000000001], [1.3], 
-           None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+    # lam = [[0.2], [0.4], [2.2], [6.2], [16.6], [26.0], [34.2], [26.6], [47.6], [19.200000000000003], [19.8], [37.800000000000004], [10.600000000000001], [3.4000000000000004], [5.0], [1.8], [4.0], [73.60000000000001], [47.800000000000004], [5.2], [0.05], [0.1], [0.55], [1.55], [4.15], [6.5], [8.55], [6.65], [11.9], [4.800000000000001], [4.95], [9.450000000000001], [2.6500000000000004], [0.8500000000000001], [1.25], [0.45], [1.0], [18.400000000000002], [11.950000000000001], [1.3], 
+    #        None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
 
-    lam_flat = [item[0] if item is not None else 0 for item in lam]
+    # lam_flat = [item[0] if item is not None else 0 for item in lam]
 
-    output = model.propagate(times, model.scenario_properties.x0.T.values.flatten(), lam)
+    # output = model.propagate(times, model.scenario_properties.x0.T.values.flatten(), lam)
 
-    print(output)
+    # print(output)
 
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(10, 6))
+    # import matplotlib.pyplot as plt
+    # plt.figure(figsize=(10, 6))
 
-    # Plot x0
-    plt.plot(model.scenario_properties.x0.T.values.flatten(), label='x0', linestyle='-', marker='o')
+    # # Plot x0
+    # plt.plot(model.scenario_properties.x0.T.values.flatten(), label='x0', linestyle='-', marker='o')
 
-    # Plot lam
-    plt.plot(lam_flat, label='lam', linestyle='--', marker='x')
+    # # Plot lam
+    # plt.plot(lam_flat, label='lam', linestyle='--', marker='x')
 
-    # Plot output
-    plt.plot(output[1], label='output', linestyle='-.', marker='s')
+    # # Plot output
+    # plt.plot(output[1], label='output', linestyle='-.', marker='s')
 
-    # Add labels and title
-    plt.xlabel('Index')
-    plt.ylabel('Value')
-    plt.title('Plot of x0, lam, and output')
-    plt.legend()
+    # # Add labels and title
+    # plt.xlabel('Index')
+    # plt.ylabel('Value')
+    # plt.title('Plot of x0, lam, and output')
+    # plt.legend()
 
-    # Show the plot
-    plt.show()
+    # # Show the plot
+    # plt.show()
 
-    print(output)
+    # print(output)
 
     
 

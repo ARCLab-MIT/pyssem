@@ -18,8 +18,8 @@
       "LC": 0.1,                             
       "v_imp": 10.0,
       "fragment_spreading": false, 
-      "parallel_processing" : true,
-      "baseline": false                          
+      "parallel_processing" : false,
+      "baseline": true                          
     },
     "species": [
       {
