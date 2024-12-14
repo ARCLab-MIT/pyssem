@@ -49,7 +49,7 @@ def launch_lambda_sym(t, h, species_properties, scen_properties):
     Lambdadot = zeros(scen_properties.n_shells, 1)
 
     for k in range(scen_properties.n_shells):
-        Lambdadot[k, 0] = symbols(f'lambda_{k+1}')
+        Lambdadot[k, 0] = symbols(f'lambda_{species_properties.sym_name}{k+1}')
 
     return Lambdadot
 

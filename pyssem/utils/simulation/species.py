@@ -188,13 +188,17 @@ class Species:
             species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{species_properties['mass'][i]}kg"
 
             try:
-                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null":
+                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null" and species_props_copy.get("launch_func") != "launch_lambda_sym":
                     # Change the lambda_constant and launch_altitude to the value of the index
                     lambda_const_temp = species_props_copy.get('lambda_constant', 0)
                     launch_alt_temp = species_props_copy.get('launch_altitude', 0)
 
                     species_props_copy['lambda_constant'] = lambda_const_temp[i-1]
                     species_props_copy['launch_altitude'] = launch_alt_temp[i-1]
+                
+                # elif species_props_copy.get("launch_func") == "launch_lambda_sym":
+                #     species_props_copy['lambda_constant'] = 0
+                #     species_props_copy['launch_altitude'] = 0
             except Exception as e:
                 raise ValueError(f"If you have lambda_constant as part of a multiple mass species. Please ensure that you have a lambda and alttiude defined for each sub-species.")
 
@@ -208,6 +212,10 @@ class Species:
                         species_props_copy[field] = field_value[i]
                     elif len(field_value) == 1:
                         species_props_copy[field] = field_value[0]
+                    elif field == "deltat" and species_props_copy.get("pmd_func") == "pmd_func_sat_sym" or species_props_copy.get("pmd_func") == "pmd_func_derelict_sym":
+                        continue
+                    elif field == "Pm" and species_props_copy.get("pmd_func") == "pmd_func_sat_sym" or species_props_copy.get("pmd_func") == "pmd_func_derelict_sym":
+                        continue
                     else:
                         raise ValueError(f"The field '{field}' list length does not match the number of species and is not a single-element list.")
                 else:
