@@ -19,7 +19,7 @@
     "v_imp": 10.0,
     "fragment_spreading": false, 
     "parallel_processing" : false,
-    "baseline": false                          
+    "baseline": false                 
   },
   "species": [
     {

@@ -155,6 +155,7 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
+            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
 
             # save the scenario properties to a pickle file
