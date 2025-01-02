@@ -216,7 +216,7 @@ def calculate_amsms_not_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
-def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
+def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
     """
     Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
     Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
@@ -517,6 +517,8 @@ def create_collision_pairs(scen_properties):
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
     # Testing evolve_bins
     m1 = 1000
     m2 = 250
@@ -526,7 +528,7 @@ if __name__ == "__main__":
     binE = np.array([1.4137200e-03, 2.8420686e-01, 1.3028350e+02, 3.6650000e+02,
        6.1150000e+02, 1.0000000e+05])
     R02 = np.arange(200, 2050, 50)
-    nums, is_catastrophic, bin_out, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], 0.1, RBflag=0, fragment_spreading=True, n_shells=10, R02=R02)
+    nums, is_catastrophic, bin_out, alt_nums = evolve_bins(m1, m2, r1, r2, dv,  dv, [], binE, [], 0.1, RBflag=0, fragment_spreading=True, n_shells=10, R02=R02)
 
     range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
 

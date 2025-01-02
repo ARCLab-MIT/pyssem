@@ -17,6 +17,28 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     """
     Collision model following NASA EVOLVE 4.0 standard breakup model (2001)
     with the revision in ODQN "Proper Implementation of the 1998 NASA Breakup Model" (2011)
+
+    The Debris output looks lke this:
+    1. `a`: Semi-major axis (in km) - defines the size of the orbit.
+    2. `ecco`: Eccentricity - describes the shape of the orbit (0 for circular, closer to 1 for highly elliptical).
+    3. `inclo`: Inclination (in degrees) - the tilt of the orbit relative to the equatorial plane.
+    4. `nodeo`: Right ascension of ascending node (in degrees) - describes the orientation of the orbit in the plane.
+    5. `argpo`: Argument of perigee (in degrees) - the angle between the ascending node and the orbit's closest point to Earth.
+    6. `mo`: Mean anomaly (in degrees) - the position of the debris along the orbit at a specific time.
+    7. `bstar`: Drag coefficient - relates to atmospheric drag affecting the debris.
+    8. `mass`: Mass of the debris fragment (in kg).
+    9. `radius`: Radius of the debris fragment (in meters).
+    10. `errors`: Error values (various metrics used for error tracking or uncertainty).
+    11. `controlled`: A flag indicating whether the fragment is controlled (e.g., through active debris removal or a controlled reentry).
+    12. `a_desired`: Desired semi-major axis (in km) - often used in mission planning.
+    13. `missionlife`: Expected mission lifetime (in years).
+    14. `constel`: Identifier for the constellation to which the debris belongs (if any).
+    15. `date_created`: Date the fragment data was created (format depends on implementation, e.g., `YYYY-MM-DD`).
+    16. `launch_date`: Date of launch of the parent object (format depends on implementation).
+    17. `r[idx_a]`: Position vector (in km) - describes the 3D position of the fragment in space.
+    18. `v[idx_a]`: Velocity vector (in km/s) - describes the 3D velocity of the fragment.
+    19. `frag_objectclass`: Object class - a dimensionless identifier describing the type of fragment or debris.
+    20. `ID_frag`: Unique identifier for the fragment (could be a string or numeric ID).
     
     Parameters:
     - ep: Epoch
@@ -463,7 +485,7 @@ if __name__ == "__main__":
     # p2_in = 1.0e+03 * np.array([0.0060, 0.0001, 2.8724, 2.7431, 6.2248, 0.0032, 0.0054, -0.0039, 0.0010])
 
     p1_in = np.array([
-        5000000,  # mass in kg
+        1000,  # mass in kg
         5,     # radius in meters
         2100.4,  # r_x in km
         2100.1,  # r_y in km
@@ -475,8 +497,8 @@ if __name__ == "__main__":
     ])
 
     p2_in = np.array([
-        5000000,     # mass in kg
-        5,     # radius in meters
+        100,     # mass in kg
+        1,     # radius in meters
         2100.4,  # r_x in km
         2100.1,  # r_y in km
         6224.8,  # r_z in km
@@ -485,7 +507,6 @@ if __name__ == "__main__":
         -3.9,    # v_z in km/s
         1.0      # object_class (dimensionless)
     ])
-
     
     # Define the param dictionary
     param = {
@@ -550,7 +571,6 @@ if __name__ == "__main__":
     plt.ylabel('Eccentricity')
     plt.title('2D Histogram of SMA and Eccentricity')
     plt.grid(True)
-    plt.show()
 
     # with open(r'C:\Users\IT\Documents\UCL\pyssem\scenario-properties-elliptical.pkl', 'rb') as f:
     #     scen_properties = pickle.load(f)
