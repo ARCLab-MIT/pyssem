@@ -117,6 +117,7 @@ Each species in the simulation is defined in the `species` section of the JSON c
 
 
 ## Installation
+FOR USERS ONLY:
 
 Ensure that you have a Python version above 3.8 before running the package. 
 
