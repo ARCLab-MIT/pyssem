@@ -6,7 +6,7 @@
     "owner": "Indigo",
     "scenario_properties": {
         "density_model": "static_exp_dens_func",
-        "integrator": "RK45",
+        "integrator": "BDF",
         "launch_function": "Constant",
         "LC": 0.1,
         "max_altitude": 1000,
@@ -17,8 +17,9 @@
         "steps": 50,
         "v_imp": 10, 
         "baseline": false,
-        "fragment_spreading": true, 
-        "parallel_processing": true
+        "fragment_spreading": false, 
+        "parallel_processing": false,
+        "indicator_variables": ["ca_man_struct_agg"]
     },
     "simulation_name": "Indigo",
     "species": [
@@ -29,7 +30,7 @@
             "radius": 2,
             "A": "Calculated based on radius",
             "active": true,
-            "maneuverable": false,
+            "maneuverable": true,
             "trackable": false,
             "deltat": 8,
             "Pm": 0.90,

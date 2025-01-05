@@ -142,7 +142,10 @@ class ScenarioProperties:
         self.parallel_processing = parallel_processing
 
         # Baseline Scenario
-        self.baseline = baseline    
+        self.baseline = baseline  
+
+        # Integator Results
+        self.indicator_results = {}  
 
         # Progress bar for the final integration
         self.progress_bar = None
@@ -426,12 +429,10 @@ class ScenarioProperties:
                 indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
                 self.full_lambda.extend(indicator_pad)
 
-        # # Make Non-Integrated Indicator Variables if passed
+        # Lambdify the non-integrated indicator variables 
         # if hasattr(self, 'indicator_variables_list'):
-        #     indicator_var_list = self.indicator_variables_list
-        #     for ind_var in indicator_var_list:
-        #         if not ind_var.eqs:
-        #             ind_var = self.make_indicator_eqs(ind_var)
+        #     for ind_var in self.indicator_var_list:
+                
         
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
@@ -519,6 +520,29 @@ class ScenarioProperties:
             print(f"Model run failed: {output.message}")
 
         self.output = output # Save
+
+        # Indicator Variables
+        # Evaluate non-indicator variables using states
+        if hasattr(self, 'indicator_variables_list'):
+            self.indicator_results['indicators'] = {}
+
+            for i in self.indicator_variables_list:
+                # Convert the symbolic equations into a callable function
+                for indicator_var in i:
+                    indicator_fun = sp.lambdify(self.all_symbolic_vars, indicator_var.eqs, 'numpy')
+
+                    evaluated_indicator_dict = {}
+
+                    # Iterate over states (rows in y) and corresponding time steps (t)
+                    for state, t in zip(self.output.y.T, self.output.t):
+                        # Evaluate the indicator function for the current state
+                        evaluated_value = indicator_fun(*state)
+                        # Store the result in the dictionary with the corresponding time step
+                        evaluated_indicator_dict[t] = evaluated_value
+
+                    # Store the results for this indicator in the results dictionary
+                    self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+
 
         return 
 

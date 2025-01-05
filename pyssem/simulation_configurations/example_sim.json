@@ -19,7 +19,8 @@
       "v_imp": 10.0,
       "fragment_spreading": false, 
       "parallel_processing" : true,
-      "baseline": true                          
+      "baseline": true,
+      "indicator_variables": ["ca_man_struct_agg"]                          
     },
     "species": [
       {

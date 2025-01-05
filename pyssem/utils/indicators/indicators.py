@@ -281,7 +281,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
                         ag_man_sat_totals += sp.Matrix(species.sym)
             ag_man_counts = ag_man_counts.multiply_elementwise(1 / ag_man_sat_totals)
         spec_man_indc = make_indicator_struct(scen_properties, ind_name, "manual", None, ag_man_counts)
-    else:
+    else: # if per spcies
         spec_man_indc = []
         for species_name, eq in ind_eqs.items():
             if per_spacecraft:
@@ -401,3 +401,115 @@ def make_all_col_indicators(scen_properties):
             all_col_indicators.append(spec_ag_col_indc)
     
     return all_col_indicators
+
+def make_indicator_eqs(obj, ind_struct):
+    """
+    Helper method that creates the equations (eqs) for non-manual types and validates input.
+    This is intended to be called during the simulation build_model method for each 
+    indicator variable intended to be added to the simulation.
+
+    :param obj: The main simulation object containing scenario properties.
+    :param ind_struct: A dictionary-like object representing the indicator structure.
+    :return: Updated ind_struct with the equations added.
+    """
+    name = ind_struct.name
+    ind_type = ind_struct.ind_type
+    species = ind_struct.species
+    eqs = getattr(ind_struct, 'eqs', None)
+
+    # Supported indicator types
+    valid_types = ["collision", "successful PMD", "failed PMD", "mitigated conjunctions", "manual"]
+
+    # Error checking for manual type
+    if ind_type == "manual" and (not hasattr(ind_struct, 'eqs') or not ind_struct.eqs):
+        raise ValueError("Argument eqs must be passed for indicator variable with type 'manual'.")
+
+    if ind_type != "manual" and eqs:
+        import warnings
+        warnings.warn("Argument eqs passed for indicator with non-manual type. "
+                      "Overriding equations to use passed value. To remove this warning, use type='manual'.")
+
+    # Check if ind_type is supported
+    if ind_type not in valid_types:
+        raise ValueError(f"Passed type {ind_type} is not a supported type. Please use values from {valid_types}.")
+
+    # Build equations
+    if ind_type == "collision":
+        if len(species) != 2:
+            raise ValueError("Exactly two species must be provided for collision indicator variables.")
+
+        # Find the correct pair
+        pair = next(
+            (test_pair for test_pair in obj.collision_pairs
+             if test_pair.species1.sym_name == species[0] and test_pair.species2.sym_name == species[1]),
+            None
+        )
+        if pair is None:
+            raise ValueError(f"No matching species pair has been found for: '{species[0]}', '{species[1]}'.")
+
+        # Non-Gamma intrinsic collisions
+        intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(
+            sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym)
+        )
+        # Create equations
+        ind_struct.eqs = pair.gammas[0] * intrinsic_collisions
+
+    elif ind_type == "mitigated conjunction":
+        if len(species) != 2:
+            raise ValueError("Exactly two species must be provided for mitigated conjunction indicator variables.")
+
+        # Find the correct pair
+        pair = next(
+            (test_pair for test_pair in obj.collision_pairs
+             if test_pair.species1.sym_name == species[0] and test_pair.species2.sym_name == species[1]),
+            None
+        )
+        if pair is None:
+            raise ValueError(f"No matching species pair has been found for: '{species[0]}', '{species[1]}'.")
+
+        # Non-Gamma intrinsic collisions
+        intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(
+            sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym)
+        )
+        # Create equations
+        ind_struct.eqs = (1 - pair.gammas[0]) * intrinsic_collisions
+
+    elif ind_type == "successful PMD":
+        if len(species) > 1:
+            raise ValueError("Only single species arguments are currently supported for the 'successful PMD' type.")
+
+        species_obj = obj.get_species_list_from_names(species[0])
+        if not callable(species_obj.pmd_func):
+            import warnings
+            warnings.warn("Custom PMD function detected. Only constant (non-time-varying) PMD functions are currently supported.")
+
+        ind_struct.eqs = species_obj.pmd_func(0, obj.scen_properties.HMid, species_obj.species_properties, obj.scen_properties)
+
+    elif ind_type == "failed PMD":
+        if len(species) > 1:
+            raise ValueError("Only single species arguments are currently supported for the 'failed PMD' type.")
+
+        species_obj = obj.get_species_list_from_names(species[0])
+        if not callable(species_obj.pmd_func):
+            import warnings
+            warnings.warn("Custom PMD function detected. Only constant (non-time-varying) PMD functions are currently supported.")
+
+        eqs = sp.zeros(obj.scen_properties.N_shell, 1)
+        for species_test in obj.scen_properties.species:
+            for linked_species in species_test.species_properties.pmd_linked_species:
+                if linked_species.species_properties.sym_name == species[0]:
+                    actual_pmd = species_test.species_properties.pmd_linked_species
+                    species_test.species_properties.pmd_linked_species = linked_species
+                    eqs += species_test.pmd_func(
+                        0,
+                        obj.scen_properties.HMid,
+                        species_test.species_properties,
+                        obj.scen_properties
+                    )
+                    species_test.species_properties.pmd_linked_species = actual_pmd
+        ind_struct.eqs = eqs
+
+    elif ind_type == "manual":
+        ind_struct.eqs = eqs
+
+    return ind_struct
