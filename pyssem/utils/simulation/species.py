@@ -1,5 +1,12 @@
 import json
 from sympy import Matrix
+from tqdm import tqdm    
+import numpy as np
+from astropy import units as u
+from poliastro.bodies import Earth
+from poliastro.twobody import Orbit
+import copy
+import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
@@ -47,6 +54,7 @@ class SpeciesProperties:
         self.lambda_multiplier = None  # only for launch_func_fixed_multiplier
         self.lambda_funs = None  # only for launch_func_gauss
         self.lambda_constant = None  # only for launch_func_constant
+        self.launch_altitude = None # km
         self.lambda_python_args = None
 
         # For Derelicts
@@ -73,6 +81,14 @@ class SpeciesProperties:
         self.drag_func = None
 
         self.trackable_radius_threshold = 0.05  # m
+
+        self.elliptical = False
+        self.semi_major_axis_bins = None
+        self.eccentricity_bins = None
+        self.time_per_shells = []
+        self.velocity_per_shells = []
+        self.ecc_lb = 0
+        self.ecc_ub = 1
 
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
@@ -104,6 +120,17 @@ class SpeciesProperties:
             if self.beta is None:
                 print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
 
+    def copy(self):
+        """
+        Create a direct copy of a species object.
+        """
+        new_copy = SpeciesProperties()
+
+        # Copy all attributes from self
+        new_copy.__dict__.update(self.__dict__)
+
+        return new_copy
+
 
 class Species:
     """
@@ -128,26 +155,49 @@ class Species:
         and beta will be scaled based on spherical assumption. Trackabiolity will be set based on scaled radius relative
         to the trackable threshold.
 
+        This function will also split out the launch parameters if they exist. 
+
         :return: _description_
         :rtype: _type_
         """
+        species_list = []
 
-        if len(species_properties['mass']) == 1:
-            raise ValueError("Multi-property species must have multiple masses.")
+
+        # As mass can also be a list, we need to convert it to a list, to do a len check
+        mass = species_properties.get('mass', [])
+        if not isinstance(mass, list):
+            mass = [mass]
+        if len(mass) == 1:
+            species_list.append(SpeciesProperties(species_properties))
+            return species_list
         
         if "_" in species_properties['sym_name']:
             raise ValueError("Species names cannot contain underscores.")
 
-        multi_species_list = []
         num_species = len(species_properties['mass'])
+
+        # First check that each item in the list is unique
+        if len(set(species_properties['mass'])) != num_species:
+            raise ValueError("Masses must be unique for each species.")
 
         for i in range(num_species):
             species_props_copy = species_properties.copy()
             species_props_copy['mass'] = species_properties['mass'][i] if isinstance(species_properties['mass'], list) else species_properties['mass']
             species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{species_properties['mass'][i]}kg"
 
+            try:
+                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null":
+                    # Change the lambda_constant and launch_altitude to the value of the index
+                    lambda_const_temp = species_props_copy.get('lambda_constant', 0)
+                    launch_alt_temp = species_props_copy.get('launch_altitude', 0)
+
+                    species_props_copy['lambda_constant'] = lambda_const_temp[i-1]
+                    species_props_copy['launch_altitude'] = launch_alt_temp[i-1]
+            except Exception as e:
+                raise ValueError(f"If you have lambda_constant as part of a multiple mass species. Please ensure that you have a lambda and alttiude defined for each sub-species.")
+
             for field in species_properties:
-                if field == "sym_name":
+                if field == "sym_name" or field == "eccentricity_bins": # these get handled later
                     continue
 
                 field_value = species_properties[field]
@@ -163,38 +213,55 @@ class Species:
 
                  
             # Create the species instance and append it to the species list
-            species_instance = SpeciesProperties(species_props_copy)
-            multi_species_list.append(species_instance)
-
-        # # Sort the species list by mass and set upper and lower bounds for mass bins
-        multi_species_list.sort(key=lambda x: x.mass) # sorts by mass
-
-        # Update the mass_lb and mass_ub for each species
-        # This will be based on the mass of the species and the mass of the species before and after it in the list
-        for i in range(len(multi_species_list)):
-            if i == 0:  # First element (lowest mass)
-                multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
-            elif i == len(multi_species_list) - 1:  # Last element (highest mass)
-                multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
-            else:  # Elements in between
-                multi_species_list[i].mass_ub = 0.5 * (multi_species_list[i].mass + multi_species_list[i + 1].mass)
-                multi_species_list[i].mass_lb = 0.5 * (multi_species_list[i - 1].mass + multi_species_list[i].mass)
-
+            species_list.append(SpeciesProperties(species_props_copy))
 
         # Add to global species list
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
-        return multi_species_list
-        
-    def add_species_from_json(self, species_json: json) -> None:
-        """
-        Creates a dictionary of the species properties from a json file.
-        It will create a dictionary of 'active' 'debris' and 'rocket_body' species.
 
-        :param json_string: _description_
-        :type json_string: json
-        :return: _description_
-        :rtype: None
+        # Sort the species by mass, only if active, if debris it will be done once PMD species are added. 
+        if species_properties['active'] == True:
+            species_list.sort(key=lambda x: x.mass)
+            for i in range(len(species_list)):
+                if i == 0:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                elif i == len(species_list) - 1:
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+                else:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+
+        return species_list
+    
+    def set_mass_bounds(self, species_list):
+        species_list.sort(key=lambda x: x.mass) # sorts by mass
+
+        for i in range(len(species_list)):
+            if i == 0:
+                species_list[i].mass_lb = 0
+                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+            elif i == len(species_list) - 1:
+                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+            else:
+                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+        
+        return species_list
+
+  
+
+    def add_species_from_json(self, species_json: json):
         """
+        Takes a dictionary of species properties and creates a SpeciesProperties object for each species.
+
+        If there are multiple masses, then it will split it out into multiple species.
+
+        If active species have a pmd function that is not pmd_func_none (i.e. will not successfully PMD), then a debris species will be created for it.
+
+        :param json_string: Species properties in JSON format.
+        :type json_string: json
+        :return: A dictionary of species objects, split into Active, Debris and Rocket Body species.
+        :rtype: dict
+        """ 
 
         # Loop through the json and pass create and instance of species properties for each species
         if isinstance(species_json, dict):
@@ -206,18 +273,6 @@ class Species:
             raise ValueError("At least one debris species with sym_name 'N' must be provided.")
             
         for properties in species_json:      
-            species_object = None
-
-            # Active
-            if properties.get('active', False):
-                if isinstance(properties['mass'], list) and len(properties['mass']) > 1:
-                    multiple_species = self.add_multi_property_species(properties)
-                    self.species['active'].extend(multiple_species)
-                else:
-                    species_object = SpeciesProperties(properties)
-                    self.species['active'].append(species_object)
-
-            # Debris and Rocket Body
             rb_flag = properties.get('RBflag', 0)  # Defaults to 0 if 'RBflag' is not found
             if rb_flag == 1:
                 if isinstance(properties['mass'], list):
@@ -269,8 +324,10 @@ class Species:
 
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
-        
-        # Pass any required functions
+
+        # As new debris species have been added, the upper and lower mass bounds need to be updated
+        self.species['debris'] = self.set_mass_bounds(self.species['debris'])
+           
         return self.species
     
     def convert_params_to_functions(self):
@@ -319,9 +376,7 @@ class Species:
                 all_species_symbols.extend(species.sym)
         
         return all_species_symbols
-
-
-    
+ 
     def pair_actives_to_debris(self, active_species, debris_species):
         """
         Pairs all active species to debris species for PMD modeling.
@@ -329,7 +384,10 @@ class Species:
         Args:
             active_species (list): List of active species objects.
             debris_species (list): List of debris species objects.
-        """
+        # """
+        # active_species = self.species['active']
+        # debris_species = self.species['debris']
+
         # Collect active species and their names
         linked_spec_names = [item.sym_name for item in active_species]
         print("Pairing the following active species to debris classes for PMD modeling...")
@@ -362,4 +420,164 @@ class Species:
             for spec in self.species['active']:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
+
+    def propagate_orbit(self, a, e, mu, num_points=1000):
+        """
+        Propagate an orbit using the poliastro library and calculate positions over one orbit.
+
+        Args:
+            a (float): Semi-major axis in km.
+            e (float): Eccentricity.
+            mu (float): Gravitational parameter in km^3/s^2.
+            num_points (int): Number of points to calculate in the orbit.
+
+        Returns:
+            tuple: Arrays of the true anomaly and radius over the orbit.
+        """
+
+        #  convert mu to km^3/s^2
+        orbit = Orbit.from_classical(Earth, a * u.km, e * u.one, 0 * u.deg, 0 * u.deg, 0 * u.deg, 0 * u.deg)
+
+        # Time array over one period
+        period = orbit.period.to(u.s).value
+        time_values = np.linspace(0, period, num_points) * u.s
+
+        # Propagate the orbit over time_values and calculate positions and velocities
+        positions = []
+        velocities = []
+        for t in time_values:
+            state = orbit.propagate(t)
+            positions.append(state.r.to(u.km).value)  # Position in km
+
+            # Technically, we are working out the speed not the velocity (magnitude of velocity)
+            velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
+
+        # Convert positions and velocities to numpy arrays
+        positions = np.array(positions)
+        velocities = np.array(velocities)
+
+        # Calculate radii (distance from central body)
+        radii = np.linalg.norm(positions, axis=1)
+
+        # Calculate true anomaly for each point (using argument of latitude)
+        true_anomalies = np.linspace(0, 2 * np.pi, num_points)
+
+        return true_anomalies, radii, velocities
+
+    def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
+        """
+        Calculate the normalized time spent in each shell and average velocity in each shell.
+
+        Args:
+            radii (np.ndarray): Array of orbital radii.
+            velocities (np.ndarray): Array of orbital velocities.
+            R0_km (np.ndarray): Array of shell boundary altitudes in km.
+
+        Returns:
+            tuple: Normalized time spent in each shell and average velocity in each shell.
+        """
+        time_in_shell = np.zeros(len(R0_km) - 1)
+        velocity_in_shell = np.zeros(len(R0_km) - 1)
+
+        for i in range(len(R0_km) - 1):
+            # Check if the radius falls within the shell boundaries
+            in_shell = (radii >= R0_km[i]) & (radii < R0_km[i + 1])
+            time_in_shell[i] = np.sum(in_shell)
+            if np.sum(in_shell) > 0:
+                velocity_in_shell[i] = np.mean(velocities[in_shell])
+
+        # Normalize the time_in_shell array
+        total_time = np.sum(time_in_shell)
+        if total_time > 0:
+            time_in_shell /= total_time
+
+        return time_in_shell, velocity_in_shell
     
+    def process_elliptical_species(self, args):
+        """
+            Helper function for parallel processing of time and velocity in shells for elliptical orbits.
+        """
+        species, mu, R0_km, HMid, propagate_orbit, calculate_time_and_velocity_in_shell = args
+    
+        # Set semi-major axis for this species
+        species.semi_major_axis_bins = HMid
+        
+        # Calculate time spent in each shell for the semi-major axis
+        for a in species.semi_major_axis_bins:
+            true_anomalies, radii, velocities = propagate_orbit(a, species.eccentricity, mu)
+            time_in_shell, velocity_in_shell = calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+            species.time_per_shells.append(time_in_shell)
+            species.velocity_per_shells.append(velocity_in_shell)
+        
+        return species
+
+
+    def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float, parellel_processing: bool):
+        """
+        Set up elliptical orbits for species and calculate the time spent in each shell.
+        """
+        for species_group in self.species.values():
+            processed_species = set()  # Set to track species that have already been processed
+
+            for species in list(species_group):  # Create a list to avoid modifying the group during iteration
+                if species.elliptical and species.sym_name not in processed_species:
+                    species.semi_major_axis_bins = HMid
+
+                    # Process each eccentricity bin
+                    for i, ecc in enumerate(species.eccentricity_bins):
+                        # Create a new species based on the original
+                        new_species = species.copy()
+                        new_species.eccentricity = ecc
+                        new_species.sym_name = f"{species.sym_name}_e{ecc}"
+                        new_species.time_per_shells = []
+                        new_species.velocity_per_shells = []
+
+                        # Calculate the lower and upper bounds for the eccentricity bin
+                        if i == 0:
+                            new_species.ecc_lb = 0 
+                        else:
+                            new_species.ecc_lb = 0.5 * (species.eccentricity_bins[i - 1] + ecc)
+
+                        if i == len(species.eccentricity_bins) - 1:
+                            new_species.ecc_ub = 1  
+                        else:
+                            new_species.ecc_ub = 0.5 * (ecc + species.eccentricity_bins[i + 1])
+
+                        # Add the new species to the group
+                        species_group.append(new_species)
+
+                    # Mark the original species as processed and remove it
+                    processed_species.add(species.sym_name)
+                    species_group.remove(species)
+
+        if parellel_processing:
+                # Prepare arguments for parallel processing
+                args_list = [
+                    (species, mu, R0_km, HMid, self.propagate_orbit, self.calculate_time_and_velocity_in_shell)
+                    for species_group in self.species.values()
+                    for species in species_group
+                    if species.elliptical
+                ]
+
+                # Use ProcessPoolExecutor for parallel execution
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    results = list(tqdm(
+                        executor.map(self.process_elliptical_species, args_list),
+                        total=len(args_list),
+                        desc="Propagating elliptical orbits to find time and velocity in shells"
+                    ))
+
+        else:
+            # Sequential processing
+            for species_group in self.species.values():
+                for species in species_group:
+                    if species.elliptical:  # hasn't been created yet
+                        # Set semi-major axis for this species
+                        species.semi_major_axis_bins = HMid
+
+                        # Calculate time spent in each shell for the semi-major axis
+                        for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
+                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+                            species.time_per_shells.append(time_in_shell)
+                            species.velocity_per_shells.append(velocity_in_shell)

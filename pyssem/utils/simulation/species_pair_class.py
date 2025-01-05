@@ -25,7 +25,7 @@ class SpeciesPairClass:
         """
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")
-
+    
         # As species is a dictionary, it needs to be flatted first        
         all_species = [species for category in scen_properties.species.values() for species in category]
 
@@ -77,6 +77,7 @@ class SpeciesPairClass:
             product_sym = species1.sym.multiply_elementwise(species2.sym).T
 
 
+
         # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 
         # derelicsts, etc.) We increment the eqs matrix with the gamma * phi * species1 * species2.
         for i in range(gammas.shape[1]):
@@ -126,13 +127,13 @@ class SpeciesPairClass:
                         # plt.colorbar()
                         # plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=10)
                         # plt.gca().invert_yaxis()
-                        # plt.show()
+                        # plt.savefig(f"figures/frag_spread/fragsMade2D_{source_sinks[i].sym_name}.png")
                         # print(f"eq: {eq}")
                     except Exception as e:
-                        if fragsMadeDV == 0:
+                        if np.any(fragsMadeDV == 0):
                             eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                             continue
-                        print(f"Error in creating debris matrix: {e}")
+                        # print(f"Error in creating debris matrix: {e}")
             else:
                 eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 
