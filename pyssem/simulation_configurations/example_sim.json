@@ -20,8 +20,11 @@
       "fragment_spreading": false, 
       "parallel_processing" : true,
       "baseline": false,
-      "indicator_variables": ["ca_man_struct_agg"]                          
+      "indicator_variables": ["active_loss_per_shell"]                          
     },
+    "plots" : [
+      "indicator_variables"
+    ],
     "species": [
       {
         "sym_name": "S",

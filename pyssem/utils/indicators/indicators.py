@@ -280,7 +280,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
                     if species.maneuverable:
                         ag_man_sat_totals += sp.Matrix(species.sym)
             ag_man_counts = ag_man_counts.multiply_elementwise(1 / ag_man_sat_totals)
-        spec_man_indc = make_indicator_struct(scen_properties, ind_name, "manual", None, ag_man_counts)
+        spec_man_indc = [make_indicator_struct(scen_properties, ind_name, "manual", None, ag_man_counts)]
     else: # if per spcies
         spec_man_indc = []
         for species_name, eq in ind_eqs.items():
@@ -351,7 +351,7 @@ def make_active_loss_per_shell(scen_properties, percentage, per_species):
                 ag_active_col_eqs += col_ind.eqs
 
         if not percentage:
-            indicator_var = make_indicator_struct(dummy_obj, "active_aggregate_collisions", "manual", None, ag_active_col_eqs)
+            indicator_var = [make_indicator_struct(dummy_obj, "active_aggregate_collisions", "manual", None, ag_active_col_eqs)]
         else:
             ag_active_sat_totals = sp.zeros(scen_properties.n_shells, 1)
             for species_group in scen_properties.species.values():
@@ -360,7 +360,7 @@ def make_active_loss_per_shell(scen_properties, percentage, per_species):
                         ag_active_sat_totals += species.sym
             
             perc_eqs = 100 * ag_active_col_eqs.multiply_elementwise(sp.Matrix(ag_active_sat_totals).applyfunc(lambda x: 1 / x))
-            indicator_var = make_indicator_struct(dummy_obj, "active_aggregate_collisions_percentage", "manual", None, perc_eqs)
+            indicator_var = [make_indicator_struct(dummy_obj, "active_aggregate_collisions_percentage", "manual", None, perc_eqs)]
     
     return indicator_var
 

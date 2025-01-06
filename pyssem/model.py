@@ -9,11 +9,7 @@
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import create_plots, results_to_json
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import create_plots
+from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
 import os
@@ -165,20 +161,6 @@ class Model:
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
-        
-    def create_plots(self):
-        """
-        Create plots for the simulation results.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.
-        """
-        if not isinstance(self.scenario_properties, ScenarioProperties):
-            raise ValueError("Invalid scenario properties provided.")
-        try:
-            create_plots(self)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create plots: {str(e)}")
     
     def results_to_json(self):
         """
@@ -223,4 +205,9 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    model.create_plots()
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names)
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")

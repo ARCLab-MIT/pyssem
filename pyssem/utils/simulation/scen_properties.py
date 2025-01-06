@@ -285,7 +285,7 @@ class ScenarioProperties:
                                                                             per_species=False, per_spacecraft=False))
                 elif indicator == "active_loss_per_shell":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
-                                                                                    percentage = True, 
+                                                                                    percentage = False, 
                                                                                     per_species = False))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
@@ -521,13 +521,14 @@ class ScenarioProperties:
         # Indicator Variables
         # Evaluate non-indicator variables using states
         if hasattr(self, 'indicator_variables_list'):
+            print("Evaluating post-processed indicator variables...")
             self.indicator_results['indicators'] = {}
 
             for i in self.indicator_variables_list:
                 # Convert the symbolic equations into a callable function
                 for indicator_var in i:
-                    indicator_fun = sp.lambdify(self.all_symbolic_vars, indicator_var.eqs, 'numpy')
-
+                    simplified_eqs = sp.simplify(indicator_var.eqs)
+                    indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
                     evaluated_indicator_dict = {}
 
                     # Iterate over states (rows in y) and corresponding time steps (t)
