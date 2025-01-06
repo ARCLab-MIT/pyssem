@@ -2,20 +2,29 @@
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
 # from .utils.plotting.plotting import create_plots, results_to_json
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import create_plots, results_to_json
+from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
 import os
 import pickle
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 
 class Model:
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp=None,
-                        fragment_spreading=True, parallel_processing=False, baseline=False):
+                        n_shells, launch_function, integrator, density_model, LC, 
+                        v_imp=None,
+                        fragment_spreading=True, parallel_processing=False, baseline=False, 
+                        indicator_variables=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -56,6 +65,8 @@ class Model:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
+            if not isinstance(v_imp, (int, float)):
+                raise ValueError("v_imp must be a numeric type.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -69,14 +80,12 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp,
+                v_imp=scenario_props.get("v_imp", None),
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
-                baseline=baseline
+                baseline=baseline,
+                indicator_variables=indicator_variables
             )
-
-            # Define parameters needed at Model level
-            self.baseline = baseline
             
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
@@ -98,7 +107,7 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
@@ -115,8 +124,9 @@ class Model:
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
-            # Merge elliptical back to main species
-            # species_list.merge_elliptical_to_main()
+            # Create Indicator Variables if provided
+            if self.scenario_properties.indicator_variables is not None:
+                self.scenario_properties.build_indicator_variables()
 
             return species_list
         except json.JSONDecodeError:
@@ -138,32 +148,19 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+            
+            # CSI Index
+            # self.scenario_properties.cum_CSI()
 
-            # save the scenario properties to a pickle file
+            # save self as a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
-            
-            return self.scenario_properties
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
-        
-    def create_plots(self):
-        """
-        Create plots for the simulation results.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.
-        """
-        if not isinstance(self.scenario_properties, ScenarioProperties):
-            raise ValueError("Invalid scenario properties provided.")
-        try:
-            create_plots(self)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create plots: {str(e)}")
     
     def results_to_json(self):
         """
@@ -176,10 +173,9 @@ class Model:
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
 
-
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -196,10 +192,11 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None),
-        fragment_spreading=scenario_props.get("fragment_spreading", True),
-        parallel_processing=scenario_props.get("parallel_processing", False),
-        baseline=scenario_props.get("baseline", False)
+        v_imp = scenario_props.get("v_imp", None), 
+        fragment_spreading=scenario_props.get("fragment_spreading", False),
+        parallel_processing=scenario_props.get("parallel_processing", True),
+        baseline=scenario_props.get("baseline", False),
+        indicator_variables=scenario_props.get("indicator_variables", None)
     )
 
     species = simulation_data["species"]
@@ -208,4 +205,9 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    model.create_plots()
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names)
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")
