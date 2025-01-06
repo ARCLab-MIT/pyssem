@@ -19,7 +19,7 @@
         "baseline": false,
         "fragment_spreading": false, 
         "parallel_processing": false,
-        "indicator_variables": ["ca_man_struct_agg"]
+        "indicator_variables": ["ca_man_struct"]
     },
     "simulation_name": "Indigo",
     "species": [

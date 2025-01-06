@@ -282,7 +282,7 @@ class ScenarioProperties:
                                                                             per_species=True, per_spacecraft=True))
                 elif indicator == "ca_man_struct_agg":
                     self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", 
-                                                                            per_species=True, per_spacecraft=False))
+                                                                            per_species=False, per_spacecraft=False))
                 elif indicator == "active_loss_per_shell":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
@@ -429,11 +429,8 @@ class ScenarioProperties:
                 indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
                 self.full_lambda.extend(indicator_pad)
 
-        # Lambdify the non-integrated indicator variables 
-        # if hasattr(self, 'indicator_variables_list'):
-        #     for ind_var in self.indicator_var_list:
+        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
                 
-        
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
             self.full_drag = self.drag_term_upper + self.drag_term_cur

@@ -19,7 +19,7 @@
       "v_imp": 10.0,
       "fragment_spreading": false, 
       "parallel_processing" : true,
-      "baseline": true,
+      "baseline": false,
       "indicator_variables": ["ca_man_struct_agg"]                          
     },
     "species": [
@@ -88,7 +88,7 @@
         "mass": 6,
         "radius": 0.105550206,
         "A": 0.035,
-        "active": false,
+        "active": true,
         "maneuverable": false,
         "deltat": 3,
         "Pm": 0,
