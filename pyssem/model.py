@@ -20,6 +20,26 @@ import pandas as pd
 
 
 class Model:
+    """
+    A class to represent a simulation model for pySSEM.
+
+    Attributes:
+        start_date (str): Start date of the simulation.
+        simulation_duration (int): Duration of the simulation in days.
+        steps (int): Number of simulation steps.
+        min_altitude (int): Minimum altitude for the simulation in meters.
+        max_altitude (int): Maximum altitude for the simulation in meters.
+        n_shells (int): Number of altitude shells in the simulation.
+        launch_function (str): Type of launch function used (e.g., "Constant").
+        integrator (str): Numerical integration method (e.g., "BDF").
+        density_model (str): Atmospheric density model (e.g., "static_exp_dens_func").
+        LC (float): Launch coefficient.
+        v_imp (float, optional): Impact velocity of objects in m/s.
+        fragment_spreading (bool, optional): Enable/disable fragment spreading.
+        parallel_processing (bool, optional): Use parallel processing if True.
+        baseline (bool, optional): If True, assumes no further launches.
+        indicator_variables (dict, optional): Additional indicator variables for the model.
+    """
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
                         n_shells, launch_function, integrator, density_model, LC, 
                         v_imp=None,
@@ -28,25 +48,25 @@ class Model:
         """
         Initialize the scenario properties for the simulation model.
 
-        Parameters:
-        - start_date (str): Start date of the simulation in MM/DD/YYYY format.
-        - simulation_duration (int): Duration of the simulation in days.
-        - steps (int): Number of steps in the simulation.
-        - min_altitude (int): Minimum altitude in meters.
-        - max_altitude (int): Maximum altitude in meters.
-        - n_shells (int): Number of shells in the simulation.
-        - launch_function (str): Type of launch function (e.g., "Constant").
-        - integrator (str): Type of integrator to use (e.g., "BDF").
-        - density_model (str): Density model to use ("static_exp_dens_func").
-        - LC (float): Coefficient related to launch (unitless).
-        - v_imp (float): Impact velocity of objects in m/s.
-        - _return (bool): Whether to return the scenario properties object.
+        Args:
+            start_date (str): Start date of the simulation in MM/DD/YYYY format.
+            simulation_duration (int): Duration of the simulation in days.
+            steps (int): Number of steps in the simulation.
+            min_altitude (int): Minimum altitude in meters.
+            max_altitude (int): Maximum altitude in meters.
+            n_shells (int): Number of shells in the simulation.
+            launch_function (str): Type of launch function (e.g., "Constant").
+            integrator (str): Type of integrator to use (e.g., "BDF").
+            density_model (str): Density model to use ("static_exp_dens_func").
+            LC (float): Coefficient related to launch (unitless).
+            v_imp (float, optional): Impact velocity of objects in m/s.
+            fragment_spreading (bool, optional): Whether to enable fragment spreading.
+            parallel_processing (bool, optional): Enable parallel processing.
+            baseline (bool, optional): Use baseline assumptions (no further launches).
+            indicator_variables (dict, optional): Additional indicator variables for the model.
 
-        Returns:
-        ScenarioProperties: An initialized scenario properties object.
-        
         Raises:
-        ValueError: If any parameters are of incorrect type or invalid value.
+            ValueError: If any parameters are of incorrect type or invalid value.
         """
         try:
             # Validate and convert start_date
@@ -92,14 +112,20 @@ class Model:
         
     def configure_species(self, species_json):
         """
-        Configure species into Species objects from JSON. This will pass the multiple species and split them, creating the symbolic variables.
-        Then pairs the debris and active species for PMD modeling.Finally, it will create the collision pairs between the species to enable the simulation.
-        
-        Parameters:
-        - species_json (dict): JSON object containing species data.
+        Configure species into `Species` objects from a JSON file.
+
+        This method processes the multiple species, splits them, creates symbolic variables,
+        pairs debris and active species for Post-Mission Disposal (PMD) modeling, and
+        creates collision pairs between the species for simulation.
+
+        Args:
+            species_json (dict): JSON object containing species data.
 
         Returns:
-        - Species: A configured species object.
+            Species: A configured `Species` object.
+
+        Raises:
+            ValueError: If the JSON is invalid or an error occurs during configuration.
         """
         try:
             species_list = Species()
@@ -137,12 +163,14 @@ class Model:
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.item
+
+        This method initializes the population, builds the model, and runs the simulation.
 
         Returns:
-        - Result of the simulation.
+            None
+
+        Raises:
+            RuntimeError: If an error occurs while running the simulation.
         """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
@@ -165,6 +193,12 @@ class Model:
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
+
+        Returns:
+            dict: JSON representation of the simulation results.
+
+        Raises:
+            RuntimeError: If an error occurs during the conversion process.
         """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
