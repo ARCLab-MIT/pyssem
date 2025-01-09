@@ -183,7 +183,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
         "Station-keeping Satellite": "Su",
         "Coordinated Satellite": "S",
         "Debris": "N",
-        "Candidate Satellite": "C"
+        "Candidate Satellite": "S"
     }
 
     T['species_class'] = T['obj_class'].map(species_dict)

@@ -19,11 +19,11 @@
       "v_imp": 10.0,
       "fragment_spreading": false, 
       "parallel_processing" : true,
-      "baseline": false,
+      "baseline": true,
       "indicator_variables": ["active_loss_per_shell"]                          
     },
     "plots" : [
-      "indicator_variables"
+      "all_plots"
     ],
     "species": [
       {
