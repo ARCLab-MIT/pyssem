@@ -287,6 +287,18 @@ class ScenarioProperties:
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = False, 
                                                                                     per_species = False))
+                elif indicator == "active_loss_per_shell_percentage":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = True, 
+                                                                                    per_species = False))
+                elif indicator == "active_loss_per_species":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True))
+                elif indicator == "active_loss_per_species_percentage":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = True, 
+                                                                                    per_species = True))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         

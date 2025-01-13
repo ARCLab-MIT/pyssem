@@ -19,8 +19,8 @@
       "v_imp": 10.0,
       "fragment_spreading": false, 
       "parallel_processing" : true,
-      "baseline": true,
-      "indicator_variables": ["active_loss_per_shell"]                          
+      "baseline": false,
+      "indicator_variables": ["active_loss_per_shell", "active_loss_per_shell_percentage", "active_loss_per_species", "active_loss_per_species_percentage"]                          
     },
     "plots" : [
       "all_plots"
