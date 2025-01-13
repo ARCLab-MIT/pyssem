@@ -10,3 +10,4 @@ bs4
 matplotlib
 loky
 imageio
+sphinx_rtd_theme

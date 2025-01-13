@@ -1,7 +1,7 @@
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
-# from .utils.plotting.plotting import create_plots, results_to_json
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
+from .utils.plotting.plotting import create_plots, results_to_json
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
@@ -12,33 +12,59 @@ from datetime import datetime
 import json
 import os
 import pickle
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 
 class Model:
+    """
+    A class to represent a simulation model for pySSEM.
+
+    Attributes:
+        start_date (str): Start date of the simulation.
+        simulation_duration (int): Duration of the simulation in days.
+        steps (int): Number of simulation steps.
+        min_altitude (int): Minimum altitude for the simulation in meters.
+        max_altitude (int): Maximum altitude for the simulation in meters.
+        n_shells (int): Number of altitude shells in the simulation.
+        launch_function (str): Type of launch function used (e.g., "Constant").
+        integrator (str): Numerical integration method (e.g., "BDF").
+        density_model (str): Atmospheric density model (e.g., "static_exp_dens_func").
+        LC (float): Launch coefficient.
+        v_imp (float, optional): Impact velocity of objects in m/s.
+        fragment_spreading (bool, optional): Enable/disable fragment spreading.
+        parallel_processing (bool, optional): Use parallel processing if True.
+        baseline (bool, optional): If True, assumes no further launches.
+        indicator_variables (dict, optional): Additional indicator variables for the model.
+    """
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp=None,
-                        fragment_spreading=True, parallel_processing=False, baseline=False):
+                        n_shells, launch_function, integrator, density_model, LC, 
+                        v_imp=None,
+                        fragment_spreading=True, parallel_processing=False, baseline=False, 
+                        indicator_variables=None):
         """
         Initialize the scenario properties for the simulation model.
 
-        Parameters:
-        - start_date (str): Start date of the simulation in MM/DD/YYYY format.
-        - simulation_duration (int): Duration of the simulation in days.
-        - steps (int): Number of steps in the simulation.
-        - min_altitude (int): Minimum altitude in meters.
-        - max_altitude (int): Maximum altitude in meters.
-        - n_shells (int): Number of shells in the simulation.
-        - launch_function (str): Type of launch function (e.g., "Constant").
-        - integrator (str): Type of integrator to use (e.g., "BDF").
-        - density_model (str): Density model to use ("static_exp_dens_func").
-        - LC (float): Coefficient related to launch (unitless).
-        - v_imp (float): Impact velocity of objects in m/s.
-        - _return (bool): Whether to return the scenario properties object.
+        Args:
+            start_date (str): Start date of the simulation in MM/DD/YYYY format.
+            simulation_duration (int): Duration of the simulation in days.
+            steps (int): Number of steps in the simulation.
+            min_altitude (int): Minimum altitude in meters.
+            max_altitude (int): Maximum altitude in meters.
+            n_shells (int): Number of shells in the simulation.
+            launch_function (str): Type of launch function (e.g., "Constant").
+            integrator (str): Type of integrator to use (e.g., "BDF").
+            density_model (str): Density model to use ("static_exp_dens_func").
+            LC (float): Coefficient related to launch (unitless).
+            v_imp (float, optional): Impact velocity of objects in m/s.
+            fragment_spreading (bool, optional): Whether to enable fragment spreading.
+            parallel_processing (bool, optional): Enable parallel processing.
+            baseline (bool, optional): Use baseline assumptions (no further launches).
+            indicator_variables (dict, optional): Additional indicator variables for the model.
 
-        Returns:
-        ScenarioProperties: An initialized scenario properties object.
-        
         Raises:
-        ValueError: If any parameters are of incorrect type or invalid value.
+            ValueError: If any parameters are of incorrect type or invalid value.
         """
         try:
             # Validate and convert start_date
@@ -57,6 +83,8 @@ class Model:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
+            if not isinstance(v_imp, (int, float)):
+                raise ValueError("v_imp must be a numeric type.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -70,28 +98,32 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=v_imp,
+                v_imp=scenario_props.get("v_imp", None),
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
-                baseline=baseline
+                baseline=baseline,
+                indicator_variables=indicator_variables
             )
-
-            # Define parameters needed at Model level
-            self.baseline = baseline
             
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
         
     def configure_species(self, species_json):
         """
-        Configure species into Species objects from JSON. This will pass the multiple species and split them, creating the symbolic variables.
-        Then pairs the debris and active species for PMD modeling.Finally, it will create the collision pairs between the species to enable the simulation.
-        
-        Parameters:
-        - species_json (dict): JSON object containing species data.
+        Configure species into `Species` objects from a JSON file.
+
+        This method processes the multiple species, splits them, creates symbolic variables,
+        pairs debris and active species for Post-Mission Disposal (PMD) modeling, and
+        creates collision pairs between the species for simulation.
+
+        Args:
+            species_json (dict): JSON object containing species data.
 
         Returns:
-        - Species: A configured species object.
+            Species: A configured `Species` object.
+
+        Raises:
+            ValueError: If the JSON is invalid or an error occurs during configuration.
         """
         try:
             species_list = Species()
@@ -112,6 +144,13 @@ class Model:
 
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
+
+            # Create Collision Pairs
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+
+            # Create Indicator Variables if provided
+            if self.scenario_properties.indicator_variables is not None:
+                self.scenario_properties.build_indicator_variables()
 
             return species_list
         except json.JSONDecodeError:
@@ -136,22 +175,27 @@ class Model:
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.item
+
+        This method initializes the population, builds the model, and runs the simulation.
 
         Returns:
-        - Result of the simulation.
+            None
+
+        Raises:
+            RuntimeError: If an error occurs while running the simulation.
         """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+            
+            # CSI Index
+            # self.scenario_properties.cum_CSI()
 
-            # save the scenario properties to a pickle file
+            # save self as a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
 
                 # first remove the lambdified equations as pickle cannot serialize them
@@ -160,8 +204,6 @@ class Model:
                 self.scenario_properties.full_lambda_flattened = None
             
                 pickle.dump(self.scenario_properties, f)
-            
-            return self.scenario_properties
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -229,6 +271,12 @@ class Model:
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
+
+        Returns:
+            dict: JSON representation of the simulation results.
+
+        Raises:
+            RuntimeError: If an error occurs during the conversion process.
         """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
@@ -237,10 +285,9 @@ class Model:
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
 
-
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -257,10 +304,11 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None),
-        fragment_spreading=scenario_props.get("fragment_spreading", True),
-        parallel_processing=scenario_props.get("parallel_processing", False),
-        baseline=scenario_props.get("baseline", False)
+        v_imp = scenario_props.get("v_imp", None), 
+        fragment_spreading=scenario_props.get("fragment_spreading", False),
+        parallel_processing=scenario_props.get("parallel_processing", True),
+        baseline=scenario_props.get("baseline", False),
+        indicator_variables=scenario_props.get("indicator_variables", None)
     )
 
     species = simulation_data["species"]
@@ -269,54 +317,9 @@ if __name__ == "__main__":
 
     model.calculate_collisions()
 
-    model.run_model()
-    model.create_plots()
-
-    # model.initial_population()
-    # model.build_model()
-
-    # times = [0, 2.5, 5, 7.5, 10]
-
-    # # x0 = np.array([   1,    2,   11,   31,   83,  130,  171,  133,  238,   96,   99,
-    # #     189,   53,   17,   25,    9,   20,  368,  239,   26,    9,   41,
-    # #      98,  373, 2294,  301,   63,   46,   94,   11,   35,    1,   22,
-    # #      10,  357,    0,    2,    0,   19,    0,    4,   24,   72,  142,
-    # #     214,  374,  588, 1083, 1575, 1449,  783,  605,  369,  268,  144,
-    # #     260,  140,  166,  264,  202])
-    
-    # lam = [[0.2], [0.4], [2.2], [6.2], [16.6], [26.0], [34.2], [26.6], [47.6], [19.200000000000003], [19.8], [37.800000000000004], [10.600000000000001], [3.4000000000000004], [5.0], [1.8], [4.0], [73.60000000000001], [47.800000000000004], [5.2], [0.05], [0.1], [0.55], [1.55], [4.15], [6.5], [8.55], [6.65], [11.9], [4.800000000000001], [4.95], [9.450000000000001], [2.6500000000000004], [0.8500000000000001], [1.25], [0.45], [1.0], [18.400000000000002], [11.950000000000001], [1.3], 
-    #        None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-
-    # lam_flat = [item[0] if item is not None else 0 for item in lam]
-
-    # output = model.propagate(times, model.scenario_properties.x0.T.values.flatten(), lam)
-
-    # print(output)
-
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(10, 6))
-
-    # # Plot x0
-    # plt.plot(model.scenario_properties.x0.T.values.flatten(), label='x0', linestyle='-', marker='o')
-
-    # # Plot lam
-    # plt.plot(lam_flat, label='lam', linestyle='--', marker='x')
-
-    # # Plot output
-    # plt.plot(output[1], label='output', linestyle='-.', marker='s')
-
-    # # Add labels and title
-    # plt.xlabel('Index')
-    # plt.ylabel('Value')
-    # plt.title('Plot of x0, lam, and output')
-    # plt.legend()
-
-    # # Show the plot
-    # plt.show()
-
-    # print(output)
-
-    
-
-    #results = model.run_model()
-    # model.create_plots()
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names)
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")
