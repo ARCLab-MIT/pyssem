@@ -42,7 +42,10 @@
             "slotting_effectiveness": 0,
             "sym_name": "Su",
             "trackable": true,
-            "control_func": "control_launch_sym"
+            "control_func": "control_launch_sym",
+            "country": "USA",
+            "mission_type": "military",
+            "mission_objective": "defense"
         },
         {
             "sym_name": "N",
@@ -63,7 +66,10 @@
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_none",
             "drag_func": "drag_func_exp",
-            "control_func": "control_adr_sym"
+            "control_func": "control_adr_sym",
+            "country": "China",
+            "mission_type": "civil",
+            "mission_objective": "weather"
         }
     ],
     "status": "not started"

@@ -92,6 +92,11 @@ class SpeciesProperties:
         self.ecc_lb = 0
         self.ecc_ub = 1
 
+        # Policy
+        self.country = None # U.S., China, Europe, etc.
+        self.mission_type = None # Civil, defense, commercial.
+        self.mission_objective = None # Communication, weather, remote sensing, navigation, military, etc.
+
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
             for key, value in properties_json.items():
