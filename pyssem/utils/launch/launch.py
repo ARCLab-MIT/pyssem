@@ -423,6 +423,9 @@ def SEP_traffic_model(scen_properties, file_path):
     # Fill remaining NaNs with 0
     x0_summary.fillna(0, inplace=True)
 
+    if scen_properties.baseline:
+        return x0_summary, None
+
     # Future Launch Model (updated)
     flm_steps = pd.DataFrame()
 

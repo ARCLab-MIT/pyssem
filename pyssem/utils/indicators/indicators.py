@@ -330,7 +330,7 @@ def make_active_loss_per_shell(scen_properties, percentage, per_species, per_pai
                 
                         if per_pair:
                             # if per pair make the indicator now rather than summing 
-                            spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_1_name}_{species_2_name}_pair_collisions", "manual", [species], col_indicator.eqs)
+                            spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_1_name}__{species_2_name}_pair_collisions", "manual", [species], col_indicator.eqs)
                             all_col_indicators.append(spec_ag_col_indc)
 
                         else:

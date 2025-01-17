@@ -66,6 +66,41 @@ def densityexp(h):
 
     return p
 
+
+def densityexp_jbvalues(h):
+    """
+    Returns interpolated atmospheric density values based on reference altitudes and densities.
+
+    Args:
+        h (np.array): Altitude(s) in km.
+
+    Returns:
+        np.ndarray: Atmospheric density in kg/km^3.
+    """
+    h = np.array(h)
+
+    # Reference altitudes (km) and corresponding densities (kg/km^3)
+    ref_altitudes = np.arange(200, 2001, 50)
+    ref_densities = np.array([
+        2.583811e-10, 5.520264e-11, 1.534066e-11, 4.964659e-12,
+        1.760085e-12, 6.636416e-13, 2.637648e-13, 1.110813e-13,
+        5.034028e-14, 2.496753e-14, 1.375360e-14, 8.467861e-15,
+        5.746924e-15, 4.183609e-15, 3.185043e-15, 2.492537e-15,
+        1.983579e-15, 1.608618e-15, 1.333113e-15, 1.123039e-15,
+        9.574195e-16, 8.229503e-16, 7.110234e-16, 6.276950e-16,
+        5.557886e-16, 4.923830e-16, 4.358694e-16, 3.862553e-16,
+        3.435880e-16, 3.068270e-16, 2.750936e-16, 2.476455e-16,
+        2.238544e-16, 2.031884e-16, 1.851967e-16, 1.694964e-16,
+        1.557627e-16])
+
+    # Linear interpolation of log-density for smoothness
+    log_densities = np.log(ref_densities)
+    interp_logs = np.interp(h, ref_altitudes, log_densities, left=np.nan, right=np.nan)
+    densities = np.exp(interp_logs)
+
+    return densities
+
+
 def drag_func_none(t, species, scen_properties):
     """
     Drag function for species with no drag. Returns a zero matrix.
@@ -136,7 +171,11 @@ def static_exp_dens_func(t, h, species, scen_properties):
     :param scen_properties: _description_
     :type scen_properties: _type_
     """
-    return densityexp(h)
+    val = densityexp_jbvalues(h)
+
+    old = densityexp(h)
+
+    return val
 
 def preload_density_data(file_path):
     with open(file_path, 'r') as file:

@@ -34,6 +34,7 @@ def _process_sp_pair(args):
     sp_pair.fragments_sd   = fragments_3d.sum(axis=2)             # → (S, D)
     with np.errstate(divide='ignore', invalid='ignore'):
         dist_sde = fragments_3d / sp_pair.fragments_sd[:, :, None] # → (S, D, E)
+    
     # replace any NaNs (from 0/0) with 0
     sp_pair.ecc_distribution_sde = np.nan_to_num(dist_sde, nan=0.0, posinf=0.0, neginf=0.0)
 

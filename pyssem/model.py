@@ -154,6 +154,9 @@ class Model:
             # self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
+            # with open('scenario-properties-baseline-collisions.pkl', 'wb') as f:
+            #     pickle.dump(self.scenario_properties, f)
+
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 self.scenario_properties.build_indicator_variables()     
@@ -194,9 +197,6 @@ class Model:
             # save self as a pickle file - first drop the launch as it can't be pickled
             self.scenario_properties.coll_eqs_lambd = None
             self.scenario_properties.equations = None
-
-            with open('scenario-properties-baseline-SEP2.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -220,7 +220,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'SEP1.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
