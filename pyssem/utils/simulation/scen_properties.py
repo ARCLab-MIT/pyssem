@@ -308,6 +308,35 @@ class ScenarioProperties:
             self.indicator_variables = None
             self.indicator_variables_list = []
             return
+        
+    def configure_active_satellite_loss(self, fringe_satellites):
+        """
+            This will find the equations that have been created by the active_loss_per_species, then lambdify the equations and save them separately. 
+
+            This function is normally required for the OPUS model.
+
+            Parameters:
+                fringe_satellites (str): Fringe Satellite Name
+        """
+
+        fringe_satellite_items = [
+            item for sublist in self.indicator_variables_list for item in sublist 
+            if item.name.startswith("Su")
+        ]
+
+        # there should only be one item
+        if len(fringe_satellite_items) != 1:
+            raise ValueError("There should only be one fringe satellite. Multiple found.")
+        
+        fringe_satellite_items = fringe_satellite_items[0].eqs
+
+        # Lambdify the equations
+        simplified_eqs = sp.simplify(fringe_satellite_items)
+        self.fringe_active_loss = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+        
+        return
+
+        
 
     def initial_pop_and_launch(self, baseline=False):
         """

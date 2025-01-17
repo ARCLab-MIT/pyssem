@@ -1,12 +1,12 @@
 from .utils.simulation.scen_properties import ScenarioProperties
 from .utils.simulation.species import Species
 from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import create_plots, results_to_json
+from .utils.plotting.plotting import Plots, results_to_json
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import create_plots, results_to_json
+# from utils.simulation.scen_properties import ScenarioProperties
+# from utils.simulation.species import Species
+# from utils.collisions.collisions import create_collision_pairs
+# from utils.plotting.plotting import results_to_json, Plots
 import numpy as np
 from datetime import datetime
 import json
@@ -98,7 +98,7 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=scenario_props.get("v_imp", None),
+                v_imp=v_imp,
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
                 baseline=baseline,
@@ -171,6 +171,39 @@ class Model:
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
         except Exception as e:
             raise ValueError(f"An error occurred calculating collisions: {str(e)}")
+        
+    def opus_active_loss_setup(self, fringe_species):
+        """
+        The OPUS economic model requires an indicator variable to be correctly configured: "actactive_loss_per_species" to be a proxy for probability of collision. 
+
+        This function find the correct economic indicator, lambdify the equations for numpy, then add it to its own variable for easy access.
+
+        Parameters:
+        - fringe_species (str): The fringe satellite name that is going to be used for the active satellites
+        - scenario_properties (ScenarioProperties): Scenario properties object.
+
+        Returns:
+        - None
+
+        Raises:
+        - ValueError: If the fringe species is not found in the species list.
+        - TypeError: If scenario_properties is not passed
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise TypeError("Invalid scenario properties provided.")
+        if fringe_species not in self.scenario_properties.species_names:
+            raise ValueError(f"Invalid fringe species provided: {fringe_species}. Please ensure that a fringe species name is provided in the configuration JSON.")
+        if self.scenario_properties.indicator_variables is None:
+            raise NameError("Indicator variables not found. Please ensure that the indicator variables are provided in the configuration JSON. If you are an OPUS user please use 'active_loss_per_species'")
+        
+        try:
+            self.scenario_properties.configure_active_satellite_loss(fringe_species)
+        except Exception as e:
+            raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
+        
+
+
 
     def run_model(self):
         """
@@ -253,21 +286,7 @@ class Model:
             return results
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
-                                                           
-    def create_plots(self):
-        """
-        Create plots for the simulation results.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.
-        """
-        if not isinstance(self.scenario_properties, ScenarioProperties):
-            raise ValueError("Invalid scenario properties provided.")
-        try:
-            create_plots(self)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create plots: {str(e)}")
-    
+                                                        
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
@@ -287,7 +306,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'example_sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -315,11 +334,15 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    model.calculate_collisions()
+    model.opus_active_loss_setup("Su")
 
-    try:
-        plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names)
-    except Exception as e:
-        print(e)
-        print("No plots specified in the simulation configuration file.")
+    # model.build_model()
+
+    # model.run_model()
+
+    # try:
+    #     plot_names = simulation_data["plots"]
+    #     Plots(model.scenario_properties, plot_names)
+    # except Exception as e:
+    #     print(e)
+        # print("No plots specified in the simulation configuration file.")
