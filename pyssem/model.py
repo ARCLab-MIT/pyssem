@@ -1,13 +1,15 @@
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import *
+from .utils.plotting.plotting import create_plots, results_to_json
+from .utils.optimizer.optimizer import run_optimizer
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import *
-from utils.optimizer.optimizer import run_optimizer
+# from utils.simulation.scen_properties import ScenarioProperties
+# from utils.simulation.species import Species
+# from utils.collisions.collisions import *
+# from utils.optimizer.optimizer import run_optimizer
+# from utils.plotting.plotting import create_plots, results_to_json
 from datetime import datetime
-from utils.plotting.plotting import create_plots, results_to_json
 import json
 import os
 import pickle
