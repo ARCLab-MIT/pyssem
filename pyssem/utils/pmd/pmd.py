@@ -36,9 +36,11 @@ def pmd_func_sat(t, h, species_properties, scen_properties):
     Cpmddot = zeros(scen_properties.n_shells, 1)
     
     # Iterate over each shell and calculate the PMD rate
-    for k in range(scen_properties.n_shells):
-        Cpmddot[k, 0] = (-1 / species_properties.deltat) * species_properties.sym[k]
-    
+    try:
+        for k in range(scen_properties.n_shells):
+            Cpmddot[k, 0] = (-1 / species_properties.deltat) * species_properties.sym[k]
+    except Exception as e:
+        print(f"Error in pmd_func_sat: {e}")
     return Cpmddot
 
 def pmd_func_derelict(t, h, species_properties, scen_properties):

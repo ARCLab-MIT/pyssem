@@ -228,18 +228,22 @@ class Species:
         return species_list
     
     def set_mass_bounds(self, species_list):
-        species_list.sort(key=lambda x: x.mass) # sorts by mass
+        species_list.sort(key=lambda x: x.mass)  # sorts by mass
 
-        for i in range(len(species_list)):
-            if i == 0:
-                species_list[i].mass_lb = 0
-                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
-            elif i == len(species_list) - 1:
-                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-            else:
-                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
-                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-        
+        if len(species_list) == 1:
+            # In the case it is only one debris object, mass lb and ub are already set as maximum and minimum. 
+            return species_list
+        else:
+            for i in range(len(species_list)):
+                if i == 0:
+                    species_list[i].mass_lb = 0
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                elif i == len(species_list) - 1:
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+                else:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+
         return species_list
 
   

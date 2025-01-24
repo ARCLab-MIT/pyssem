@@ -37,10 +37,10 @@ def launch_func_null(t, h, species_properties, scen_properties):
 
     Lambdadot = zeros(scen_properties.n_shells, 1)
 
-    for k in range(scen_properties.n_shell):
+    for k in range(scen_properties.n_shells):
         Lambdadot[k, 0] = 0 * species_properties.sym[k]
 
-    Lambdadot_list = [Lambdadot[k, 0] for k in range(scen_properties.n_shell)]
+    Lambdadot_list = [Lambdadot[k, 0] for k in range(scen_properties.n_shells)]
 
     return Lambdadot_list
 
@@ -148,7 +148,7 @@ def find_bin_index(bin_edges, value):
             return i
     return -1  # Return an invalid index if not found
 
-def ADEPT_traffic_model(scen_properties, file_path):
+def ADEPT_traffic_model(scen_properties, file_path, baseline):
     """
     From an initial population and future model csv, this function will create for the starting population, 
     then one for each time step in the future model.
@@ -178,12 +178,16 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Map species type based on object class
     species_dict = {
+<<<<<<< HEAD
         "Non-station-keeping Satellite": "S",
+=======
+        "Non-station-keeping Satellite": "Su",
+>>>>>>> opus
         "Rocket Body": "B",
         "Station-keeping Satellite": "S",
         "Coordinated Satellite": "S",
         "Debris": "N",
-        "Candidate Satellite": "C"
+        "Candidate Satellite": "S"
     }
 
     T['species_class'] = T['obj_class'].map(species_dict)
@@ -204,6 +208,35 @@ def ADEPT_traffic_model(scen_properties, file_path):
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                 T_new = pd.concat([T_new, T_obj_class])
+<<<<<<< HEAD
+=======
+
+    # for obj_class in T['obj_class'].unique():
+    #     species_class = species_dict.get(obj_class)
+        
+    #     if species_class in scen_properties.species_cells:     
+    #         if species_class == 'B':
+    #             # Handle the case where species_class is 'B' and match by mass bin
+    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #             species_cells = scen_properties.species_cells[species_class]
+                      
+    #             T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
+                
+    #             T_new = pd.concat([T_new, T_obj_class])
+            
+    #         else:
+    #             # General case for all other species_class
+    #             if len(scen_properties.species_cells[species_class]) == 1:
+    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
+
+    #                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+    #                 T_new = pd.concat([T_new, T_obj_class])
+    #             else:
+    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #                 species_cells = scen_properties.species_cells[species_class]
+    #                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
+    #                 T_new = pd.concat([T_new, T_obj_class])
+>>>>>>> opus
 
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
@@ -214,7 +247,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
-    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_raw.csv'))
+    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
     # Create a pivot table, keep alt_bin
     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
@@ -230,6 +263,10 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
+
+    if baseline:
+        # No need to calculate the launch model
+        return x0_summary, None
 
     # Future Launch Model
     flm_steps = pd.DataFrame()
