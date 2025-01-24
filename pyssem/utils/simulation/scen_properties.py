@@ -639,7 +639,6 @@ class ScenarioProperties:
                             t_eval=times, method=self.integrator)
         
         if output.success:
-            print("Model successfully ran.")
             # Extract the results at the specified time points
             results_matrix = output.y.T  # Transpose to make it [time, variables]
             return results_matrix
