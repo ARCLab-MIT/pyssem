@@ -306,6 +306,9 @@ class Species:
             debris_species_template.radius = properties.radius
             debris_species_template.trackable = properties.trackable  # large debris is trackable
             debris_species_template.sym_name = f"N_{properties.mass}kg"
+            debris_species_template.country = properties.country
+            debris_species_template.mission_type = properties.mission_type
+            debris_species_template.mission_objective = properties.mission_objective
 
             self.species['debris'].append(debris_species_template)
 
@@ -398,7 +401,7 @@ class Species:
         # Assign matching debris increase for a species due to failed PMD
         for active_spec in active_species:
             found_mass_match_debris = False
-            spec_mass = active_spec.mass
+            spec_mass = active_spec.mass 
             
             for deb_spec in debris_species:
                 if spec_mass == deb_spec.mass:

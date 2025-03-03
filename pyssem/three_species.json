@@ -50,8 +50,8 @@
         {
             "sym_name": "N",
             "Cd": 2.2,
-            "mass": 16.90,
-            "radius": 0.3971,
+            "mass": [16.90, 5.0],
+            "radius": [0.3971, 0.1],
             "A": "Calculated based on radius",
             "active": false,
             "maneuverable": false,
@@ -67,9 +67,9 @@
             "pmd_func": "pmd_func_none",
             "drag_func": "drag_func_exp",
             "control_func": "control_adr_sym",
-            "country": "China",
-            "mission_type": "civil",
-            "mission_objective": "weather"
+            "country": ["China", "Russia"],
+            "mission_type": ["civil", "military"],
+            "mission_objective": ["weather", "defense"]
         }
     ],
     "status": "not started"
