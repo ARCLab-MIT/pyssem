@@ -402,6 +402,48 @@ def make_all_col_indicators(scen_properties):
     
     return all_col_indicators
 
+def make_umpy_indicator(scen_properties, X=4, indicator_name="umpy_indicator"):
+    """
+    Creates a UMPY indicator (vector of length n_shells) using a similar approach
+    to 'make_active_loss_per_shell'. This sums contributions from all species
+    in each shell, based on their masses, lifetimes, and symbolic population.
+
+    :param scen_properties: The scenario properties object
+    :param X: Exponent in the UMPY formula (default=4)
+    :param indicator_name: Name for the resulting indicator
+    :return: A list containing one IndicatorStruct, or multiple if you want per-species
+    """
+
+
+    # One aggregated vector eqs (n_shells x 1) summing across species
+    umpy_eqs = sp.zeros(scen_properties.n_shells, 1)
+
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            mass_i = species.mass
+
+            for shell_idx in range(scen_properties.n_shells):
+                if not species.active:
+                    # Usual UMPY formula for inactive species
+                    pop_ij  = species.sym[shell_idx]             # population in shell i
+                    life_ij = species.orbital_lifetimes[shell_idx]
+                    umpy_factor = ((sp.exp(X * (life_ij / scen_properties.simulation_duration)) - 1)
+                                / (sp.exp(X) - 1))
+                    umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / scen_properties.simulation_duration
+                else:
+                    # If active, just add zero
+                    umpy_eqs[shell_idx] += 0
+
+    umpy_indicator = make_indicator_struct(
+        scen_properties,
+        indicator_name,
+        "manual",
+        None,
+        umpy_eqs
+    )
+
+    return [umpy_indicator]
+
 def make_indicator_eqs(obj, ind_struct):
     """
     Helper method that creates the equations (eqs) for non-manual types and validates input.

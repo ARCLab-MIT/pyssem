@@ -2,10 +2,12 @@ from .utils.simulation.scen_properties import ScenarioProperties
 from .utils.simulation.species import Species
 from .utils.collisions.collisions import create_collision_pairs
 from .utils.plotting.plotting import Plots, results_to_json
+from .utils.drag.drag import calculate_orbital_lifetimes
 # if testing locally, use the following import statements
 # from utils.simulation.scen_properties import ScenarioProperties
 # from utils.simulation.species import Species
 # from utils.collisions.collisions import create_collision_pairs
+# from utils.drag.drag import calculate_orbital_lifetimes
 # from utils.plotting.plotting import results_to_json, Plots
 import numpy as np
 from datetime import datetime
@@ -150,6 +152,10 @@ class Model:
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
+                # Calculate Orbital Lifetimes if "umpy" is in the indicator variables
+                if "umpy" in self.scenario_properties.indicator_variables:
+                    self.scenario_properties.species = calculate_orbital_lifetimes(self.scenario_properties)
+
                 self.scenario_properties.build_indicator_variables()
 
             return species_list
@@ -201,9 +207,23 @@ class Model:
             self.scenario_properties.configure_active_satellite_loss(fringe_species)
         except Exception as e:
             raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
+    
+    def opus_umpy_calculation(self, state_matrix):
+        """
+        This will calculate the UMPY (Undisposed Mass Per Year metric). 
+        """
+        # First check that current self has 'umpy' within indicator_variables
+        if 'umpy' not in self.scenario_properties.indicator_variables:
+            raise ValueError("Indicator variable 'umpy' not found in the scenario properties. Please configure it in the MOCAT json.")
+
+        try:
+            umpy = self.scenario_properties.calculate_umpy_for_opus(state_matrix)
+            return umpy
+        except Exception as e:
+            raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
         
 
-
+        
 
     def run_model(self):
         """
@@ -306,7 +326,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -334,11 +354,13 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    model.opus_active_loss_setup("Su")
+    # model.opus_active_loss_setup("Su")
 
-    # model.build_model()
+    model.build_model()
 
-    # model.run_model()
+    model.run_model()
+
+    model.results_to_json()
 
     # try:
     #     plot_names = simulation_data["plots"]

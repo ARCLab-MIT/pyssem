@@ -299,6 +299,10 @@ class ScenarioProperties:
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
                                                                                     per_species = True))
+                elif indicator == "umpy":
+                    self.indicator_variables_list.append(make_umpy_indicator(self,
+                                                                             X=4
+                                                                             ))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         
@@ -335,8 +339,29 @@ class ScenarioProperties:
         self.fringe_active_loss = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
         
         return
+    
+    def calculate_umpy_for_opus(self, state_matrix):
+        """
+            Calculate the undispossed mass per year (UMPY) from the current state_matrix using indicator variables.
+        """
 
+        # if self.umpy_lambdified exists
+        if not hasattr(self, 'umpy_lambdified'):
+            # Get the index of umpy in list
+            umpy_index = self.indicator_variables.index("umpy")
+
+            # Use this index to get the indicator vars
+            umpy_eqs = self.indicator_variables_list[umpy_index][0].eqs
+            
+            # Simplify and Lambdify the equations
+            simplified_eqs = sp.simplify(umpy_eqs)
+            self.umpy_lambdified = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+
+        # Calculate the UMPY
+        umpy = self.umpy_lambdified(*state_matrix)
         
+        return umpy
+
 
     def initial_pop_and_launch(self, baseline=False):
         """
@@ -424,8 +449,6 @@ class ScenarioProperties:
 
         self.equations = sp.zeros(self.n_shells, self.species_length)      
         self.equations = self.full_Cdot_PMD + self.full_coll
-
-        
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: 
@@ -639,7 +662,6 @@ class ScenarioProperties:
                             t_eval=times, method=self.integrator)
         
         if output.success:
-            print("Model successfully ran.")
             # Extract the results at the specified time points
             results_matrix = output.y.T  # Transpose to make it [time, variables]
             return results_matrix
