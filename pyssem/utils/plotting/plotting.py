@@ -375,39 +375,39 @@ def results_to_json(self):
         """
         # Initialize the data dictionary
         data = {
-            "times": self.self.scenario_properties.output.t.tolist(),
-            "n_shells": self.self.scenario_properties.n_shells,
-            "species": [species for species in self.self.scenario_properties.species_names],
-            "Hmid": self.self.scenario_properties.HMid.tolist(),
-            "max_altitude": self.self.scenario_properties.max_altitude,
-            "min_altitude": self.self.scenario_properties.min_altitude,
+            "times": self.scenario_properties.output.t.tolist(),
+            "n_shells": self.scenario_properties.n_shells,
+            "species": [species for species in self.scenario_properties.species_names],
+            "Hmid": self.scenario_properties.HMid.tolist(),
+            "max_altitude": self.scenario_properties.max_altitude,
+            "min_altitude": self.scenario_properties.min_altitude,
             "population_data": [],
             "launch": []
         }
 
         # Extract relevant parts from the scenario properties for population data
-        num_species = len(self.self.scenario_properties.species_names)
-        num_time_steps = len(self.self.scenario_properties.output.t)
+        num_species = len(self.scenario_properties.species_names)
+        num_time_steps = len(self.scenario_properties.output.t)
 
         # Create a DataFrame to mimic the structure of FLM_steps
         df_data = {
-            'epoch_start_date': self.self.scenario_properties.output.t.tolist()
+            'epoch_start_date': self.scenario_properties.output.t.tolist()
         }
 
         # Initialize population data structure
-        population_data_dict = {species: [[0] * num_time_steps for _ in range(self.self.scenario_properties.n_shells)]
-                                for species in self.self.scenario_properties.species_names}
+        population_data_dict = {species: [[0] * num_time_steps for _ in range(self.scenario_properties.n_shells)]
+                                for species in self.scenario_properties.species_names}
 
         # Populate population data
         for i in range(num_species):
-            species = self.self.scenario_properties.species_names[i]
-            for j in range(self.self.scenario_properties.n_shells):
-                shell_index = i * self.self.scenario_properties.n_shells + j
-                population_data_dict[species][j] = self.self.scenario_properties.output.y[shell_index, :].tolist()
+            species = self.scenario_properties.species_names[i]
+            for j in range(self.scenario_properties.n_shells):
+                shell_index = i * self.scenario_properties.n_shells + j
+                population_data_dict[species][j] = self.scenario_properties.output.y[shell_index, :].tolist()
                 shell_data = {
                     "species": species,
                     "shell": j + 1,
-                    "populations": self.self.scenario_properties.output.y[shell_index, :].tolist()
+                    "populations": self.scenario_properties.output.y[shell_index, :].tolist()
                 }
                 data["population_data"].append(shell_data)
 
@@ -433,7 +433,10 @@ def results_to_json(self):
             })
 
         # Convert the dictionary to a JSON string
-        json_self.output = json.dumps(data, indent=4, default=str)  # Use default=str to handle datetime serialization
+        data = json.dumps(data, indent=4, default=str)
 
-        return json_self.output
+        # Save data to json file
+        with open('results.json', 'w') as f:
+            f.write(data)
+        return data
 
