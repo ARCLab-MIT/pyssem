@@ -161,7 +161,9 @@ class Model:
             # save the scenario properties to a pickle file
             # with open('scenario-properties-test-no-run.pkl', 'wb') as f:
             # with open('scenario-properties-test-no-run-mult.pkl', 'wb') as f:
-            # with open('scenario-properties-baseline-no-run.pkl', 'wb') as f:
+            # with open('scenario-properties-baseline-no-run_24_shells.pkl', 'wb') as f:
+            # with open('scenario-properties-baseline-no-run_14_shells.pkl', 'wb') as f:
+            # with open('scenario-properties-baseline-no-run_5_shells.pkl', 'wb') as f:
             with open('scenario-properties-test-no-run-policy.pkl', 'wb') as f:
             # with open('scenario-properties-test-opt.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
