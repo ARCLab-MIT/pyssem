@@ -109,6 +109,154 @@ def deltat_f1(t,const, active_species_indices, N_shell):
     return out
 
 #==========================================================================
+# Criticality/Capacity Metrics
+#==========================================================================
+def cum_CSI(obj, N_shell, baseline, R02):
+    # Reference values for normalization
+    M0 = 10000
+    D0 = 5e-8  # Arbitrarily chosen, may need revision
+    life0 = 1468
+    A0 = 1
+
+    # Cumulative CSI variables
+    cum_CSI_total = 0
+    species_csi = []
+
+    species_mass = []
+    species_area = []
+    total_objects_per_shell = np.zeros(N_shell)
+    total_mass_per_shell = np.zeros(N_shell)
+    total_area_per_shell = np.zeros(N_shell)
+    total_objects_per_species = np.zeros(len(baseline.species_names))
+    total_mass_per_species = np.zeros(len(baseline.species_names))
+    total_area_per_species = np.zeros(len(baseline.species_names))
+    
+    # Store species mass and area in lists by index
+    for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
+        for species_properties in species_list:
+            species_mass.append(species_properties.mass)
+            species_area.append(species_properties.A)
+
+    total_objects_per_shell = [0] * N_shell
+    total_mass_per_shell = [0] * N_shell
+    total_area_per_shell = [0] * N_shell
+
+    num_species = len(baseline.species_names)
+
+    # Store shell mass and area in lists by index
+    for species_index in range(num_species):
+        for shell_index in range(N_shell):
+            idx = shell_index + species_index * N_shell  # Corrected indexing
+            total_objects_per_shell[shell_index] += obj[idx]
+            total_mass_per_shell[shell_index] += obj[idx] * species_mass[species_index]
+            total_area_per_shell[shell_index] += obj[idx] * species_area[species_index]
+
+    # Calculate and sum CSI for each shell for total CSI
+    for shell_index in range(N_shell):
+        h = (R02[shell_index] + R02[shell_index + 1]) / 2
+        lifetime = 10 ** (14.18 * (h ** 0.1831) - 42.94)
+        M = total_mass_per_shell[shell_index]
+        r_inner = 6378 + R02[shell_index]
+        r_outer = 6378 + R02[shell_index + 1]
+        volume_outer = (4 / 3) * np.pi * (r_outer**3)
+        volume_inner = (4 / 3) * np.pi * (r_inner**3)
+        V = volume_outer - volume_inner
+        D = M / V
+        weighted_area = total_area_per_shell[shell_index] / total_objects_per_shell[shell_index]
+        cum_CSI_total += M / M0 * D / D0 * lifetime / life0 * weighted_area / A0
+        #cum_CSI_total += M / M0 * D / D0 * lifetime / life0
+
+    # Initialize storage arrays
+    total_objects_per_species = [0] * num_species
+    total_mass_per_species = [0] * num_species
+    total_area_per_species = [0] * num_species
+    species_csi = [0] * num_species  # Store cumulative CSI per species
+
+    # Calculate CSI for each species
+    for shell_index in range(N_shell):
+        # Compute shell-specific values
+        h = (R02[shell_index] + R02[shell_index + 1]) / 2  # Midpoint altitude
+        lifetime = 10 ** (14.18 * (h ** 0.1831) - 42.94)  # Compute lifetime
+
+        r_inner = 6378 + R02[shell_index]
+        r_outer = 6378 + R02[shell_index + 1]
+        
+        volume_outer = (4 / 3) * np.pi * (r_outer**3)
+        volume_inner = (4 / 3) * np.pi * (r_inner**3)
+        V = volume_outer - volume_inner  # Shell volume
+
+        for species_index in range(num_species):
+            idx = shell_index + species_index * N_shell  # Correct species-shell indexing
+
+            # Species-specific mass, area, and object count in this shell
+            num_objects = obj[idx]
+            mass = num_objects * species_mass[species_index]
+            area = num_objects * species_area[species_index]
+
+            # Accumulate total per species
+            total_objects_per_species[species_index] += num_objects
+            total_mass_per_species[species_index] += mass
+            total_area_per_species[species_index] += area
+
+            # Compute species-specific density in this shell
+            D = mass / V if V > 0 else 0  # Avoid division by zero
+
+            # Accumulate cumulative CSI for this species
+            species_csi[species_index] += (mass / M0) * (D / D0) * (lifetime / life0)
+    
+    return species_csi, cum_CSI_total
+
+def cum_umpy(obj, N_shell, baseline, R02):
+
+    umpy = 0.0
+    species_mass = {}
+    total_objects_per_shell = np.zeros(N_shell)
+    total_mass_per_shell = np.zeros(N_shell)
+
+    # Create mappings of species names to mass and area
+    for species_name, species_list in baseline.species_cells.items():
+        for species_properties in species_list:
+            species_mass[species_name] = species_properties.mass
+
+    # Calculate the total objects and total mass in each shell
+    for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
+        start_idx = species_index * N_shell
+        end_idx = start_idx + N_shell
+
+        # Extract the population for the species in all shells
+        species_counts = obj[start_idx:end_idx]
+        total_objects_per_shell += species_counts
+        total_mass_per_shell += species_counts * species_mass[species_name]
+
+    # Calculate and sum CSI for each shell for total CSI
+    for shell_index in range(N_shell):
+        h = (R02[shell_index] + R02[shell_index + 1]) / 2
+        lifetime = 10 ** (14.18 * (h ** 0.1831) - 42.94)
+        M = total_mass_per_shell[shell_index]
+        umpy += M * lifetime
+
+    return umpy
+
+def cum_oar(obj, N_shell, baseline, R02):
+    oar = 0
+    total_objects_per_shell = np.zeros(N_shell)
+
+    # Calculate the total objects and total mass in each shell
+    for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
+        start_idx = species_index * N_shell
+        end_idx = start_idx + N_shell
+
+        # Extract the population for the species in all shells
+        species_counts = obj[start_idx:end_idx]
+        total_objects_per_shell += species_counts
+
+    # Calculate and sum OAR for each shell for total OAR
+    for shell_index in range(N_shell):
+        oar = oar + 1
+
+    return oar
+
+#==========================================================================
 # Launch rate - plot
 #==========================================================================
 
