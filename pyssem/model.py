@@ -1,15 +1,12 @@
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
-# from .utils.plotting.plotting import create_plots, results_to_json
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
+from .utils.plotting.plotting import Plots, results_to_json
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import Plots, results_to_json
+# from utils.simulation.scen_properties import ScenarioProperties
+# from utils.simulation.species import Species
+# from utils.collisions.collisions import create_collision_pairs
+# from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
 import os
@@ -40,11 +37,12 @@ class Model:
         baseline (bool, optional): If True, assumes no further launches.
         indicator_variables (dict, optional): Additional indicator variables for the model.
     """
-    def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, 
-                        v_imp=None,
-                        fragment_spreading=True, parallel_processing=False, baseline=False, 
-                        indicator_variables=None):
+
+    def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude,
+                 n_shells, launch_function, integrator, density_model, LC,
+                 v_imp=None,
+                 fragment_spreading=True, parallel_processing=False, baseline=False,
+                 indicator_variables=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -74,13 +72,16 @@ class Model:
 
             # Validate numeric parameters
             if not isinstance(simulation_duration, int) or simulation_duration <= 0:
-                raise ValueError("simulation_duration must be a positive integer.")
+                raise ValueError(
+                    "simulation_duration must be a positive integer.")
             if not isinstance(steps, int) or steps <= 0:
                 raise ValueError("steps must be a positive integer.")
             if not isinstance(min_altitude, int) or min_altitude < 0:
-                raise ValueError("min_altitude must be a non-negative integer.")
+                raise ValueError(
+                    "min_altitude must be a non-negative integer.")
             if not isinstance(max_altitude, int) or max_altitude <= min_altitude:
-                raise ValueError("max_altitude must be greater than min_altitude.")
+                raise ValueError(
+                    "max_altitude must be greater than min_altitude.")
             if not isinstance(n_shells, int) or n_shells <= 0:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
@@ -100,16 +101,17 @@ class Model:
                 integrator=integrator,
                 density_model=density_model,
                 LC=LC,
-                v_imp=scenario_props.get("v_imp", None),
+                v_imp=v_imp,
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
                 baseline=baseline,
                 indicator_variables=indicator_variables
             )
-            
+
         except Exception as e:
-            raise ValueError(f"An error occurred initializing the model: {str(e)}")
-        
+            raise ValueError(
+                f"An error occurred initializing the model: {str(e)}")
+
     def configure_species(self, species_json):
         """
         Configure species into `Species` objects from a JSON file.
@@ -129,26 +131,30 @@ class Model:
         """
         try:
             species_list = Species()
-            
+
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
             # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
-            
+
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
             # Create symbolic variables for the species
-            self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
+            self.all_symbolic_vars = species_list.create_symbolic_variables(
+                self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
-            species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['debris'])
+            species_list.pair_actives_to_debris(
+                species_list.species['active'], species_list.species['debris'])
 
             # Add the final species to the scenario properties to be used in the simulation
-            self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
+            self.scenario_properties.add_species_set(
+                species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            self.scenario_properties.add_collision_pairs(
+                create_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -158,7 +164,8 @@ class Model:
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
         except Exception as e:
-            raise ValueError(f"An error occurred configuring species: {str(e)}")
+            raise ValueError(
+                f"An error occurred configuring species: {str(e)}")
 
     def run_model(self):
         """
@@ -176,20 +183,22 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
 
-            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
+            # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(
+                baseline=self.scenario_properties.baseline)
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
-            
+
             # CSI Index
             # self.scenario_properties.cum_CSI()
 
             # save self as a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
-        
+
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
-    
+
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
@@ -207,6 +216,7 @@ class Model:
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
 
+
 if __name__ == "__main__":
 
     with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
@@ -216,7 +226,8 @@ if __name__ == "__main__":
 
     # Create an instance of the pySSEM_model with the simulation parameters
     model = Model(
-        start_date=scenario_props["start_date"].split("T")[0],  # Assuming the date is in ISO format
+        start_date=scenario_props["start_date"].split(
+            "T")[0],  # Assuming the date is in ISO format
         simulation_duration=scenario_props["simulation_duration"],
         steps=scenario_props["steps"],
         min_altitude=scenario_props["min_altitude"],
@@ -226,7 +237,7 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None), 
+        v_imp=scenario_props.get("v_imp", None),
         fragment_spreading=scenario_props.get("fragment_spreading", False),
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
