@@ -111,7 +111,12 @@ def deltat_f1(t,const, active_species_indices, N_shell):
 #==========================================================================
 # Criticality/Capacity Metrics
 #==========================================================================
-def cum_CSI(obj, N_shell, baseline, R02):
+def cum_CSI(obj, baseline):
+
+    N_shell = baseline.n_shells  # Number of shells
+    R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
+    num_species = baseline.species_length  # Number of species
+
     # Reference values for normalization
     M0 = 10000
     D0 = 5e-8  # Arbitrarily chosen, may need revision
@@ -127,9 +132,9 @@ def cum_CSI(obj, N_shell, baseline, R02):
     total_objects_per_shell = np.zeros(N_shell)
     total_mass_per_shell = np.zeros(N_shell)
     total_area_per_shell = np.zeros(N_shell)
-    total_objects_per_species = np.zeros(len(baseline.species_names))
-    total_mass_per_species = np.zeros(len(baseline.species_names))
-    total_area_per_species = np.zeros(len(baseline.species_names))
+    total_objects_per_species = np.zeros(num_species)
+    total_mass_per_species = np.zeros(num_species)
+    total_area_per_species = np.zeros(num_species)
     
     # Store species mass and area in lists by index
     for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
@@ -140,8 +145,6 @@ def cum_CSI(obj, N_shell, baseline, R02):
     total_objects_per_shell = [0] * N_shell
     total_mass_per_shell = [0] * N_shell
     total_area_per_shell = [0] * N_shell
-
-    num_species = len(baseline.species_names)
 
     # Store shell mass and area in lists by index
     for species_index in range(num_species):
@@ -206,7 +209,10 @@ def cum_CSI(obj, N_shell, baseline, R02):
     
     return species_csi, cum_CSI_total
 
-def cum_umpy(obj, N_shell, baseline, R02):
+def cum_UMPY(obj, baseline):
+
+    N_shell = baseline.n_shells  # Number of shells
+    R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
 
     umpy = 0.0
     species_mass = {}
@@ -237,7 +243,10 @@ def cum_umpy(obj, N_shell, baseline, R02):
 
     return umpy
 
-def cum_oar(obj, N_shell, baseline, R02):
+def cum_OAR(obj, baseline):
+
+    N_shell = baseline.n_shells  # Number of shells
+
     oar = 0
     total_objects_per_shell = np.zeros(N_shell)
 
@@ -366,7 +375,7 @@ def deltat_plot(baseline, active_species_indices, deltat, deltat_no_noise, sel_L
 # Cumulative plots
 #==========================================================================
 
-def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, sel_LineWidth, sel_LineWidthAxis, sel_FontSize):
+def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, sel_risk_index, sel_LineWidth, sel_LineWidthAxis, sel_FontSize):
     n_species = baseline.species_length
     num_shells = baseline.n_shells
     species_names = baseline.species_names
@@ -420,7 +429,7 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
     plt.show()
 
     if sel_pmd_control == 1:
-        # Figure: PMD with and without noise (TO DO)
+        # Figure: PMD with and without noise
         for species_index in range(active_species_indices):
             start_idx = species_index * num_shells
             end_idx = start_idx + num_shells
@@ -449,6 +458,51 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
                 plt.setp(ax.get_yticklabels(), fontsize=sel_FontSize)
             plt.legend(loc='best', bbox_to_anchor=(1, 1))
             plt.show()
+
+    if sel_risk_index == 1:
+        # Figure: Risk index
+        if sel_risk_index == 1:
+            plt.figure(facecolor='white',figsize=(12, 8))
+            plt.grid(True)
+            handles = []
+            labels = []
+            for species_index in range(n_species):
+                color = color_map(unique_base_species.index(base_species_names[species_index]))
+                # marker = markers[species_index % len(markers)]
+                # start_idx = species_index * num_shells
+                # end_idx = start_idx + num_shells
+                plt.plot(output.t, output.csi_species[species_index, :], linewidth=sel_LineWidth, label=species_names[species_index]+"$^{C}$", color=color, linestyle='-') #, marker=marker, markersize=sel_MarkerWidth)
+                plt.plot(output.t, output.csi_species_nc[species_index, :], linewidth=sel_LineWidth, label=species_names[species_index]+"$^{NC}$", color=color, linestyle=':')
+                if species_names[species_index] not in labels:
+                    handles.append(Line2D([], [], color=color, linewidth=sel_LineWidth, label=species_names[species_index]))
+                    labels.append(species_names[species_index])
+            # plt.plot(output.t, output.csi_total, label='Total$^{C}$', color='k', linewidth=sel_LineWidth, linestyle='-')
+            # plt.plot(output.t, output.csi_total_nc, label='Total$^{NC}$', color='k', linewidth=sel_LineWidth, linestyle=':')
+            handles.append(Line2D([], [], color='k', linewidth=sel_LineWidth, label='Total'))
+            labels.append('Total')
+            handles.append(Line2D([], [], color='k', linestyle='-', linewidth=sel_LineWidth, label='Controlled'))
+            handles.append(Line2D([], [], color='k', linestyle=':', linewidth=sel_LineWidth, label='No Control'))
+            labels.append("W/ control")
+            labels.append("W/o control")
+            plt.xlabel('Time (years)', fontsize=sel_FontSize)
+            plt.ylabel('CSI (-)', fontsize=sel_FontSize)
+            plt.title('Cumulative CSI vs Time')
+            plt.xlim(0, max(output.t))
+            plt.legend(handles=handles, labels=labels, loc="best")
+            # plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=8, fancybox=True, shadow=True)
+            # plt.legend(handles=handles, labels=labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4, fancybox=True, shadow=True)
+            # plt.yscale('log') # for log plot
+            plt.tight_layout() 
+            plt.xticks(fontsize=sel_FontSize)
+            plt.yticks(fontsize=sel_FontSize)
+            plt.gca().tick_params(width=sel_LineWidthAxis)
+            plt.show()
+
+        elif sel_risk_index == 2: # TO DO
+            1
+        elif sel_risk_index == 3: # TO DO
+            1
+
 
     # ADR Total vs Time
     for species_index in range(n_species):
