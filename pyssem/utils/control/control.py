@@ -119,8 +119,11 @@ def cum_CSI(obj, N_shell, baseline, R02):
     A0 = 1
 
     # Cumulative CSI variables
+    num_species = len(baseline.species_names)
     cum_CSI_total = 0
-    species_csi = []
+    csi_per_shell = np.zeros(N_shell)
+    csi_per_species = np.zeros(num_species)
+    csi_per_species_per_shell = np.zeros((num_species, N_shell))
 
     species_mass = []
     species_area = []
@@ -141,51 +144,40 @@ def cum_CSI(obj, N_shell, baseline, R02):
     total_mass_per_shell = [0] * N_shell
     total_area_per_shell = [0] * N_shell
 
-    num_species = len(baseline.species_names)
-
-    # Store shell mass and area in lists by index
-    for species_index in range(num_species):
-        for shell_index in range(N_shell):
+    for shell_index in range(N_shell):
+        for species_index in range(num_species):
             idx = shell_index + species_index * N_shell  # Corrected indexing
             total_objects_per_shell[shell_index] += obj[idx]
             total_mass_per_shell[shell_index] += obj[idx] * species_mass[species_index]
             total_area_per_shell[shell_index] += obj[idx] * species_area[species_index]
 
+    D = [0] * N_shell
+    lifetime = [0] * N_shell
+
     # Calculate and sum CSI for each shell for total CSI
     for shell_index in range(N_shell):
         h = (R02[shell_index] + R02[shell_index + 1]) / 2
-        lifetime = 10 ** (14.18 * (h ** 0.1831) - 42.94)
+        lifetime[shell_index] = 10 ** (14.18 * (h ** 0.1831) - 42.94)
         M = total_mass_per_shell[shell_index]
         r_inner = 6378 + R02[shell_index]
         r_outer = 6378 + R02[shell_index + 1]
         volume_outer = (4 / 3) * np.pi * (r_outer**3)
         volume_inner = (4 / 3) * np.pi * (r_inner**3)
         V = volume_outer - volume_inner
-        D = M / V
-        weighted_area = total_area_per_shell[shell_index] / total_objects_per_shell[shell_index]
-        cum_CSI_total += M / M0 * D / D0 * lifetime / life0 * weighted_area / A0
-        #cum_CSI_total += M / M0 * D / D0 * lifetime / life0
+        D[shell_index] = M / V
+        #weighted_area = total_area_per_shell[shell_index] / total_objects_per_shell[shell_index]
+        csi_per_shell[shell_index] = M / M0 * D[shell_index] / D0 * lifetime[shell_index] / life0
+        cum_CSI_total += csi_per_shell[shell_index]  # Accumulate CSI for this shell
+        #cum_CSI_total += M / M0 * D / D0 * lifetime / life0 * weighted_area / A0
 
     # Initialize storage arrays
     total_objects_per_species = [0] * num_species
     total_mass_per_species = [0] * num_species
     total_area_per_species = [0] * num_species
-    species_csi = [0] * num_species  # Store cumulative CSI per species
 
     # Calculate CSI for each species
-    for shell_index in range(N_shell):
-        # Compute shell-specific values
-        h = (R02[shell_index] + R02[shell_index + 1]) / 2  # Midpoint altitude
-        lifetime = 10 ** (14.18 * (h ** 0.1831) - 42.94)  # Compute lifetime
-
-        r_inner = 6378 + R02[shell_index]
-        r_outer = 6378 + R02[shell_index + 1]
-        
-        volume_outer = (4 / 3) * np.pi * (r_outer**3)
-        volume_inner = (4 / 3) * np.pi * (r_inner**3)
-        V = volume_outer - volume_inner  # Shell volume
-
-        for species_index in range(num_species):
+    for species_index in range(num_species):
+        for shell_index in range(N_shell):
             idx = shell_index + species_index * N_shell  # Correct species-shell indexing
 
             # Species-specific mass, area, and object count in this shell
@@ -193,18 +185,16 @@ def cum_CSI(obj, N_shell, baseline, R02):
             mass = num_objects * species_mass[species_index]
             area = num_objects * species_area[species_index]
 
+            csi_per_species_per_shell[species_index, shell_index] = (mass / M0) * (D[shell_index]/D0) * (lifetime[shell_index] / life0)
+
             # Accumulate total per species
             total_objects_per_species[species_index] += num_objects
             total_mass_per_species[species_index] += mass
             total_area_per_species[species_index] += area
 
-            # Compute species-specific density in this shell
-            D = mass / V if V > 0 else 0  # Avoid division by zero
-
-            # Accumulate cumulative CSI for this species
-            species_csi[species_index] += (mass / M0) * (D / D0) * (lifetime / life0)
+            csi_per_species[species_index] += csi_per_species_per_shell[species_index, shell_index]  # Accumulate CSI for this species 
     
-    return species_csi, cum_CSI_total
+    return csi_per_species, csi_per_shell, csi_per_species_per_shell, cum_CSI_total
 
 def cum_umpy(obj, N_shell, baseline, R02):
 
