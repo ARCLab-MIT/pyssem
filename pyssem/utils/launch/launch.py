@@ -37,10 +37,10 @@ def launch_func_null(t, h, species_properties, scen_properties):
 
     Lambdadot = zeros(scen_properties.n_shells, 1)
 
-    for k in range(scen_properties.n_shell):
+    for k in range(scen_properties.n_shells):
         Lambdadot[k, 0] = 0 * species_properties.sym[k]
 
-    Lambdadot_list = [Lambdadot[k, 0] for k in range(scen_properties.n_shell)]
+    Lambdadot_list = [Lambdadot[k, 0] for k in range(scen_properties.n_shells)]
 
     return Lambdadot_list
 
@@ -315,8 +315,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
         "Trackable Debris": "N",
         "LNT" : "N",
         "Debris": "N",
-        "Candidate Satellite": "S",
-        "Coordinated Satellite": "S"
+        "Candidate Satellite": "S"
     }
 
     T['species_class'] = T['obj_class'].map(species_dict)
@@ -340,6 +339,32 @@ def ADEPT_traffic_model(scen_properties, file_path):
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                 T_new = pd.concat([T_new, T_obj_class])
+
+    # for obj_class in T['obj_class'].unique():
+    #     species_class = species_dict.get(obj_class)
+        
+    #     if species_class in scen_properties.species_cells:     
+    #         if species_class == 'B':
+    #             # Handle the case where species_class is 'B' and match by mass bin
+    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #             species_cells = scen_properties.species_cells[species_class]
+                      
+    #             T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
+                
+    #             T_new = pd.concat([T_new, T_obj_class])
+            
+    #         else:
+    #             # General case for all other species_class
+    #             if len(scen_properties.species_cells[species_class]) == 1:
+    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
+
+    #                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+    #                 T_new = pd.concat([T_new, T_obj_class])
+    #             else:
+    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
+    #                 species_cells = scen_properties.species_cells[species_class]
+    #                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
+    #                 T_new = pd.concat([T_new, T_obj_class])
 
 
     # for obj_class in T['obj_class'].unique():

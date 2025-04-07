@@ -5,3 +5,9 @@ scipy>=1.10
 sympy>=1.11
 tqdm>=4.65
 gdown>=4.0.0
+requests
+bs4
+matplotlib
+loky
+imageio
+sphinx_rtd_theme

@@ -5,14 +5,13 @@ from scipy.integrate import solve_ivp
 from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
-from ..launch.launch import ADEPT_traffic_model, launch_func_constant
+from ..launch.launch import ADEPT_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
-from ..optimizer.optimizer import *
-from pkg_resources import resource_filename
+from ..indicators.indicators import *
 import pandas as pd
 import os
 import multiprocessing
-import re
+from collections import defaultdict
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
@@ -40,7 +39,8 @@ class ScenarioProperties:
     def __init__(self, start_date: datetime, simulation_duration: int, steps: int, min_altitude: float, 
                  max_altitude: float, n_shells: int, launch_function: str,
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
-                 fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False
+                 fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False,
+                 indicator_variables: list = None
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -81,6 +81,10 @@ class ScenarioProperties:
         else:
             print("Warning: Unable to parse density model, setting to static exponential density model")
             self.density_model = static_exp_dens_func
+
+        # Indicator Variables
+        self.indicator_variables = indicator_variables
+        self.indicator_variables_list = []
 
         # Parameters
         self.scen_times = np.linspace(0, self.simulation_duration, self.steps) 
@@ -131,6 +135,9 @@ class ScenarioProperties:
         # Outputs
         self.output = None
 
+        # Restults
+        self.results = None
+
         # Varying collision shells 
         self.fragment_spreading = fragment_spreading
 
@@ -138,7 +145,10 @@ class ScenarioProperties:
         self.parallel_processing = parallel_processing
 
         # Baseline Scenario
-        self.baseline = baseline    
+        self.baseline = baseline  
+
+        # Integator Results
+        self.indicator_results = {}  
 
         # Progress bar for the final integration
         self.progress_bar = None
@@ -255,8 +265,53 @@ class ScenarioProperties:
                     else:
                         species.lambda_funs.append(np.array(y))
 
+    def build_indicator_variables(self):
+        """
+            This will create the indicator variables for the simulation. The different indicators will be provided by the user. 
+            As new indicators are added, they will need to be included first here to pass from the input JSON. 
+        """
+        if self.indicator_variables is None:
+            return
+        try:
+            for indicator in self.indicator_variables:
+                if indicator == "orbital_volume":
+                    self.indicator_variables_list.append(make_intrinsic_cap_indicator(self, sep_dist_method="distance", 
+                                                                                        sep_dist=60, 
+                                                                                        inc = 40, 
+                                                                                        shell_sep=5,
+                                                                                        graph=True))
+                elif indicator == "ca_man_struct":
+                    self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", 
+                                                                            per_species=True, per_spacecraft=True))
+                elif indicator == "ca_man_struct_agg":
+                    self.indicator_variables_list.append(make_ca_counter(self, "maneuverable", "trackable", 
+                                                                            per_species=False, per_spacecraft=False))
+                elif indicator == "active_loss_per_shell":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = False))
+                elif indicator == "active_loss_per_shell_percentage":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = True, 
+                                                                                    per_species = False))
+                elif indicator == "active_loss_per_species":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True))
+                elif indicator == "active_loss_per_species_percentage":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = True, 
+                                                                                    per_species = True))
+                elif indicator == "all_col_indicators":
+                    self.indicator_variables_list.append(make_all_col_indicators(self))
+        
+        except Exception as e:
+            print(f"An error occurred creating the indicator variables: {str(e)}")
+            print("Continuing without indicator variables.")
+            self.indicator_variables = None
+            self.indicator_variables_list = []
+            return
 
-                         
     def initial_pop_and_launch(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
@@ -264,9 +319,7 @@ class ScenarioProperties:
         
         Returns: None
         """
-
-        # launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'start_full_V2_new.asem.csv')
+        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
 
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
@@ -276,7 +329,7 @@ class ScenarioProperties:
             filepath = launch_file_path
         else:
             print('As no file is provided. Downloading a launch file...:')
-            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
+            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE' # This is a google docs link - eventually should be added as a .env
             
             download_file_from_google_drive(file_id, launch_file_path)
 
@@ -288,7 +341,7 @@ class ScenarioProperties:
                 print('Failed to download the file.')
 
         # Example usage: print the filepath to verify
-        print("Filepath:", filepath)
+        print("File used for launch model:", filepath)
               
         [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
 
@@ -311,7 +364,6 @@ class ScenarioProperties:
 
         :return: None
         """
-
         t = sp.symbols('t')
 
         species_list = [species for group in self.species.values() for species in group]
@@ -349,7 +401,7 @@ class ScenarioProperties:
 
 
         # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: # static density
+        if not self.time_dep_density: 
             # Take the shell altitudes, this will be n_shells + 1
             rho = self.density_model(0, self.R0_km, self.species, self)
             rho_reshape = rho.reshape(-1, 1) # Convert to column vector
@@ -367,13 +419,38 @@ class ScenarioProperties:
             self.full_drag = drag_upper_with_density + drag_cur_with_density
             self.equations += self.full_drag
             self.sym_drag = True 
-        
+
+        # Make Integrated Indicator Variables if passed
+        if hasattr(self, 'integrated_indicator_var_list'):
+            integrated_indicator_var_list = self.integrated_indicator_var_list
+            for ind_var in integrated_indicator_var_list:
+                if not ind_var.eqs:
+                    ind_var = self.make_indicator_eqs(ind_var)
+
+            self.num_integrated_indicator_vars = 0
+            end_indicator_idxs = len(self.xdot_eqs)
+
+            for ind_var in integrated_indicator_var_list:
+                num_add_indicator_vars = len(ind_var.eqs)
+                self.num_integrated_indicator_vars += num_add_indicator_vars
+
+                start_indicator_idxs = end_indicator_idxs + 1
+                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
+                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
+
+                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
+
+            if not self.sym_lambda:
+                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
+                self.full_lambda.extend(indicator_pad)
+
+        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
+                
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
             
         return
-
 
     def run_model(self):
         """
@@ -467,6 +544,30 @@ class ScenarioProperties:
 
         self.output = output # Save
 
+        # Indicator Variables
+        # Evaluate non-indicator variables using states
+        if hasattr(self, 'indicator_variables_list'):
+            print("Evaluating post-processed indicator variables...")
+            self.indicator_results['indicators'] = {}
+
+            for i in self.indicator_variables_list:
+                # Convert the symbolic equations into a callable function
+                for indicator_var in i:
+                    simplified_eqs = sp.simplify(indicator_var.eqs)
+                    indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+                    evaluated_indicator_dict = {}
+
+                    # Iterate over states (rows in y) and corresponding time steps (t)
+                    for state, t in zip(self.output.y.T, self.output.t):
+                        # Evaluate the indicator function for the current state
+                        evaluated_value = indicator_fun(*state)
+                        # Store the result in the dictionary with the corresponding time step
+                        evaluated_indicator_dict[t] = evaluated_value
+
+                    # Store the results for this indicator in the results dictionary
+                    self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+
+
         return 
 
     def population_shell_time_varying_density(self, t, N, full_lambda, equations, times):
@@ -559,11 +660,108 @@ class ScenarioProperties:
             dN_dt[i] += equations[i](*N)
 
         return dN_dt
+
+    def cum_CSI(self):
+        k = 0.6
+        def life(h):
+            return np.exp(14.18 * h ** 0.1831 - 42.94)
+
+        M_ref = 10000 # kg
+        h_ref = 1000 # km
+        life_h_ref = 1468 # years, it corresponds to life0 = life(1000)
+
+        if isinstance(self.results, str):
+            self.results = json.loads(self.results)
+
+        initial_populations = [data['populations'][0] for data in self.results['population_data']]
+        V = np.array(self.V)
+        D_ref = np.max(np.sum(initial_populations, axis=0) / V)
+        
+        den = M_ref * D_ref * life_h_ref * (1+k) / 10
+        #den = 2.4477e-09
+
+        cos_i_av = 2/pi #average value of cosine of inclination in the range -pi/2 pi/2 calculated using integral average
+        Gamma_av = (1-cos_i_av)/2
+
+        rgb_c = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+        
+        def life(h):
+            return np.exp(14.18 * h**0.1831 - 42.94)
+
+        if hasattr(self, 'results'):
+            print("Producing two visuals of CSI.")
+            plt.figure()
+            plt.grid(True)
+            CSI_S_sum_array = np.zeros((len(self.results['times']), 0))
+            CSI_D_sum_array = np.zeros((len(self.results['times']), 0))
+            
+            unique_species = set([data['species'] for data in self.results['population_data']])
+            
+            for i2, species in enumerate(unique_species):
+                if i2 >= len(rgb_c):
+                    colorset = np.random.rand(3)
+                else:
+                    colorset = rgb_c[i2]
+                
+                CSI_X_mat = np.zeros((len(self.results['times']), self.n_shells))
+                species_list = [sp for species_group in self.species.values() for sp in species_group]
+
+                if 'S' in species or 'D' in species:
+                    for i in range(self.n_shells):
+                        shell_data = [data for data in self.results['population_data'] if data['species'] == species and data['shell'] == (i + 1)]
+                        if shell_data:
+                            life_i = life((self.R0_km[i] + self.R0_km[i + 1]) / 2)
+                            num = life_i * (1 + k * Gamma_av)
+                            try:
+                                mass = next((item.mass for item in species_list if item.sym_name == species), 0)
+                            except TypeError as e:
+                                print(f"Error accessing species_properties for species '{species}': {e}")
+                                print(f"species_list: {species_list}")
+                                raise
+                            dum_X = mass * num
+                            D_X = np.array(shell_data[0]['populations']) / self.V[i]
+                            CSI_X_mat[:, i] = D_X * dum_X
+                    
+                    CSI_X_mat /= den
+                    CSI_X = np.sum(CSI_X_mat, axis=1)
+                    plt.plot(self.results['times'], CSI_X, label=f'CSI for {species.replace("p", ".")}', linewidth=2, color=colorset)
+                    
+                    if 'S' in species and 'D' not in species:
+                        CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
+                    elif 'D' in species:
+                        CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
+
+            if CSI_S_sum_array.shape[1] > 0:
+                CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
+            else:
+                CSI_S_sum = np.zeros(len(self.results['times']))
+
+            if CSI_D_sum_array.shape[1] > 0:
+                CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
+            else:
+                CSI_D_sum = np.zeros(len(self.results['times']))
+
+            plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
+            plt.xlabel('Time (years)')
+            plt.ylabel('CSI')
+            plt.title('Cumulative Space Index (CSI) per Species')
+            plt.xlim([0, np.max(self.results['times'])])
+            plt.legend(loc='best', frameon=False)
+            plt.savefig('figures/CSI_per_species.png')
+
+            plt.figure()
+            plt.grid(True)
+            plt.plot(self.results['times'], CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2, color='#1f77b4')
+            plt.plot(self.results['times'], CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2, color='#ff7f0e')
+            plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
+            plt.xlabel('Time (years)')
+            plt.ylabel('Cumulative CSI')
+            plt.xlim([0, np.max(self.results['times'])])
+            plt.title('Cumulative Space Index (CSI) for Active and Derelict Species')
+            plt.legend(loc='best', frameon=False)
+            plt.savefig('figures/CSI_active_derelict.png')
+        else:
+            raise ValueError("Simulation does not contain results. Please run the function run_model(x0) to produce simulation results required for CSI computation.")
+        
+        return
     
-    def optimizer(self):
-        """
-        More parameters to be added in the future.
-        """
-
-
-

@@ -132,7 +132,7 @@ class SpeciesPairClass:
                         # plt.savefig(f"figures/frag_spread/fragsMade2D_{source_sinks[i].sym_name}.png")
                         # print(f"eq: {eq}")
                     except Exception as e:
-                        if fragsMadeDV == 0:
+                        if np.any(fragsMadeDV == 0):
                             eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                             continue
                         # print(f"Error in creating debris matrix: {e}")
