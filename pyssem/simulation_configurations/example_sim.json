@@ -20,10 +20,10 @@
       "fragment_spreading": false, 
       "parallel_processing" : true,
       "baseline": false,
-      "indicator_variables": ["active_loss_per_shell", "active_loss_per_species", "umpy"]                          
+      "indicator_variables": ["active_loss_per_shell", "active_loss_per_species", "umpy", "orbital_volume", "ca_man_struct_agg"]                          
     },
     "plots" : [
-      "indicator_variables"
+      "all_plots"
     ],
     "species": [
       {
