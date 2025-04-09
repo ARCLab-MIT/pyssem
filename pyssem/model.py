@@ -164,8 +164,9 @@ class Model:
             # with open('scenario-properties-baseline-no-run_24_shells.pkl', 'wb') as f:
             # with open('scenario-properties-baseline-no-run_14_shells.pkl', 'wb') as f:
             # with open('scenario-properties-baseline-no-run_5_shells.pkl', 'wb') as f:
-            with open('scenario-properties-test-no-run-policy.pkl', 'wb') as f:
+            # with open('scenario-properties-test-no-run-policy.pkl', 'wb') as f:
             # with open('scenario-properties-test-opt.pkl', 'wb') as f:
+            with open('scenario-properties-test-opt-yesspread.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
             return self.scenario_properties
@@ -201,10 +202,11 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'three_species.json')) as f:
+    # with open(os.path.join('pyssem', 'three_species.json')) as f:
     # with open(os.path.join('pyssem', 'three_species_mult.json')) as f:
     # with open(os.path.join('pyssem', 'baseline_amos.json')) as f:
     # with open(os.path.join('pyssem', 'three_species_opt.json')) as f:
+    with open('three_species_opt.json') as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
