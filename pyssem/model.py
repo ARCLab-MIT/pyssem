@@ -205,8 +205,8 @@ if __name__ == "__main__":
     # with open(os.path.join('pyssem', 'three_species.json')) as f:
     # with open(os.path.join('pyssem', 'three_species_mult.json')) as f:
     # with open(os.path.join('pyssem', 'baseline_amos.json')) as f:
-    # with open(os.path.join('pyssem', 'three_species_opt.json')) as f:
-    with open('three_species_opt.json') as f:
+    with open(os.path.join('pyssem', 'three_species_opt.json')) as f:
+    # with open('three_species_opt.json') as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
