@@ -1,7 +1,9 @@
-OVerall Scenario Properties
+Overall Scenario Properties
 ===================
 
 **Overview**
+
+This page provides a description of all properties that have an effect on the simulation of the entire scenario. These properties are static throughout the entire timespan of the scenario and do not change.
 
 Inputs
 -----------
