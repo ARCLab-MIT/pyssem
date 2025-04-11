@@ -10,3 +10,5 @@ Contents
 
    tutorial/getting_started
    admin_inputs
+   overall_scenario_properties/overall_properties
+   overall_scenario_properties/advanced_options
