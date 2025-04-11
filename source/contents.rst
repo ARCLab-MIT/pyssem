@@ -9,3 +9,4 @@ Contents
    :caption: Tutorials:
 
    tutorial/getting_started
+   admin_inputs
