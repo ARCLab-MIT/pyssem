@@ -1,51 +1,27 @@
-Admin Inputs
+Administrative Inputs
 =============
 
 Overview
 --------
 
-This document provides an overview of the administrative inputs required for the **pyssem** project.
+This document provides an overview of the administrative inputs required for the **pyssem** tool.
 
-Dependencies
+
+Inputs
 ------------
+**Simulation Name**
 
-The following dependencies are specified in the `pyproject.toml` file:
+(Text Entry) This is the name of your simulation, and should be unique enough to distinguish your
+simulation from others.
 
-- `numpy~=1.21`
-- `pandas~=2.0`
-- `scipy~=1.10`
-- `setuptools~=68.0.0`
-- `sympy~=1.11`
-- `tqdm~=4.65`
 
-Project Metadata
-----------------
+**What is your name?**
 
-- **Project Name**: pyssem
-- **Description**: A detailed description of your project.
-- **Readme**: README.md
-- **License**: MIT License (see `LICENSE` file)
-- **Authors**: Indigo Brownhall (indigo.brownhall.20@ucl.ac.uk)
+(Text Entry) This is your name! You can also use a username. This will remain visible to all users.
 
-Supported Python Versions
---------------------------
 
-The project supports the following Python versions:
+**Model Description**
 
-- Python 3
-- Python 3.6
-- Python 3.7
-- Python 3.8
-- Python 3.9
-- Python 3.10
-
-Build System
-------------
-
-The build system requirements are:
-
-- `setuptools>=64`
-- `setuptools_scm>=8`
-- `wheel`
-
-The build backend used is `setuptools.build_meta`.
+(Text Entry) This is the description of your model. While the parameters you ran the model with will be
+visible even after the model is run, you can use this entry to describe why those parameters were
+chosen, or what the results might be used for.
