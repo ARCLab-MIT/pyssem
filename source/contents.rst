@@ -12,3 +12,6 @@ Contents
    admin_inputs
    overall_scenario_properties/overall_properties
    overall_scenario_properties/advanced_options
+   species_properties/physical_species_properties
+   species_properties/behavioral_species_properties
+   
