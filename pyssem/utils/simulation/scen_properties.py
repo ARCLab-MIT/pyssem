@@ -317,6 +317,7 @@ class ScenarioProperties:
         Returns: None
         """
         launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        # launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv')
 
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
@@ -491,9 +492,11 @@ class ScenarioProperties:
             self.drag_cur_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_current_flattened]
 
             # Set up time varying density 
-            self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
-                                                                                                                                       ))
+            # self.density_data = preload_density_data(os.path.join('pyssem', 'pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
+            self.density_data = preload_density_data(os.path.join('pyssem','pyssem', 'utils', 'drag', 'dens_SSP2-45_2000-2100.json'))
+            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), 
+                                                        pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration),
+                                                        self.steps)
             
             # This will change when jb2008 is updated
             available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
@@ -505,13 +508,19 @@ class ScenarioProperties:
             self.prev_rho = None
 
 
-            print("Integrating equations...")
+            # Progress Bar
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(full_lambda_flattened, equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
+
+            self.progress_bar.close()
+            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
             
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
+            
 
         else:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
@@ -570,7 +579,11 @@ class ScenarioProperties:
 
         :return: Rate of change of population
         """
-        print(f"Time: {t}")
+        # Update the progress bar
+        if self.progress_bar is not None:
+            self.progress_bar.update(t - self.progress_bar.n)
+
+
         dN_dt = np.zeros_like(N)
 
         if self.time_dep_density:
