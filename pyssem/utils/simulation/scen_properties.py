@@ -494,9 +494,7 @@ class ScenarioProperties:
             # Set up time varying density 
             # self.density_data = preload_density_data(os.path.join('pyssem', 'pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
             self.density_data = preload_density_data(os.path.join('pyssem','pyssem', 'utils', 'drag', 'dens_SSP2-45_2000-2100.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), 
-                                                        pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration),
-                                                        self.steps)
+            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date), self.steps)
             
             # This will change when jb2008 is updated
             available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))

@@ -90,7 +90,7 @@ def drag_func_exp(t, h, species, scen_properties):
         t (float): Time from scenario start in years
         species (Species): A Species Object with properties for the species
         scen_properties (ScenProperties): A ScenarioProperties Object with properties for the scenario
-j
+
     Returns:
         numpy.ndarray: The rate of change in the species in each shell at the specified time due to drag.
                        If only one value is applied, it is assumed to be true for all shells.
@@ -144,7 +144,7 @@ def preload_density_data(file_path):
     return density_data
 
 # Function to precompute date mapping for given time range
-def precompute_date_mapping(start_date, end_date, num_points):
+def precompute_date_mapping(start_date, end_date, num_points=101):
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
     total_days = (end_date - start_date).days
