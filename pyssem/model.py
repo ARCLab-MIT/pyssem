@@ -44,7 +44,7 @@ class Model:
                         n_shells, launch_function, integrator, density_model, LC, 
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
-                        indicator_variables=None):
+                        indicator_variables=None, launch_scenario=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -104,7 +104,8 @@ class Model:
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
                 baseline=baseline,
-                indicator_variables=indicator_variables
+                indicator_variables=indicator_variables,
+                launch_scenario=launch_scenario
             )
             
         except Exception as e:
@@ -175,7 +176,6 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
@@ -209,7 +209,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -230,7 +230,8 @@ if __name__ == "__main__":
         fragment_spreading=scenario_props.get("fragment_spreading", False),
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
-        indicator_variables=scenario_props.get("indicator_variables", None)
+        indicator_variables=scenario_props.get("indicator_variables", None),
+        launch_scenario=scenario_props["launch_scenario"]
     )
 
     species = simulation_data["species"]

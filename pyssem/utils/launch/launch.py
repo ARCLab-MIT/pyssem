@@ -148,6 +148,28 @@ def find_bin_index(bin_edges, value):
             return i
     return -1  # Return an invalid index if not found
 
+def SEP_traffic_model(scen_properties, file_path):
+    """
+    This will take one of the SEP files, users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
+    
+    This function will create an initial population (x0) and a future launch model (FLM_steps)
+    for the given scenario and the species properties that have been configured. 
+    """
+
+    # Load the traddic model as csv
+    T = pd.read_csv(file_path)
+
+    # Calculate Apogee, Perigee, and altitude
+    T['apogee'] = T['sma'] * (1 + T['ecc'])
+    T['perigee'] = T['sma'] * (1 - T['ecc'])
+    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+
+    
+
+
+
+
+
 def ADEPT_traffic_model(scen_properties, file_path):
     """
     From an initial population and future model csv, this function will create for the starting population, 
