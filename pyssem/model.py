@@ -1,23 +1,21 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.collisions.collisions import *
 # from .utils.plotting.plotting import create_plots, results_to_json
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.optimizer.optimizer import run_optimizer
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import Plots, results_to_json
-from datetime import datetime
+from utils.collisions.collisions import *
+from utils.optimizer.optimizer import run_optimizer
+from utils.plotting.plotting import *
 import json
 import os
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+from datetime import datetime
 
 class Model:
     """
@@ -138,7 +136,7 @@ class Model:
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Create symbolic variables for the species
+            # Create symbolic variables for the #species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -178,6 +176,9 @@ class Model:
 
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
+            
+
+
             self.scenario_properties.run_model()
             
             # CSI Index
@@ -186,6 +187,8 @@ class Model:
             # save self as a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
+
+            return self.scenario_properties
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -209,7 +212,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'just_debris.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -234,7 +237,6 @@ if __name__ == "__main__":
     )
 
     species = simulation_data["species"]
-
     species_list = model.configure_species(species)
 
     results = model.run_model()
