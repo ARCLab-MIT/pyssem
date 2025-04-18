@@ -1,12 +1,12 @@
 {
-  "simulation_name": "MOCAT Simulation",
+  "simulation_name": "SEP3H",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
   "created": "2024-01-01T12:00:00Z",
   "modified": "2024-01-01T12:00:00Z",
   "scenario_properties": {
-    "start_date": "01/03/2022",   
+    "start_date": "01/01/2025",   
     "simulation_duration": 100,              
     "steps": 100,                            
     "min_altitude": 200,                   
@@ -20,8 +20,23 @@
     "fragment_spreading": false,
     "parallel_processing": true,
     "baseline" : false,
-    "launch_scenario": "SEP1"                                               
+    "launch_scenario": "SEP3H"                                               
   },
+  "plots": [
+    "all_plots"
+  ],
+  "indicator_variables": [
+    "active_loss_per_shell",
+    "active_loss_per_shell_percentage",
+    "active_loss_per_species",
+    "active_loss_per_species_percentage"
+  ],
+  "SEP_mapping": [
+      "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'S'",
+      "T.loc[(T['obj_type'] == 2) & (T['maneuverable'] == 0), 'species_class'] = 'Sns'",
+      "T.loc[(T['obj_type'] >= 3), 'species_class'] = 'N'",
+      "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
+  ],
   "species": [
       {
         "sym_name": "S",
@@ -41,8 +56,8 @@
         "drag_effected": false,
         "launch_func": "launch_func_null",
         "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"
-    },
+        "drag_func": "drag_func_exp"     
+      },
     {
         "sym_name": "N",
         "Cd": 2.2,
