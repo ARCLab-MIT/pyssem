@@ -19,7 +19,8 @@
         "baseline": false,
         "fragment_spreading": false, 
         "parallel_processing": false,
-        "indicator_variables": ["active_loss_per_shell"]
+        "indicator_variables": ["active_loss_per_shell"],
+        "launch_scenario": "SEP1"
     },
     "simulation_name": "Indigo",
     "species": [
