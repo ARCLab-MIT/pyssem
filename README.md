@@ -123,14 +123,13 @@ Ensure that you have a Python version above 3.8 before running the package.
 Download the python package using pip (currently Test Environment) and install the required packages:
 
 ```bash
-pip install -i https://test.pypi.org/simple/ pyssem==1.0
-pip install -r requirements.txt
+pip3 install pyssem
 ```
 
-
-To create a Model you need the following properties:
+To create a Model you need the following JSON (simple 3 species model). The two key elements are the scenario_properties and the species list:
 ```json
-"scenario_properties": {
+{
+    "scenario_properties": {
     "start_date": "01/03/2022",   
     "simulation_duration": 100,              
     "steps": 200,                            
@@ -142,52 +141,67 @@ To create a Model you need the following properties:
     "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
     "v_imp": 10.0                          
-  }
-```
-
-Species are defined as a separate "species" list within your json. Each item is a new species type, each species can have multiple lengths (see documentation for more information). 
-```json
-"species": {
-    "S": {
-      "sym_name": "S",
-      "Cd": 2.2,
-      "mass": [1250, 750, 148],
-      "radius": [4, 2, 0.5],
-      "A": "Calculated based on radius",
-      "active": true,
-      "maneuverable": true,
-      "trackable": true,
-      "deltat": [8],
-      "Pm": 0.90,
-      "alpha": 1e-5,
-      "alpha_active": 1e-5,
-      "slotted": true, 
-      "slotting_effectiveness": 1.0,
-      "drag_effected": false,
-      "launch_func": "launch_func_constant",
-      "pmd_func": "pmd_func_sat",
-      "drag_func": "drag_func_exp"
   },
-  "Su": {
-      "sym_name": "Su",
-      "Cd": 2.2,
-      "mass": [260, 473],
-      "A": [1.6652, 13.5615],
-      "radius": [0.728045069, 2.077681285],
-      "active": true,
-      "maneuverable": true,
-      "trackable": true,
-      "deltat": [8, 8],
-      "Pm": 0.65,
-      "alpha": 1e-5,
-      "alpha_active": 1e-5,
-      "RBflag": 0,
-      "slotting_effectiveness": 1.0,
-      "drag_effected": false,
-      "launch_func": "launch_func_constant",
-      "pmd_func": "pmd_func_sat",
-      "drag_func": "drag_func_exp"
-  }
+  "species": [
+      {
+          "sym_name": "S",
+          "Cd": 2.2,
+          "mass": 500,
+          "radius": 2,
+          "A": "Calculated based on radius",
+          "active": true,
+          "maneuverable": false,
+          "trackable": false,
+          "deltat": 8,
+          "Pm": 0.90,
+          "alpha": 1e-5,
+          "alpha_active": 1e-5,
+          "slotted": false, 
+          "slotting_effectiveness": 1.0,
+          "drag_effected": true,
+          "pmd_func": "pmd_func_sat",
+          "drag_func": "drag_func_exp"
+      },
+      {
+          "sym_name": "N",
+          "Cd": 2.2,
+          "mass": [0.00141372, 0.5670],
+          "radius": [0.01, 0.1321],
+          "A": "Calculated based on radius",
+          "active": false,
+          "maneuverable": false,
+          "trackable": false,
+          "deltat": null,
+          "Pm": 0,
+          "alpha": 0,
+          "alpha_active": 0,
+          "RBflag": 0,
+          "slotting_effectiveness": 1,
+          "drag_effected": true,
+          "launch_func": "launch_func_null",
+          "pmd_func": "pmd_func_derelict",
+          "drag_func": "drag_func_exp"
+      },
+      {
+          "sym_name": "B",
+          "RBflag" : 1,
+          "Cd": 2.2,
+          "mass": 1783.94,
+          "radius": 2.687936011,
+          "A": 22.6980069221863,
+          "active": false,
+          "slotted": false,
+          "slotting_effectiveness": 1,
+          "drag_effected": true,
+          "Pm": 0,
+          "alpha": 0,
+          "alpha_active": 0, 
+          "trackable": true,
+          "pmd_func": "pmd_func_none",
+          "drag_func": "drag_func_exp"
+      }
+  ]
+}
 ```
 
 An example of running the simulation:
@@ -215,9 +229,9 @@ model = Model(
     density_model=scenario_props["density_model"],
     LC=scenario_props["LC"],
     v_imp=scenario_props["v_imp"],
-    fragment_spreading=false,
-    parallel_processing=false, 
-    baseline=false
+    fragment_spreading=False,
+    parallel_processing=False, 
+    baseline=False
 )
 
 species = simulation_data["species"]
@@ -225,6 +239,9 @@ species_list = model.configure_species(species)
 
 # Run the model
 results = model.run_model()
+
+# Create the plots - will create a new figures folder in working directory
+model.create_plots()
 ```
 
 

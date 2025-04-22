@@ -6,37 +6,63 @@ from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from datetime import datetime
-from utils.plotting.plotting import create_plots, results_to_json
+from utils.plotting.plotting import Plots, results_to_json
 import json
 import os
 import pickle
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 
 class Model:
+    """
+    A class to represent a simulation model for pySSEM.
+
+    Attributes:
+        start_date (str): Start date of the simulation.
+        simulation_duration (int): Duration of the simulation in days.
+        steps (int): Number of simulation steps.
+        min_altitude (int): Minimum altitude for the simulation in meters.
+        max_altitude (int): Maximum altitude for the simulation in meters.
+        n_shells (int): Number of altitude shells in the simulation.
+        launch_function (str): Type of launch function used (e.g., "Constant").
+        integrator (str): Numerical integration method (e.g., "BDF").
+        density_model (str): Atmospheric density model (e.g., "static_exp_dens_func").
+        LC (float): Launch coefficient.
+        v_imp (float, optional): Impact velocity of objects in m/s.
+        fragment_spreading (bool, optional): Enable/disable fragment spreading.
+        parallel_processing (bool, optional): Use parallel processing if True.
+        baseline (bool, optional): If True, assumes no further launches.
+        indicator_variables (dict, optional): Additional indicator variables for the model.
+    """
     def __init__(self, start_date, simulation_duration, steps, min_altitude, max_altitude, 
-                        n_shells, launch_function, integrator, density_model, LC, v_imp=None,
-                        fragment_spreading=True, parallel_processing=False, baseline=False):
+                        n_shells, launch_function, integrator, density_model, LC, 
+                        v_imp=None,
+                        fragment_spreading=True, parallel_processing=False, baseline=False, 
+                        indicator_variables=None, launch_scenario=None, SEP_mapping=None):
         """
         Initialize the scenario properties for the simulation model.
 
-        Parameters:
-        - start_date (str): Start date of the simulation in MM/DD/YYYY format.
-        - simulation_duration (int): Duration of the simulation in days.
-        - steps (int): Number of steps in the simulation.
-        - min_altitude (int): Minimum altitude in meters.
-        - max_altitude (int): Maximum altitude in meters.
-        - n_shells (int): Number of shells in the simulation.
-        - launch_function (str): Type of launch function (e.g., "Constant").
-        - integrator (str): Type of integrator to use (e.g., "BDF").
-        - density_model (str): Density model to use ("static_exp_dens_func").
-        - LC (float): Coefficient related to launch (unitless).
-        - v_imp (float): Impact velocity of objects in m/s.
-        - _return (bool): Whether to return the scenario properties object.
+        Args:
+            start_date (str): Start date of the simulation in MM/DD/YYYY format.
+            simulation_duration (int): Duration of the simulation in days.
+            steps (int): Number of steps in the simulation.
+            min_altitude (int): Minimum altitude in meters.
+            max_altitude (int): Maximum altitude in meters.
+            n_shells (int): Number of shells in the simulation.
+            launch_function (str): Type of launch function (e.g., "Constant").
+            integrator (str): Type of integrator to use (e.g., "BDF").
+            density_model (str): Density model to use ("static_exp_dens_func").
+            LC (float): Coefficient related to launch (unitless).
+            v_imp (float, optional): Impact velocity of objects in m/s.
+            fragment_spreading (bool, optional): Whether to enable fragment spreading.
+            parallel_processing (bool, optional): Enable parallel processing.
+            baseline (bool, optional): Use baseline assumptions (no further launches).
+            indicator_variables (dict, optional): Additional indicator variables for the model.
 
-        Returns:
-        ScenarioProperties: An initialized scenario properties object.
-        
         Raises:
-        ValueError: If any parameters are of incorrect type or invalid value.
+            ValueError: If any parameters are of incorrect type or invalid value.
         """
         try:
             # Validate and convert start_date
@@ -55,6 +81,8 @@ class Model:
                 raise ValueError("n_shells must be a positive integer.")
             if not isinstance(LC, (int, float)):
                 raise ValueError("LC must be a numeric type.")
+            if not isinstance(v_imp, (int, float)):
+                raise ValueError("v_imp must be a numeric type.")
 
             # Create the ScenarioProperties object
             self.scenario_properties = ScenarioProperties(
@@ -71,25 +99,31 @@ class Model:
                 v_imp=v_imp,
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
-                baseline=baseline
+                baseline=baseline,
+                indicator_variables=indicator_variables,
+                launch_scenario=launch_scenario,
+                SEP_mapping=SEP_mapping,
             )
-
-            # Define parameters needed at Model level
-            self.baseline = baseline
             
         except Exception as e:
             raise ValueError(f"An error occurred initializing the model: {str(e)}")
         
     def configure_species(self, species_json):
         """
-        Configure species into Species objects from JSON. This will pass the multiple species and split them, creating the symbolic variables.
-        Then pairs the debris and active species for PMD modeling.Finally, it will create the collision pairs between the species to enable the simulation.
-        
-        Parameters:
-        - species_json (dict): JSON object containing species data.
+        Configure species into `Species` objects from a JSON file.
+
+        This method processes the multiple species, splits them, creates symbolic variables,
+        pairs debris and active species for Post-Mission Disposal (PMD) modeling, and
+        creates collision pairs between the species for simulation.
+
+        Args:
+            species_json (dict): JSON object containing species data.
 
         Returns:
-        - Species: A configured species object.
+            Species: A configured `Species` object.
+
+        Raises:
+            ValueError: If the JSON is invalid or an error occurs during configuration.
         """
         try:
             species_list = Species()
@@ -97,7 +131,7 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
@@ -114,8 +148,9 @@ class Model:
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
-            # Merge elliptical back to main species
-            # species_list.merge_elliptical_to_main()
+            # Create Indicator Variables if provided
+            if self.scenario_properties.indicator_variables is not None:
+                self.scenario_properties.build_indicator_variables()
 
             return species_list
         except json.JSONDecodeError:
@@ -126,73 +161,38 @@ class Model:
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.item
+
+        This method initializes the population, builds the model, and runs the simulation.
 
         Returns:
-        - Result of the simulation.
+            None
+
+        Raises:
+            RuntimeError: If an error occurs while running the simulation.
         """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-
-            self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties-test.pkl', 'wb') as f:
+            with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
-            
-            return self.scenario_properties
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
-        
-    def build_sym_model(self):
-        if not isinstance(self.scenario_properties, ScenarioProperties):
-            raise ValueError("Invalid scenario properties provided.")
-        try:
-
-            # self.scenario_properties.initial_pop_and_launch(baseline=self.baseline) # Initial population is considered but not launch
-            self.scenario_properties.build_model()
-
-            # save the scenario properties to a pickle file
-            # with open('scenario-properties-test-no-run.pkl', 'wb') as f:
-            # with open('scenario-properties-test-no-run-mult.pkl', 'wb') as f:
-            # with open('scenario-properties-baseline-no-run_24_shells.pkl', 'wb') as f:
-            # with open('scenario-properties-baseline-no-run_14_shells.pkl', 'wb') as f:
-            # with open('scenario-properties-baseline-no-run_5_shells.pkl', 'wb') as f:
-            # with open('scenario-properties-test-no-run-policy.pkl', 'wb') as f:
-            # with open('scenario-properties-test-opt.pkl', 'wb') as f:
-            
-            # with open('scenario-properties-test-opt-nospread.pkl', 'wb') as f:
-            with open('scenario-properties-test-opt-yesspread.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
-            
-            return self.scenario_properties
-        
-        except Exception as e:
-            raise RuntimeError(f"Failed to run model: {str(e)}")
-        
-    def create_plots(self):
-        """
-        Create plots for the simulation results.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.
-        """
-        if not isinstance(self.scenario_properties, ScenarioProperties):
-            raise ValueError("Invalid scenario properties provided.")
-        try:
-            create_plots(self)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create plots: {str(e)}")
     
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
+
+        Returns:
+            dict: JSON representation of the simulation results.
+
+        Raises:
+            RuntimeError: If an error occurs during the conversion process.
         """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
@@ -201,14 +201,9 @@ class Model:
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
 
-
 if __name__ == "__main__":
 
-    # with open(os.path.join('pyssem', 'three_species.json')) as f:
-    # with open(os.path.join('pyssem', 'three_species_mult.json')) as f:
-    # with open(os.path.join('pyssem', 'baseline_amos.json')) as f:
-    with open(os.path.join('pyssem', 'three_species_opt.json')) as f:
-    # with open('three_species_opt.json') as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -225,10 +220,13 @@ if __name__ == "__main__":
         integrator=scenario_props["integrator"],
         density_model=scenario_props["density_model"],
         LC=scenario_props["LC"],
-        v_imp = scenario_props.get("v_imp", None),
-        fragment_spreading=scenario_props.get("fragment_spreading", True),
-        parallel_processing=scenario_props.get("parallel_processing", False),
-        baseline=scenario_props.get("baseline", False)
+        v_imp = scenario_props.get("v_imp", None), 
+        fragment_spreading=scenario_props.get("fragment_spreading", False),
+        parallel_processing=scenario_props.get("parallel_processing", True),
+        baseline=scenario_props.get("baseline", False),
+        indicator_variables=scenario_props.get("indicator_variables", None),
+        launch_scenario=scenario_props["launch_scenario"],
+        SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
     )
 
     species = simulation_data["species"]
@@ -238,9 +236,16 @@ if __name__ == "__main__":
     results = model.build_sym_model()
     # results = model.run_model()
 
-    # model.create_plots()
+    data = model.results_to_json()
+    # Create the figures directory if it doesn't exist
+    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+    # Save the results to a JSON file
+    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+        json.dump(data, f, indent=4)
 
-    # ouput = model.results_to_json()
-    # # convert to json file
-    # with open('output.json', 'w') as f:
-    #     f.write(ouput)
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")
