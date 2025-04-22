@@ -6,6 +6,7 @@ from tqdm import tqdm
 # import matplotlib.pyplot as plt
 import numpy as np
 import multiprocessing as mp
+# from utils.control.control import *
 
 
 def func_Am(d, ObjClass):
@@ -37,6 +38,8 @@ def func_Am(d, ObjClass):
 
     N1 = amsms[:, 1] + amsms[:, 2] * np.random.randn(numObj)
     N2 = amsms[:, 3] + amsms[:, 4] * np.random.randn(numObj)
+    # N1 = amsms[:, 1] + amsms[:, 2] * randn2(numObj)
+    # N2 = amsms[:, 3] + amsms[:, 4] * randn2(numObj)
 
     out = 10 ** (amsms[:, 0] * N1 + (1 - amsms[:, 0]) * N2)
 
@@ -63,6 +66,7 @@ def func_dv(Am, mode):
 
     sigma = 0.4
     N = mu + sigma * np.random.randn(*np.shape(mu))
+    # N = mu + sigma * randn2(*np.shape(mu))
     z = 10 ** N # m/s
     return z 
 
@@ -285,7 +289,8 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
 
         # find difference in orbital velocity for shells
         # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
-        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+        # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2050, 50))) * 1000)))
         dv_values = func_dv(Am, 'col') / 1000 # km/s
         u = np.random.rand(len(dv_values)) * 2 - 1
         theta = np.random.rand(len(dv_values)) * 2 * np.pi
@@ -296,6 +301,9 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
 
         hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
         altNums = hc / (SS * 3)
+        
+        # print(hc)
+        # breakpoint()
 
         if altNums is None:
             print(hc)  # Check if hc is correct
@@ -350,6 +358,8 @@ def process_species_pair(args):
     # Calculate the number of fragments made for each debris species
     frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
     alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
+
+    print(len(debris_species))
 
     # This will tell you the number of fragments in each debris bin
     for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
@@ -445,8 +455,8 @@ def create_collision_pairs(scen_properties):
     # n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
 
     # Debris species - remember, we don't want PMD linked species. Just raw debris.
-    # debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
-    debris_species = [species for species in scen_properties.species['debris']]
+    debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
+    # debris_species = [species for species in scen_properties.species['debris']]
 
     # Calculate the Mass bin centres, edges and widths
     binC = np.zeros(len(debris_species))
@@ -455,11 +465,18 @@ def create_collision_pairs(scen_properties):
     LBgiven = scen_properties.LC
 
     for index, debris in enumerate(debris_species):
+        print(debris.mass)
+        print(debris.mass_lb)
+        print(debris.mass_ub)
+        # debris.mass_lb = debris.mass
+        debris.mass_ub = debris.mass
         binC[index] = debris.mass
         binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
         binW[index] = debris.mass_ub - debris.mass_lb
 
     binE = np.unique(binE)
+    
+    print(binE)
 
     args = [(i, species_pair, scen_properties, debris_species, binE, LBgiven) for i, species_pair in enumerate(species_pairs)]
     

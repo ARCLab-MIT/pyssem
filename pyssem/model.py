@@ -166,6 +166,8 @@ class Model:
             # with open('scenario-properties-baseline-no-run_5_shells.pkl', 'wb') as f:
             # with open('scenario-properties-test-no-run-policy.pkl', 'wb') as f:
             # with open('scenario-properties-test-opt.pkl', 'wb') as f:
+            
+            # with open('scenario-properties-test-opt-nospread.pkl', 'wb') as f:
             with open('scenario-properties-test-opt-yesspread.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
             
