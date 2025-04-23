@@ -2,9 +2,13 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pkl
 
 # C extensions
 *.so
+
+# figures folder
+/figures/
 
 # Distribution / packaging
 .Python

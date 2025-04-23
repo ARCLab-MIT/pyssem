@@ -56,9 +56,9 @@ def func_dv(Am, mode):
     Returns:
         np.ndarray: Calculated delta-v values for each fragment.
     """
-    if mode == 'col':
+    if mode == 'exp':
        mu = 0.2 * np.log10(Am) + 1.85 # Explosion
-    elif mode == 'exp':
+    elif mode == 'col':
         mu = 0.9 * np.log10(Am) + 2.9
 
     sigma = 0.4
