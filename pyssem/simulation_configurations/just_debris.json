@@ -18,7 +18,7 @@
         "v_imp": 10, 
         "baseline": false,
         "fragment_spreading": false, 
-        "parallel_processing": true
+        "parallel_processing": false
     },
     "simulation_name": "Indigo",
     "species": [
@@ -60,7 +60,9 @@
             "drag_effected": true,
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_derelict",
-            "drag_func": "drag_func_exp"
+            "drag_func": "drag_func_exp",
+            "elliptical": true,
+            "eccentricity_bins" : [0.001, 0.01, 0.1, 0.2]
         },
         {
             "sym_name": "B",

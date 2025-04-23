@@ -59,7 +59,7 @@ def create_collision_pairs(scen_properties):
             continue
 
         # Loop through the semi-major axis bins (assuming species1 and species2 have the same number of bins)
-        for k in range(len(species1.semi_major_axis_bins)): # back to altitude
+        for k in range(len(species1.semi_major_axis_bins)):
             # Extract the time spent in shells for both species at this semi-major axis bin
             time_in_shells_1 = species1.time_per_shells[k]  # Array for species1
             time_in_shells_2 = species2.time_per_shells[k]  # Array for species2
@@ -350,159 +350,6 @@ def generate_collision_equations(all_elliptical_collision_species, scen_properti
         
     return all_elliptical_collision_species
 
-# def process_collision_pair(collision_pair, scen_properties, mass_bins, ecc_bins, debris_species_names):
-
-#     n_shells = scen_properties.n_shells
-
-#     if len(collision_pair.collision_pair_by_shell) == 0:
-#         # If no fragments, exit with a zero matrix
-#         collision_pair.eqs = Matrix.zeros(n_shells, scen_properties.species_length)
-#         return collision_pair
-
-#     # Map out the major components
-#     species1 = collision_pair.species1
-#     species2 = collision_pair.species2
-#     species1_name = species1.sym_name
-#     species2_name = species2.sym_name
-
-#     # Conversion factor
-#     meter_to_km = 1 / 1000
-
-#     # Compute collision cross-section (sigma)
-#     collision_pair.sigma = (species1.radius * meter_to_km + species2.radius * meter_to_km) ** 2
-
-#     # Compute collision rate (phi) for each shell
-#     collision_pair.phi = (
-#         pi * scen_properties.v_imp2
-#         / (scen_properties.V * meter_to_km**3)
-#         * collision_pair.sigma
-#         * S(86400)
-#         * S(365.25)
-#     )
-#     phi_matrix = Matrix(collision_pair.phi)
-
-#     # If phi_matrix is a scalar, convert it into a 1x1 matrix
-#     if phi_matrix.shape == ():  # Single scalar case
-#         phi_matrix = Matrix([phi_matrix])  # Convert scalar to 1x1 matrix
-#     else:
-#         phi_matrix = phi_matrix.reshape(len(phi_matrix), 1) 
-
-#     equations = Matrix.zeros(n_shells, scen_properties.species_length)
-
-#     for elliptical_pair in collision_pair.collision_pair_by_shell:
-
-#         elliptical_pair.gamma = collision_pair.gamma.copy()
-
-#         s_source = elliptical_pair.shell_index  # Source shell index (0-based)
-
-#         # Get species variable names including shell number
-#         species1_var_name = f'{species1_name}_{s_source + 1}'
-#         species2_var_name = f'{species2_name}_{s_source + 1}'
-
-#         # Get symbolic variables
-#         N_species1_s = species_sym_vars.get(species1_var_name)
-#         N_species2_s = species_sym_vars.get(species2_var_name)
-
-#         if N_species1_s is None or N_species2_s is None:
-#             continue  # Skip if species variables are not found
-
-#         phi_s = collision_pair.phi[s_source]
-
-#         # Process fragments from the collision
-#         fragments = elliptical_pair.fragments
-
-#         if fragments is not None:
-#             n_destination_shells, n_mass_bins, n_ecc_bins = fragments.shape
-
-#             for s_destination in range(n_destination_shells):
-#                 fragments_sd = fragments[s_destination]
-#                 for mass_bin_index in range(n_mass_bins):
-#                     for ecc_bin_index in range(n_ecc_bins):
-#                         num_frags = fragments_sd[mass_bin_index, ecc_bin_index]
-#                         if num_frags != 0:
-#                             mass_value = mass_bins[mass_bin_index]
-#                             ecc_value = ecc_bins[ecc_bin_index]
-#                             debris_species_name = f'{mass_value}_e{ecc_value}_{s_destination + 1}'
-#                             idx_debris = species_name_to_idx.get(debris_species_name)
-#                             if idx_debris is not None:
-#                                 debris_var = species_sym_vars[debris_species_name]
-#                                 delta_gain = phi_s * N_species1_s * N_species2_s * num_frags
-#                                 equations[s_destination, idx_debris] += delta_gain
-#         else:
-#             continue
-
-#     # Extract the equations for the debris species and store them
-#     debris_length = len(mass_bins) * len(ecc_bins)
-#     equations_debris = Matrix.zeros(n_shells, debris_length)
-
-#     # Map debris species variable names to indices within the shell
-#     debris_species_idx_within_shell = {}
-#     for idx_within_shell, debris_species_name in enumerate(debris_species_names[:debris_length]):
-#         base_name = '_'.join(debris_species_name.split('_')[:-1])
-#         debris_species_idx_within_shell[base_name] = idx_within_shell
-
-#     # Populate the debris equations matrix
-#     for s in range(n_shells):
-#         for mass_value in mass_bins:
-#             for ecc_value in ecc_bins:
-#                 debris_species_name = f'{mass_value}_e{ecc_value}_{s + 1}'
-#                 base_name = f'{mass_value}_e{ecc_value}'
-#                 idx_species = species_name_to_idx.get(debris_species_name)
-#                 idx_debris = debris_species_idx_within_shell.get(base_name)
-#                 if idx_species is not None and idx_debris is not None:
-#                     eq = equations[s, idx_species]
-#                     equations_debris[s, idx_debris] += eq
-
-#     species_names = scen_properties.species_names
-#     species1_idx = species_names.index(species1.sym_name)
-#     species2_idx = species_names.index(species2.sym_name)
-
-#     debris_start_idx = next(i for i, name in enumerate(species_names) if name.startswith('N_'))
-
-#     try:
-#         eq_s1 = collision_pair.gamma[:, 1].multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
-#         eq_s2 = collision_pair.gamma[:, 1].multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
-#     except Exception as e:
-#         print(f"Exception caught: {e}")
-#         return collision_pair
-
-#     eqs = Matrix(zeros(n_shells, scen_properties.species_length))
-
-#     eqs[:, species1_idx] = eq_s1
-#     eqs[:, species2_idx] += eq_s2
-
-#     for i in range(len(scen_properties.species['debris'])):
-#         deb_index = debris_start_idx + i
-#         eqs[:, deb_index] = equations_debris[:, i]
-
-#     collision_pair.eqs = eqs
-
-#     return collision_pair
-
-# # Parallelize the outer loop
-# def parallel_collision_processing(all_elliptical_collision_species, scen_properties, species_sym_vars, species_name_to_idx, mass_bins, ecc_bins, debris_species_names):
-
-#     # Use a process pool to parallelize
-#     with ProcessPoolExecutor() as executor:
-#         futures = {
-#             executor.submit(
-#                 process_collision_pair, collision_pair, scen_properties, species_sym_vars, species_name_to_idx, mass_bins, ecc_bins, debris_species_names
-#             ): collision_pair
-#             for collision_pair in all_elliptical_collision_species
-#         }
-
-#         # Use tqdm for progress tracking
-#         results = []
-#         for future in tqdm(as_completed(futures), total=len(futures), desc="Processing collision pairs"):
-#             try:
-#                 result = future.result()
-#                 results.append(result)
-#             except Exception as exc:
-#                 print(f"Exception occurred: {exc}")
-        
-#     return results
-
-
 def process_elliptical_collision_pair(args):
     """
     A similar function to the process_species_pair, apart from it as the shells are already defined and the velocity, 
@@ -516,9 +363,9 @@ def process_elliptical_collision_pair(args):
 
     # there needs to be some changes here to account for the fact that the shells are already defined
     # set fragment_spreading to True
-    v1 = collision_pair.species1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
-    v2 = collision_pair.species2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
-
+    #v1 = collision_pair.species1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    #v2 = collision_pair.species2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
+    v1, v2 = 7.5, 7.5
     # This the time per shell for each species - the output still assumes that it is always there, so you need to divide
     t1 = collision_pair.species1.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     t2 = collision_pair.species2.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
@@ -526,11 +373,16 @@ def process_elliptical_collision_pair(args):
     prod_TIS = t1 * t2
 
     # This will have to change 
-    if m1 < 1 or m2 < 1:
+    try:
+        if m1 < 1 or m2 < 1:
+            fragments = None
+        else:
+            fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
+    except Exception as e:
+        print("Error in Evolve Bins")
+        print(f"Exception caught: {e}")
         fragments = None
-    else:
-        fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
-    
+
     if fragments is not None:
         collision_pair.fragments = fragments * prod_TIS
     else: 
@@ -570,30 +422,25 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         # - LB: Lower bound for fragment sizes (meters)
         # Super sampling ratio
         SS = 20
+        R_EARTH = 6371.0  # km
+        theta = np.radians(45)  # Rotation angle
 
-        p1_in = np.array([
-            1250.0,  # mass in kg
-            4.0,     # radius in meters
-            2372.4,  # r_x in km, 1000 km
-            2743.1,  # r_y in km
-            6224.8,  # r_z in km
-            -5.5,    # v_x in km/s
-            -3.0,    # v_y in km/s
-            3.8,     # v_z in km/s
-            1      # object_class (dimensionless)
-        ])
+        # Get collision altitude and position magnitude
+        collision_altitude = scen_properties.HMid[collision_index]
+        r_mag = R_EARTH + collision_altitude
 
-        p2_in = np.array([
-            6.0,     # mass in kg
-            0.1,     # radius in meters
-            2372.4,  # r_x in km
-            2743.1,  # r_y in km
-            6224.8,  # r_z in km
-            3.2,     # v_x in km/s
-            5.4,     # v_y in km/s
-            -3.9,    # v_z in km/s
-            1      # object_class (dimensionless)
-        ])
+        # Define position vectors with slight z offsets
+        r1_vec = r_mag * np.array([np.cos(theta), np.sin(theta), 0.01])
+        r2_vec = r_mag * np.array([np.cos(theta + np.pi/2), np.sin(theta + np.pi/2), -0.01])
+
+        # Define velocity vectors with orthogonal direction and small z component
+        v_half = v1 / 2
+        v1_vec = v_half * np.array([-np.sin(theta), np.cos(theta), 0.02])
+        v2_vec = v_half * np.array([np.sin(theta), -np.cos(theta), -0.02])
+
+        # Compose p1 and p2 inputs
+        p1_in = np.array([m1, r1, *r1_vec, *v1_vec, 1]) # 1 is the object class (dimensionless)
+        p2_in = np.array([m2, r2, *r2_vec, *v2_vec, 1])
 
         param = {
             'req': 6.3781e+03,
@@ -639,9 +486,13 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
             
         LB = 0.1
 
-        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
-
-        # print(len(debris1), len(debris2))
+        try:
+            debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
+        except Exception as e:
+            print("Error in frag_col_SBM_vec_lc2")
+            print(f"Exception caught: {e}")
+            return None
+        print(len(debris1), len(debris2))
 
         # Loop through 
         frag_a = []
@@ -756,6 +607,29 @@ class SpeciesCollisionPair:
 
 
 if __name__ == "__main__":
+    p1_in = np.array([
+            m1,  # mass in kg
+            r1,     # radius in meters
+            2372.4,  # r_x in km, 1000 km
+            2743.1,  # r_y in km
+            6224.8,  # r_z in km
+            -5.5,    # v_x in km/s
+            -3.0,    # v_y in km/s
+            3.8,     # v_z in km/s
+            1      # object_class (dimensionless)
+        ])
+
+    p2_in = np.array([
+            m1,     # mass in kg
+            r1,     # radius in meters
+            2372.4,  # r_x in km
+            2743.1,  # r_y in km
+            6224.8,  # r_z in km
+            3.2,     # v_x in km/s
+            5.4,     # v_y in km/s
+            -3.9,    # v_z in km/s
+            1      # object_class (dimensionless)
+        ])
     import pickle 
     
     # open scnario properties

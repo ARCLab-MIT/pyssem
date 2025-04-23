@@ -6,7 +6,7 @@
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-from utils.collisions.collisions import *
+from utils.collisions.collisions_elliptical import *
 from utils.optimizer.optimizer import run_optimizer
 from utils.plotting.plotting import *
 import json
@@ -131,7 +131,7 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+            species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()

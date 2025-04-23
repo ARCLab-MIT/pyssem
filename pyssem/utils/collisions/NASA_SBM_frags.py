@@ -1,17 +1,11 @@
 import numpy as np
-from utils.collisions.collisions import func_Am, func_dv
-from poliastro.core.elements import rv2coe
+from ..collisions.collisions import func_Am, func_dv
+from poliastro.core.elements import rv2coe 
 from astropy import units as u
 from poliastro.bodies import Earth
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from mpl_toolkits.mplot3d import Axes3D
-import pickle
-
 
 def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     """

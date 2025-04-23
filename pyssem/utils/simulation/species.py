@@ -7,6 +7,7 @@ import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
+from ..elliptical.elliptical import compute_time_fractions_for_orbit
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -367,22 +368,31 @@ class Species:
             spec_mass = active_spec.mass
 
             for deb_spec in debris_species:
-                if spec_mass == deb_spec.mass:
-                    if active_spec.elliptical:
-                        # find the closest eccentricity bin to current eccentricity
-                        ecc_bins = deb_spec.eccentricity_bins
-                        ecc_diffs = [abs(ecc - active_spec.eccentricity) for ecc in ecc_bins]
-                        closest_ecc_idx = ecc_diffs.index(min(ecc_diffs))
+                if not found_mass_match_debris:
+                    if spec_mass == deb_spec.mass:
+                        if active_spec.elliptical:
+                            # find the closest eccentricity bin to current eccentricity
+                            ecc_bins = deb_spec.eccentricity_bins
+                            ecc_diffs = [abs(ecc - active_spec.eccentricity) for ecc in ecc_bins]
+                            closest_ecc_idx = ecc_diffs.index(min(ecc_diffs))
 
-                        # if the current debris eccentricity is not the same, continue the loop
-                        if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
-                            continue
-
-                    deb_spec.pmd_func = pmd_func_derelict
-                    deb_spec.pmd_linked_species = []                
-                    deb_spec.pmd_linked_species.append(active_spec)
-                    print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
-                    found_mass_match_debris = True
+                            # if the current debris eccentricity is not the same, continue the loop
+                            if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
+                                continue
+                            else:
+                                deb_spec.pmd_func = pmd_func_derelict
+                                deb_spec.pmd_linked_species = []                
+                                deb_spec.pmd_linked_species.append(active_spec)
+                                print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
+                                found_mass_match_debris = True
+                        else:
+                            # If the active species is not elliptical, set the debris species with the smallest eccentricity value
+                            deb_spec.eccentricity = min(deb_spec.eccentricity_bins)
+                            deb_spec.pmd_func = pmd_func_derelict
+                            deb_spec.pmd_linked_species = []                
+                            deb_spec.pmd_linked_species.append(active_spec)
+                            print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
+                            found_mass_match_debris = True
 
             if not found_mass_match_debris:
                 print(f"No matching mass debris species found for species {active_spec.sym_name} with mass {spec_mass}.")
@@ -518,6 +528,7 @@ class Species:
 
                     # Process each eccentricity bin
                     for i, ecc in enumerate(species.eccentricity_bins):
+                        
                         # Create a new species based on the original
                         new_species = species.copy()
                         new_species.eccentricity = ecc
@@ -543,25 +554,6 @@ class Species:
                     processed_species.add(species.sym_name)
                     species_group.remove(species)
 
-        # if parellel_processing:
-        #         # Prepare arguments for parallel processing
-        #         args_list = [
-        #             (species, mu, R0_km, HMid, self.propagate_orbit, self.calculate_time_and_velocity_in_shell)
-        #             for species_group in self.species.values()
-        #             for species in species_group
-        #             if species.elliptical
-        #         ]
-
-        #         # Use ProcessPoolExecutor for parallel execution
-        #         with concurrent.futures.ProcessPoolExecutor() as executor:
-        #             results = list(tqdm(
-        #                 executor.map(self.process_elliptical_species, args_list),
-        #                 total=len(args_list),
-        #                 desc="Propagating elliptical orbits to find time and velocity in shells"
-        #             ))
-
-        # else:
-            # Sequential processing
         for species_group in self.species.values():
             for species in species_group:
                 if species.elliptical:  # hasn't been created yet
@@ -571,11 +563,15 @@ class Species:
                     species.semi_major_axis_bins = HMid + 6371
 
                     # Calculate time spent in each shell for the semi-major axis
-                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                        true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
-                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
+                    for a in species.semi_major_axis_bins:
+                        e = species.eccentricity
+                        bin_edges = R0_km + 6371
+
+                        # Calculate time spent in each shell for the semi-major axis
+                        time_in_shell = compute_time_fractions_for_orbit(a, e, bin_edges)
                         species.time_per_shells.append(time_in_shell)
-                        species.velocity_per_shells.append(velocity_in_shell)
+                        species.velocity_per_shells.append(np.zeros(len(time_in_shell)))
+ 
                 else:
                     species.semi_major_axis_bins = HMid + 6371
                     for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
