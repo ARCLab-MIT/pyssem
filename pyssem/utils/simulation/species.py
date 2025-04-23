@@ -2,12 +2,6 @@ import json
 from sympy import Matrix
 from tqdm import tqdm    
 import numpy as np
-<<<<<<< HEAD
-from astropy import units as u
-# from poliastro.bodies import Earth
-# from poliastro.twobody import Orbit
-=======
->>>>>>> main
 import copy
 import concurrent.futures
 from ..pmd.pmd import *

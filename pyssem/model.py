@@ -157,6 +157,20 @@ class Model:
             raise ValueError("Invalid JSON format for species.")
         except Exception as e:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
+        
+    def build_sym_model(self):
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.build_model()
+
+            with open('test_to_delete.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
+
+            return self.scenario_properties
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to run model: {str(e)}")
 
     def run_model(self):
         """
@@ -203,7 +217,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_mult.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -225,7 +239,7 @@ if __name__ == "__main__":
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
         indicator_variables=scenario_props.get("indicator_variables", None),
-        launch_scenario=scenario_props["launch_scenario"],
+        launch_scenario=scenario_props.get("indicator_variables", None),
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
     )
 
@@ -236,6 +250,8 @@ if __name__ == "__main__":
     results = model.build_sym_model()
     # results = model.run_model()
 
+
+    ## Plotting and saving results
     data = model.results_to_json()
     # Create the figures directory if it doesn't exist
     os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
