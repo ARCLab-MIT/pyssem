@@ -149,6 +149,362 @@ def find_bin_index(bin_edges, value):
             return i
     return -1  # Return an invalid index if not found
 
+def find_closest_species(obj, species_list, category):
+    """
+    Match an object to its best-fit species using:
+    1. Stationkeeping (drag-affected logic) + maneuverability
+    2. Maneuverability only
+    3. Mass bin fallback
+    """
+    obj_mass = obj['mass']
+    if pd.isna(obj_mass):
+        return None
+
+    stkp_flg = obj['stkp_flg'] if not pd.isna(obj['stkp_flg']) else 0
+    maneuverable = obj['maneuverable'] if not pd.isna(obj['maneuverable']) else 0
+
+    matched_species = []
+
+    if maneuverable == 1:
+        # Match: maneuverable AND drag-affected
+        if stkp_flg == 3:
+            stkp_maneuverable_species = [
+                s for s in species_list
+                if getattr(s, 'maneuverable', True) and getattr(s, 'drag_effected', True)
+            ]
+            matched_species.extend(filter_species_by_mass(obj_mass, stkp_maneuverable_species))
+
+        # Match: maneuverable AND NOT drag-affected
+        elif stkp_flg == 0:
+            non_drag_maneuverable_species = [
+                s for s in species_list
+                if getattr(s, 'maneuverable', True) and not getattr(s, 'drag_effected', False)
+            ]
+            matched_species.extend(filter_species_by_mass(obj_mass, non_drag_maneuverable_species))
+
+        # If stationkeeping wasn't matched, fallback to any maneuverable species
+        if not matched_species:
+            fallback_maneuverable_species = [
+                s for s in species_list if getattr(s, 'maneuverable', False)
+            ]
+            matched_species.extend(filter_species_by_mass(obj_mass, fallback_maneuverable_species))
+
+    elif maneuverable == 0:
+        # Match only non-maneuverable species
+        non_maneuverable_species = [
+            s for s in species_list if not getattr(s, 'maneuverable', False)
+        ]
+        matched_species.extend(filter_species_by_mass(obj_mass, non_maneuverable_species))
+
+    # Step 3: If nothing matched yet, fallback to all by mass bin
+    if not matched_species:
+        matched_species.extend(filter_species_by_mass(obj_mass, species_list))
+
+    # Step 4: Warn if multiple species matched
+    unique_matches = {s.sym_name: s for s in matched_species}.values()
+    if len(unique_matches) > 1:
+        print(f"Warning: obj_id {obj['obj_id']} matches multiple species: {[s.sym_name for s in unique_matches]}")
+
+    # Step 5: Return closest by mass center
+    return min(unique_matches, key=lambda s: abs(obj_mass - get_species_mass_center(s)), default=None)
+
+def filter_species_by_mass(obj_mass, species_list):
+    """
+    Return list of species where object mass falls within their mass bounds.
+    """
+    matches = []
+    for s in species_list:
+        if s.mass_lb <= obj_mass < s.mass_ub:
+            matches.append(s)
+    return matches
+
+def get_species_mass_center(species):
+    """
+    Estimate the central mass value for a species.
+    """
+    if isinstance(species.mass, (list, tuple)):
+        return (species.mass[0] + species.mass[1]) / 2
+    elif species.mass is not None:
+        return species.mass
+    else:
+        return float('inf')  # fallback if undefined
+    
+def find_mass_bin_species(obj_mass, species_list):
+    """
+    Find the best match based on mass bin or nearest mass center.
+    """
+    for s in species_list:
+        if s.mass_lb <= obj_mass < s.mass_ub:
+            return s
+
+    # Fallback to closest by mean mass
+    closest = None
+    min_diff = float('inf')
+    for s in species_list:
+        if isinstance(s.mass, (list, tuple)):
+            mean_mass = (s.mass[0] + s.mass[1]) / 2
+        else:
+            mean_mass = s.mass
+        diff = abs(obj_mass - mean_mass)
+        if diff < min_diff:
+            min_diff = diff
+            closest = s
+    return closest
+
+def get_species_category(obj, species_dict):
+    """
+    Determine species category ('Active', 'Debris', 'RocketBodies') using obj_type and flags.
+    """
+    obj_type = int(obj['obj_type']) if not pd.isna(obj['obj_type']) else None
+
+    if obj_type == 1:
+        return "rocket_body"
+    elif obj_type == 2:
+        return "active"
+    elif obj_type == 3:
+        return "debris"
+    elif obj_type == 4:
+        return "debris"
+    elif obj_type == 5:
+        return "active"
+    elif obj_type == 6:
+        return "debris"
+    else:
+        # Fallback: use active flag if available
+        if not pd.isna(obj['active']):
+            return "Active" if bool(obj['active']) else "debris"
+        return "debris"
+
+def assign_species_to_population(T, species_mapping):
+    """
+    Applies a list of pandas query strings to assign species classes to the population.
+    
+    :param T: pandas.DataFrame representing the population
+    :param species_mapping: list of assignment strings (e.g., T.loc[...] = ...)
+    :return: updated DataFrame with 'species_class' assigned
+    """
+    # Initialize the column
+    T['species_class'] = "Unknown"
+
+    # Apply each mapping rule via exec
+    for rule in species_mapping:
+        try:
+            exec(rule)
+        except Exception as e:
+            print(f"Error applying rule: {rule}\n\t{e}")
+
+    # Print summary of resulting species_class assignments
+    print("\nSpecies class distribution:")
+    print(T['species_class'].value_counts())
+
+    try:
+        T = T[T['species_class'] != "Unknown"]
+        print(f"\n{T['species_class'].value_counts()['Unknown']} objects/rows are being removed.")
+    except KeyError:
+        print("No unknown species classes found.")
+
+    return T
+
+def find_species_bin(row, scen_properties, species_cells):
+    """
+    Determine the species bin for a given row, based on mass and/or eccentricity.
+
+    :param row: Row from DataFrame (must have 'mass' and 'ecc')
+    :param scen_properties: ScenarioProperties object
+    :param species_cells: List of Species objects
+    :return: species.sym_name that matches the object's properties
+    """
+    for species in species_cells:
+        # Check for eccentricity-based binning
+        if getattr(species, "elliptical", False):
+            if species.mass_lb <= row.mass < species.mass_ub and \
+               species.ecc_lb <= row.ecc < species.ecc_ub:
+                return species.sym_name
+        else:
+            if species.mass_lb <= row.mass < species.mass_ub:
+                return species.sym_name
+
+    return None  # No match found
+
+def SEP_traffic_model(scen_properties, file_path):
+    """
+    This will take one of the SEP files, users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
+    
+    This function will create an initial population (x0) and a future launch model (FLM_steps)
+    for the given scenario and the species properties that have been configured. 
+    """
+
+    # Calculate Apogee, Perigee, and altitude
+    T = pd.read_csv(file_path)
+
+    T['apogee'] = T['sma'] * (1 + T['ecc'])
+    T['perigee'] = T['sma'] * (1 - T['ecc'])
+    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+
+    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
+
+    # Mapping species gets more complicated if there are elliptical orbits.
+    elliptical_species_flag = False
+    for species_group in scen_properties.species.values():
+            for species in species_group:
+                if species.elliptical:
+                    elliptical_species_flag = True
+    
+    if elliptical_species_flag:
+        # Assign elliptical sub-species
+        for species_class in T['species_class'].unique():            
+            if species_class in scen_properties.species_cells:
+                T_obj_class = T[T['species_class'] == species_class].copy()
+                species_cells = scen_properties.species_cells[species_class]
+
+                if len(species_cells) == 1:
+                    # Only one species → assign directly
+                    T_obj_class['species'] = species_cells[0].sym_name
+                else:
+                    # Multiple species → use row-wise logic
+                    T_obj_class['species'] = T_obj_class.apply(
+                        find_species_bin,
+                        axis=1,
+                        args=(scen_properties, species_cells)
+                    )
+
+                T_new = pd.concat([T_new, T_obj_class])
+    else:
+        # Bin altitudes
+        for species_class in T['species_class'].unique():
+                if species_class in scen_properties.species_cells:
+                    if len(scen_properties.species_cells[species_class]) == 1:
+                        T_obj_class = T[T['species_class'] == species_class].copy()
+                        T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                        T_new = pd.concat([T_new, T_obj_class])
+                    else:
+                        species_cells = scen_properties.species_cells[species_class]
+                        T_obj_class = T[T['species_class'] == species_class].copy()
+                        T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                        T_new = pd.concat([T_new, T_obj_class])
+
+
+    # Convert MJD to datetime
+    # def mjd_to_datetime(mjd_series):
+    #     """
+    #     Convert a Series of MJD floats to timezone-naive datetime.datetime objects.
+    #     """
+    #     return mjd_series.apply(lambda mjd: jd_to_datetime(mjd_to_jd(mjd)))
+
+    # T_new['epoch_start_datetime'] = mjd_to_datetime(T_new['mjd_start'])
+    # T_new['epoch_end_datetime'] = mjd_to_datetime(T_new['mjd_final'])
+    T['apogee'] = T['sma'] * (1 + T['ecc'])
+    T['perigee'] = T['sma'] * (1 - T['ecc'])
+    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+
+    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
+
+    # Mapping species gets more complicated if there are elliptical orbits.
+    elliptical_species_flag = False
+    for species_group in scen_properties.species.values():
+            for species in species_group:
+                if species.elliptical:
+                    elliptical_species_flag = True
+
+    if elliptical_species_flag:
+        # Assign elliptical sub-species
+        for species_class in T['species_class'].unique():            
+            if species_class in scen_properties.species_cells:
+                T_obj_class = T[T['species_class'] == species_class].copy()
+                species_cells = scen_properties.species_cells[species_class]
+
+                if len(species_cells) == 1:
+                    # Only one species → assign directly
+                    T_obj_class['species'] = species_cells[0].sym_name
+                else:
+                    # Multiple species → use row-wise logic
+                    T_obj_class['species'] = T_obj_class.apply(
+                        find_species_bin,
+                        axis=1,
+                        args=(scen_properties, species_cells)
+                    )
+
+                T_new = pd.concat([T_new, T_obj_class])
+    else:
+        # Bin altitudes
+        for species_class in T['species_class'].unique():
+                if species_class in scen_properties.species_cells:
+                    if len(scen_properties.species_cells[species_class]) == 1:
+                        T_obj_class = T[T['species_class'] == species_class].copy()
+                        T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                        T_new = pd.concat([T_new, T_obj_class])
+                    else:
+                        species_cells = scen_properties.species_cells[species_class]
+                        T_obj_class = T[T['species_class'] == species_class].copy()
+                        T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                        T_new = pd.concat([T_new, T_obj_class])
+
+    print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
+
+    T_new['epoch_start_datetime'] = T_new['year_start'].apply(
+            lambda y: datetime(int(y), 1, 1)
+        )
+    T_new['epoch_end_datetime'] = T_new['year_final'].apply(
+        lambda y: datetime(int(y), 1, 1)
+    )
+
+    T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
+
+    # Filter T_new to include only species present in scen_properties
+    T_new = T_new[T_new['species'].isin(scen_properties.species_names)]
+
+    # Initial population
+    x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
+
+    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
+
+    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+
+    # Create a pivot table, keep alt_bin
+    df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+
+    # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
+    x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
+    x0_summary.index.name = 'alt_bin'
+
+    # Merge counts into summary structure
+    x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+
+    # Fill remaining NaNs with 0
+    x0_summary.fillna(0, inplace=True)
+
+    # Future Launch Model (updated)
+    flm_steps = pd.DataFrame()
+
+    time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
+
+    time_steps = [
+        scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
+        for i in range(scen_properties.steps + 1)
+    ]    
+
+    for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps) - 1, desc="Processing Time Steps"):
+
+        # Select objects that are launched during this time window
+        flm_step = T_new[
+            (T_new['epoch_start_datetime'] >= start) &
+            (T_new['epoch_start_datetime'] < end)
+        ]
+
+        # Group and reshape
+        flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+        # Ensure all alt_bins are present
+        flm_summary = flm_summary.reindex(range(scen_properties.n_shells), fill_value=0)
+
+        flm_summary.reset_index(inplace=True)
+        flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+        flm_summary['epoch_start_date'] = start
+
+        flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
+
+    return x0_summary, flm_steps
+
 def ADEPT_traffic_model(scen_properties, file_path):
     """
     From an initial population and future model csv, this function will create for the starting population, 
@@ -166,11 +522,8 @@ def ADEPT_traffic_model(scen_properties, file_path):
     """
     # Load the traffic model data
     T = pd.read_csv(file_path)
-
-    print(f"Total Objects from launch file: {len(T)}")
     
-    # convert epoch_start_datetime to datetime
-    T['epoch_start_datetime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
+    T['epoch_start_datime'] = T['epoch_start'].apply(lambda x: julian_to_datetime(x))
 
     if 'obj_class' not in T.columns:
         T = define_object_class(T)  # Make sure this function is defined and imported
@@ -181,32 +534,16 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
     # Map species type based on object class
-    # species_dict = {
-    #     "Non-station-keeping Satellite": "Sns",
-    #     "Rocket Body": "B",
-    #     "CRC Station-keeping Satellite": "S",
-    #     "Non-CRC Station-keeping Satellite": "Su",
-    #     "Debris": "N",
-    #     "LNT" : "N",
-    #     "Candidate Satellite": "C"
-    # }
-
     species_dict = {
         "Non-station-keeping Satellite": "Sns",
-        "Station-keeping Satellite": "S",
         "Rocket Body": "B",
-        "CRC Station-keeping Satellite": "S",
-        "Non-CRC Station-keeping Satellite": "S",
-        "Trackable Debris": "N",
-        "LNT" : "N",
+        "Station-keeping Satellite": "Su",
+        "Coordinated Satellite": "S",
         "Debris": "N",
         "Candidate Satellite": "S"
     }
 
     T['species_class'] = T['obj_class'].map(species_dict)
-
-    # print a count of each of the species_classes
-    print(T['species_class'].value_counts())
 
     # Initialize an empty DataFrame for new data
     T_new = pd.DataFrame()
@@ -225,67 +562,16 @@ def ADEPT_traffic_model(scen_properties, file_path):
                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                 T_new = pd.concat([T_new, T_obj_class])
 
-    # for obj_class in T['obj_class'].unique():
-    #     species_class = species_dict.get(obj_class)
-        
-    #     if species_class in scen_properties.species_cells:     
-    #         if species_class == 'B':
-    #             # Handle the case where species_class is 'B' and match by mass bin
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             species_cells = scen_properties.species_cells[species_class]
-                      
-    #             T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
-                
-    #             T_new = pd.concat([T_new, T_obj_class])
-            
-    #         else:
-    #             # General case for all other species_class
-    #             if len(scen_properties.species_cells[species_class]) == 1:
-    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-
-    #                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-    #                 T_new = pd.concat([T_new, T_obj_class])
-    #             else:
-    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #                 species_cells = scen_properties.species_cells[species_class]
-    #                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
-    #                 T_new = pd.concat([T_new, T_obj_class])
-
-
-    # for obj_class in T['obj_class'].unique():
-    #     species_class = species_dict.get(obj_class)
-        
-    #     if species_class in scen_properties.species_cells:
-    #         T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #         species_cells = scen_properties.species_cells[species_class]
-            
-    #         # Apply the new function to assign species based on mass and eccentricity
-    #         T_obj_class['species'] = T_obj_class.apply(
-    #             lambda row: find_species_by_mass_and_eccentricity(row['mass'], row['ecc'], scen_properties, species_cells), 
-    #             axis=1
-    #         )
-
-    #         T_new = pd.concat([T_new, T_obj_class])
-
-
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
-
-    print(f"Total Objects after altitude bin: {len(T_new)}")
 
     # Filter T_new to include only species present in scen_properties
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
 
-    # print the count of each species in species_class
-    print(T_new['species'].value_counts())
-
     # Initial population
-    x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
+    x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
 
-    print(f"Initial Population: {len(x0)}")
-
-    # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-    x0.to_csv('x0_test.csv')
+    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
     # Create a pivot table, keep alt_bin
     df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
@@ -311,7 +597,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
                   for i in range(scen_properties.steps + 1)]    
 
     for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps)-1, desc="Processing Time Steps"):
-        flm_step = T_new[(T_new['epoch_start_datetime'] >= start) & (T_new['epoch_start_datetime'] < end)]
+        flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
         flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
 
         # All objects aren't always in shells, so you need to these back in. 
@@ -322,33 +608,8 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
         flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
         flm_steps = pd.concat([flm_steps, flm_summary])
-
-    print(f"Future Launch Model: {len(flm_steps)}")
     
     return x0_summary, flm_steps
-
-def find_species_by_mass_and_eccentricity(mass, eccentricity, scen_properties, species_cell):
-    """
-    Find the species based on both mass and eccentricity.
-
-    :param mass: Mass of the object in kg
-    :type mass: float
-    :param eccentricity: Eccentricity of the object's orbit
-    :type eccentricity: float
-    :param scen_properties: The scenario properties object
-    :type scen_properties: ScenarioProperties
-    :param species_cell: The species cell to find the species for
-    :type species_cell: list
-    :return: The species name based on mass and eccentricity
-    :rtype: str
-    """
-    for species in species_cell:
-        # Check if both mass and eccentricity fall within the range
-        if species.mass_lb <= mass < species.mass_ub and species.ecc_lb <= eccentricity < species.ecc_ub:
-            return species.sym_name
-    
-    print(f"Could not find a species for mass: {mass} and eccentricity: {eccentricity}")
-    return None
 
 def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     """
@@ -367,8 +628,6 @@ def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     for species in species_cell:
         if species.ecc_lb <= eccentricity < species.ecc_ub:
             return species.sym_name
-        
-    print(f"Could not find eccentricity bin for {eccentricity}")
 
 
 def find_mass_bin(mass, scen_properties, species_cell):

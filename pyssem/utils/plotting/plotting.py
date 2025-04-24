@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import json
-
+import imageio
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -103,6 +103,44 @@ class Plots:
         plt.legend()
         plt.tight_layout()
         plt.savefig(f'figures/{self.simulation_name}/total_objects_over_time.png')
+        plt.close()
+
+    def total_objects_over_time_by_prefix(self):
+        """
+        Generate three vertically stacked plots:
+        1. All species starting with 'S'
+        2. All species starting with 'N'
+        3. All species starting with 'B'
+        Each shows shell-level data for species in that group.
+        Also includes total objects over time for each group and combined total.
+        """
+        prefix_groups = ['S', 'N', 'B']
+        species_names = self.scenario_properties.species_names
+
+        fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
+        total_objects_all_species = np.zeros_like(self.output.t)
+
+        for idx, prefix in enumerate(prefix_groups):
+            ax = axes[idx]
+            group_species_indices = [
+                i for i, name in enumerate(species_names) if name.startswith(prefix)
+            ]
+
+            for species_index in group_species_indices:
+                species_data = self.output.y[species_index * self.num_shells:(species_index + 1) * self.num_shells]
+                total_objects_per_species = np.sum(species_data, axis=0)
+
+                ax.plot(self.output.t, total_objects_per_species, label=f'{species_names[species_index]}')
+                total_objects_all_species += total_objects_per_species
+
+            ax.set_title(f"Total Objects Over Time – Species Starting with '{prefix}'")
+            ax.set_ylabel('Total Objects')
+            ax.legend()
+
+        axes[-1].set_xlabel('Time')
+        fig.suptitle('Object Population Over Time by Species Prefix', fontsize=16)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.savefig(f'figures/{self.simulation_name}/grouped_species_objects_over_time.png')
         plt.close()
 
     def heatmaps_species(self):

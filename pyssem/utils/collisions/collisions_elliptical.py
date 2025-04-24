@@ -11,7 +11,7 @@ import re
 from itertools import combinations
 import math
 
-def create_collision_pairs(scen_properties):
+def create_elliptical_collision_pairs(scen_properties):
     """
     This function will take each species that is elliptical, then it will search across all other ellitpical objects and shells to assess 
     which other objects it could collide with. 
@@ -232,25 +232,6 @@ def generate_collision_equations(all_elliptical_collision_species, scen_properti
             # If phi_matrix is a 1D row or flat matrix, reshape it into a column vector (n, 1)
             phi_matrix = phi_matrix.reshape(len(phi_matrix), 1) 
 
-        # Determine if the collision is catastrophic for each shell
-        # catastrophic = is_catastrophic(species1.mass, species2.mass, scen_properties.v_imp2)
-
-        # Compute the number of fragments (nf) for each shell
-        # collision_pair.nf = np.zeros(len(scen_properties.v_imp2), dtype=object)
-        # for i, dv in enumerate(scen_properties.v_imp2):
-            # if catastrophic[i]:
-            #     n_f_catastrophic = 0.1 * scen_properties.LC ** (-S(1.71)) * (
-            #         species1.mass + species2.mass
-            #     ) ** (S(0.75))
-            #     nf[i] = n_f_catastrophic
-            # else:
-            #     n_f_damaging = 0.1 * scen_properties.LC ** (-S(1.71)) * (
-            #         min(species1.mass, species2.mass) * dv ** 2
-            #     ) ** (S(0.75))
-            #     nf[i] = n_f_damaging
-
-        # collision_pair.nf = nf  # 'nf' is now a NumPy array
-
         for elliptical_pair in collision_pair.collision_pair_by_shell:
 
             elliptical_pair.gamma = collision_pair.gamma.copy() 
@@ -386,6 +367,7 @@ def process_elliptical_collision_pair(args):
     if fragments is not None:
         collision_pair.fragments = fragments * prod_TIS
     else: 
+        print('No fragments generated')
         collision_pair.fragments = fragments
 
     return collision_pair
@@ -492,7 +474,7 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
             print("Error in frag_col_SBM_vec_lc2")
             print(f"Exception caught: {e}")
             return None
-        print(len(debris1), len(debris2))
+        # print(len(debris1), len(debris2))
 
         # Loop through 
         frag_a = []

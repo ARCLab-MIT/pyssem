@@ -387,7 +387,6 @@ class Species:
                                 found_mass_match_debris = True
                         else:
                             # If the active species is not elliptical, set the debris species with the smallest eccentricity value
-                            deb_spec.eccentricity = min(deb_spec.eccentricity_bins)
                             deb_spec.pmd_func = pmd_func_derelict
                             deb_spec.pmd_linked_species = []                
                             deb_spec.pmd_linked_species.append(active_spec)
@@ -408,50 +407,6 @@ class Species:
             for spec in self.species['active']:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
-
-    def propagate_orbit(self, a, e, mu, num_points=1000):
-        """
-        Propagate an orbit using the poliastro library and calculate positions over one orbit.
-
-        Args:
-            a (float): Semi-major axis in km.
-            e (float): Eccentricity.
-            mu (float): Gravitational parameter in km^3/s^2.
-            num_points (int): Number of points to calculate in the orbit.
-
-        Returns:
-            tuple: Arrays of the true anomaly and radius over the orbit.
-        """
-
-        #  convert mu to km^3/s^2
-        orbit = Orbit.from_classical(Earth, a * u.km, e * u.one, 0 * u.deg, 0 * u.deg, 0 * u.deg, 0 * u.deg)
-
-        # Time array over one period
-        period = orbit.period.to(u.s).value
-        time_values = np.linspace(0, period, num_points) * u.s
-
-        # Propagate the orbit over time_values and calculate positions and velocities
-        positions = []
-        velocities = []
-        for t in time_values:
-            state = orbit.propagate(t)
-            positions.append(state.r.to(u.km).value)  # Position in km
-
-            # Technically, we are working out the speed not the velocity (magnitude of velocity)
-            #velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
-            velocities.append(state.v.to(u.km / u.s).value)  # Speed in km/s
-
-        # Convert positions and velocities to numpy arrays
-        positions = np.array(positions)
-        velocities = np.array(velocities)
-
-        # Calculate radii (distance from central body)
-        radii = np.linalg.norm(positions, axis=1)
-
-        # Calculate true anomaly for each point (using argument of latitude)
-        true_anomalies = np.linspace(0, 2 * np.pi, num_points)
-
-        return true_anomalies, radii, velocities
 
     def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
         """
@@ -495,25 +450,6 @@ class Species:
             time_in_shell /= total_time
 
         return time_in_shell, velocity_in_shell
-    
-    def process_elliptical_species(self, args):
-        """
-            Helper function for parallel processing of time and velocity in shells for elliptical orbits.
-        """
-        species, mu, R0_km, HMid, propagate_orbit, calculate_time_and_velocity_in_shell = args
-    
-        # Set semi-major axis for this species
-        species.semi_major_axis_bins = HMid
-        
-        # Calculate time spent in each shell for the semi-major axis
-        for a in species.semi_major_axis_bins:
-            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
-            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
-            species.time_per_shells.append(time_in_shell)
-            species.velocity_per_shells.append(velocity_in_shell)
-        
-        return species
-
 
     def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float, parellel_processing: bool):
         """
