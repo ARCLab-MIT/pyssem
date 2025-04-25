@@ -367,7 +367,7 @@ def process_elliptical_collision_pair(args):
     if fragments is not None:
         collision_pair.fragments = fragments * prod_TIS
     else: 
-        print('No fragments generated')
+        print(f'No fragments generated between species {m1} and {m2} in shell {collision_pair.shell_index}')
         collision_pair.fragments = fragments
 
     return collision_pair
