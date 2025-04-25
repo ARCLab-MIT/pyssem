@@ -1,5 +1,5 @@
 {
-  "simulation_name": "SEP3H",
+  "simulation_name": "SEP2-for-maya",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -20,16 +20,17 @@
     "fragment_spreading": false,
     "parallel_processing": true,
     "baseline" : false,
-    "launch_scenario": "SEP3H"                                               
+    "launch_scenario": "SEP2",
+    "indicator_variables": [
+      "active_loss_per_shell",
+      "active_loss_per_shell_percentage",
+      "active_loss_per_species",
+      "active_loss_per_species_percentage",
+      "umpy"
+    ]                                             
   },
   "plots": [
     "all_plots"
-  ],
-  "indicator_variables": [
-    "active_loss_per_shell",
-    "active_loss_per_shell_percentage",
-    "active_loss_per_species",
-    "active_loss_per_species_percentage"
   ],
   "SEP_mapping": [
       "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'S'",
