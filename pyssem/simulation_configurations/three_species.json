@@ -14,7 +14,7 @@
         "n_shells": 5,
         "simulation_duration": 100,
         "start_date": "01/02/2024",
-        "steps": 50,
+        "steps": 10,
         "v_imp": 10, 
         "baseline": false,
         "fragment_spreading": false, 
@@ -22,6 +22,9 @@
         "indicator_variables": ["active_loss_per_shell"],
         "launch_scenario": "SEP1"
     },
+    "plots": [
+        "indicator_variables"
+        ],
     "simulation_name": "Indigo",
     "species": [
         {
@@ -34,20 +37,39 @@
             "maneuverable": true,
             "trackable": false,
             "deltat": 8,
+            "Pm": 1,
+            "alpha": 1e-5,
+            "alpha_active": 1e-5,
+            "slotted": true, 
+            "slotting_effectiveness": 1.0,
+            "drag_effected": false,
+            "pmd_func": "pmd_func_none",
+            "drag_func": "drag_func_exp"
+        },
+        {
+            "sym_name": "Su",
+            "Cd": 2.2,
+            "mass": 100,
+            "radius": 2,
+            "A": "Calculated based on radius",
+            "active": true,
+            "maneuverable": false,
+            "trackable": false,
+            "deltat": 8,
             "Pm": 0.90,
             "alpha": 1e-5,
             "alpha_active": 1e-5,
             "slotted": false, 
             "slotting_effectiveness": 1.0,
             "drag_effected": true,
-            "pmd_func": "pmd_func_sat",
+            "pmd_func": "pmd_func_opus",
             "drag_func": "drag_func_exp"
         },
         {
             "sym_name": "N",
             "Cd": 2.2,
-            "mass": [0.00141372, 0.5670],
-            "radius": [0.01, 0.1321],
+            "mass": 0.5670,
+            "radius": 0.1321,
             "A": "Calculated based on radius",
             "active": false,
             "maneuverable": false,
@@ -62,28 +84,7 @@
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_derelict",
             "drag_func": "drag_func_exp"
-        },
-        {
-            "sym_name": "B",
-            "RBflag" : 1,
-            "Cd": 2.2,
-            "mass": 1783.94,
-            "radius": 2.687936011,
-            "A": 22.6980069221863,
-            "active": false,
-            "slotted": false,
-            "slotting_effectiveness": 1,
-            "drag_effected": true,
-            "Pm": 0,
-            "alpha": 0,
-            "alpha_active": 0, 
-            "trackable": true,
-            "pmd_func": "pmd_func_none",
-            "drag_func": "drag_func_exp"
         }
     ],
-    "status": "not started",
-    "plots": [
-        "indicator_variables"
-        ]
+    "status": "not started"
 }

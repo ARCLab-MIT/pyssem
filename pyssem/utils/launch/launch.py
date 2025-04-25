@@ -436,9 +436,9 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Map species type based on object class
     species_dict = {
-        "Non-station-keeping Satellite": "Sns",
+        "Non-station-keeping Satellite": "Su",
         "Rocket Body": "B",
-        "Station-keeping Satellite": "Su",
+        "Station-keeping Satellite": "S",
         "Coordinated Satellite": "S",
         "Debris": "N",
         "Candidate Satellite": "S"
@@ -488,6 +488,10 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
+
+    if baseline:
+        # No need to calculate the launch model
+        return x0_summary, None
 
     # Future Launch Model
     flm_steps = pd.DataFrame()

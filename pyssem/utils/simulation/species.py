@@ -116,6 +116,9 @@ class SpeciesProperties:
                 self.beta = None
             if self.beta is None:
                 print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
+        
+        # Orbital Lifetime
+        self.orbital_lifetimes = None
 
     def copy(self):
         """
@@ -230,18 +233,22 @@ class Species:
         return species_list
     
     def set_mass_bounds(self, species_list):
-        species_list.sort(key=lambda x: x.mass) # sorts by mass
+        species_list.sort(key=lambda x: x.mass)  # sorts by mass
 
-        for i in range(len(species_list)):
-            if i == 0:
-                species_list[i].mass_lb = 0
-                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
-            elif i == len(species_list) - 1:
-                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-            else:
-                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
-                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-        
+        if len(species_list) == 1:
+            # In the case it is only one debris object, mass lb and ub are already set as maximum and minimum. 
+            return species_list
+        else:
+            for i in range(len(species_list)):
+                if i == 0:
+                    species_list[i].mass_lb = 0
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                elif i == len(species_list) - 1:
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+                else:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+
         return species_list
 
   
@@ -353,8 +360,6 @@ class Species:
             active_species (list): List of active species objects.
             debris_species (list): List of debris species objects.
         # """
-        # active_species = self.species['active']
-        # debris_species = self.species['debris']
 
         # Collect active species and their names
         linked_spec_names = [item.sym_name for item in active_species]
@@ -368,7 +373,11 @@ class Species:
 
             for deb_spec in debris_species:
                 if spec_mass == deb_spec.mass:
-                    deb_spec.pmd_func = pmd_func_derelict
+                    if active_spec.pmd_func == pmd_func_opus:
+                        deb_spec.pmd_func = pmd_func_opus
+                    else:                    
+                        deb_spec.pmd_func = pmd_func_derelict
+                    
                     deb_spec.pmd_linked_species = []                
                     deb_spec.pmd_linked_species.append(active_spec)
                     print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
