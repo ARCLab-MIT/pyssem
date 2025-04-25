@@ -7,6 +7,7 @@ import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
+from ..elliptical.elliptical import compute_time_fractions_for_orbit
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -367,12 +368,30 @@ class Species:
             spec_mass = active_spec.mass
 
             for deb_spec in debris_species:
-                if spec_mass == deb_spec.mass:
-                    deb_spec.pmd_func = pmd_func_derelict
-                    deb_spec.pmd_linked_species = []                
-                    deb_spec.pmd_linked_species.append(active_spec)
-                    print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
-                    found_mass_match_debris = True
+                if not found_mass_match_debris:
+                    if spec_mass == deb_spec.mass:
+                        if active_spec.elliptical:
+                            # find the closest eccentricity bin to current eccentricity
+                            ecc_bins = deb_spec.eccentricity_bins
+                            ecc_diffs = [abs(ecc - active_spec.eccentricity) for ecc in ecc_bins]
+                            closest_ecc_idx = ecc_diffs.index(min(ecc_diffs))
+
+                            # if the current debris eccentricity is not the same, continue the loop
+                            if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
+                                continue
+                            else:
+                                deb_spec.pmd_func = pmd_func_derelict
+                                deb_spec.pmd_linked_species = []                
+                                deb_spec.pmd_linked_species.append(active_spec)
+                                print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
+                                found_mass_match_debris = True
+                        else:
+                            # If the active species is not elliptical, set the debris species with the smallest eccentricity value
+                            deb_spec.pmd_func = pmd_func_derelict
+                            deb_spec.pmd_linked_species = []                
+                            deb_spec.pmd_linked_species.append(active_spec)
+                            print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
+                            found_mass_match_debris = True
 
             if not found_mass_match_debris:
                 print(f"No matching mass debris species found for species {active_spec.sym_name} with mass {spec_mass}.")
@@ -389,49 +408,6 @@ class Species:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
 
-    def propagate_orbit(self, a, e, mu, num_points=1000):
-        """
-        Propagate an orbit using the poliastro library and calculate positions over one orbit.
-
-        Args:
-            a (float): Semi-major axis in km.
-            e (float): Eccentricity.
-            mu (float): Gravitational parameter in km^3/s^2.
-            num_points (int): Number of points to calculate in the orbit.
-
-        Returns:
-            tuple: Arrays of the true anomaly and radius over the orbit.
-        """
-
-        #  convert mu to km^3/s^2
-        orbit = Orbit.from_classical(Earth, a * u.km, e * u.one, 0 * u.deg, 0 * u.deg, 0 * u.deg, 0 * u.deg)
-
-        # Time array over one period
-        period = orbit.period.to(u.s).value
-        time_values = np.linspace(0, period, num_points) * u.s
-
-        # Propagate the orbit over time_values and calculate positions and velocities
-        positions = []
-        velocities = []
-        for t in time_values:
-            state = orbit.propagate(t)
-            positions.append(state.r.to(u.km).value)  # Position in km
-
-            # Technically, we are working out the speed not the velocity (magnitude of velocity)
-            velocities.append(np.linalg.norm(state.v.to(u.km / u.s).value))  # Speed in km/s
-
-        # Convert positions and velocities to numpy arrays
-        positions = np.array(positions)
-        velocities = np.array(velocities)
-
-        # Calculate radii (distance from central body)
-        radii = np.linalg.norm(positions, axis=1)
-
-        # Calculate true anomaly for each point (using argument of latitude)
-        true_anomalies = np.linspace(0, 2 * np.pi, num_points)
-
-        return true_anomalies, radii, velocities
-
     def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
         """
         Calculate the normalized time spent in each shell and average velocity in each shell.
@@ -444,15 +420,29 @@ class Species:
         Returns:
             tuple: Normalized time spent in each shell and average velocity in each shell.
         """
+        # Ensure velocities array has the correct length
+        radii = radii[:500]  
+        velocities = velocities[:500]  # This is because it does one full loop, so is in each shell twice. Going in opposite direction, so the mean comes out as 0.
+        
+        # Adjust R0_km to include Earth's radius
+        R0_km = R0_km + 6378
+        
+        # Initialize arrays for time and velocity in each shell
         time_in_shell = np.zeros(len(R0_km) - 1)
         velocity_in_shell = np.zeros(len(R0_km) - 1)
 
         for i in range(len(R0_km) - 1):
             # Check if the radius falls within the shell boundaries
             in_shell = (radii >= R0_km[i]) & (radii < R0_km[i + 1])
+            
+            # Ensure the dimensions match
+            if in_shell.shape[0] != velocities.shape[0]:
+                raise ValueError(f"Dimension mismatch: in_shell has dimension {in_shell.shape[0]} but velocities has dimension {velocities.shape[0]}")
+
             time_in_shell[i] = np.sum(in_shell)
             if np.sum(in_shell) > 0:
-                velocity_in_shell[i] = np.mean(velocities[in_shell])
+                # velocity_in_shell[i] = np.mean(np.linalg.norm(velocities[in_shell]))
+                velocity_in_shell[i] = 7.5 # placeholder value
 
         # Normalize the time_in_shell array
         total_time = np.sum(time_in_shell)
@@ -460,25 +450,6 @@ class Species:
             time_in_shell /= total_time
 
         return time_in_shell, velocity_in_shell
-    
-    def process_elliptical_species(self, args):
-        """
-            Helper function for parallel processing of time and velocity in shells for elliptical orbits.
-        """
-        species, mu, R0_km, HMid, propagate_orbit, calculate_time_and_velocity_in_shell = args
-    
-        # Set semi-major axis for this species
-        species.semi_major_axis_bins = HMid
-        
-        # Calculate time spent in each shell for the semi-major axis
-        for a in species.semi_major_axis_bins:
-            true_anomalies, radii, velocities = propagate_orbit(a, species.eccentricity, mu)
-            time_in_shell, velocity_in_shell = calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
-            species.time_per_shells.append(time_in_shell)
-            species.velocity_per_shells.append(velocity_in_shell)
-        
-        return species
-
 
     def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float, parellel_processing: bool):
         """
@@ -493,6 +464,7 @@ class Species:
 
                     # Process each eccentricity bin
                     for i, ecc in enumerate(species.eccentricity_bins):
+                        
                         # Create a new species based on the original
                         new_species = species.copy()
                         new_species.eccentricity = ecc
@@ -518,34 +490,69 @@ class Species:
                     processed_species.add(species.sym_name)
                     species_group.remove(species)
 
-        if parellel_processing:
-                # Prepare arguments for parallel processing
-                args_list = [
-                    (species, mu, R0_km, HMid, self.propagate_orbit, self.calculate_time_and_velocity_in_shell)
-                    for species_group in self.species.values()
-                    for species in species_group
-                    if species.elliptical
-                ]
+        for species_group in self.species.values():
+            for species in species_group:
+                if species.elliptical:  # hasn't been created yet
+                    # Set semi-major axis for this species
+                    # add 6371 to each of the values in HMid
 
-                # Use ProcessPoolExecutor for parallel execution
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    results = list(tqdm(
-                        executor.map(self.process_elliptical_species, args_list),
-                        total=len(args_list),
-                        desc="Propagating elliptical orbits to find time and velocity in shells"
-                    ))
+                    species.semi_major_axis_bins = HMid + 6371
 
-        else:
-            # Sequential processing
-            for species_group in self.species.values():
-                for species in species_group:
-                    if species.elliptical:  # hasn't been created yet
-                        # Set semi-major axis for this species
-                        species.semi_major_axis_bins = HMid
+                    # Calculate time spent in each shell for the semi-major axis
+                    for a in species.semi_major_axis_bins:
+                        e = species.eccentricity
+                        bin_edges = R0_km + 6371
 
                         # Calculate time spent in each shell for the semi-major axis
-                        for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                            true_anomalies, radii, velocities = self.propagate_orbit(a, species.eccentricity, mu)
-                            time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell(radii, velocities, R0_km)
-                            species.time_per_shells.append(time_in_shell)
-                            species.velocity_per_shells.append(velocity_in_shell)
+                        time_in_shell = compute_time_fractions_for_orbit(a, e, bin_edges)
+                        species.time_per_shells.append(time_in_shell)
+                        species.velocity_per_shells.append(np.zeros(len(time_in_shell)))
+ 
+                else:
+                    species.semi_major_axis_bins = HMid + 6371
+                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
+                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell_circular(None, None, R0_km, a)
+                        species.time_per_shells.append(time_in_shell)
+                        species.velocity_per_shells.append(velocity_in_shell)
+
+
+    def calculate_time_and_velocity_in_shell_circular(self, radii, velocities, R0_km, a):
+        """
+        Calculate the time spent in a specific shell and average velocity for circular species
+        where time is 1 in the shell corresponding to the semi-major axis 'a' and 0 for others.
+
+        Args:
+            radii (np.ndarray): Array of orbital radii (not used in this version).
+            velocities (np.ndarray): Array of orbital velocities (not used in this version).
+            R0_km (np.ndarray): Array of shell boundary altitudes in km.
+            a (float): Semi-major axis (in km) for the orbit.
+
+        Returns:
+            tuple: Time spent in each shell (1 for the shell containing 'a', 0 for others) and 
+                average velocity in each shell (7.5 for the shell containing 'a', 0 for others).
+        """
+        # Adjust R0_km to include Earth's radius
+        R0_km = R0_km + 6378
+
+        # Initialize arrays for time and velocity in each shell
+        num_shells = len(R0_km) - 1
+        time_in_shell = np.zeros(num_shells)
+        velocity_in_shell = np.zeros(num_shells)
+
+        # Find the shell corresponding to the semi-major axis 'a'
+        for i in range(num_shells):
+            if R0_km[i] <= a < R0_km[i + 1]:
+                # Set time to 1 for the corresponding shell
+                time_in_shell[i] = 1
+
+                # Set velocity to 7.5 for the corresponding shell
+                velocity_in_shell[i] = 7.5
+
+                # Exit the loop since the correct shell is found
+                break
+
+        # All other shell values remain 0
+        return time_in_shell, velocity_in_shell
+
+
+

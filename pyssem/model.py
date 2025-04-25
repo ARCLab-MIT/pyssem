@@ -1,23 +1,22 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.collisions.collisions import *
 # from .utils.plotting.plotting import create_plots, results_to_json
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.optimizer.optimizer import run_optimizer
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import Plots, results_to_json
-from datetime import datetime
+from utils.optimizer.optimizer import run_optimizer
+from utils.collisions.collisions import *
+from utils.collisions.collisions_elliptical import *
+from utils.plotting.plotting import *
 import json
 import os
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+from datetime import datetime
 
 class Model:
     """
@@ -135,12 +134,19 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+            elliptical_flag = False
+            for species_group in species_list.species.values():
+                for species in species_group:
+                    if species.elliptical:
+                        elliptical_flag = True
+
+            if elliptical_flag:
+                species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
 
-            # Create symbolic variables for the species
+            # Create symbolic variables for the #species
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
@@ -150,8 +156,11 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
+            if elliptical_flag:
+                self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
+            else:
+                self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+            
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 self.scenario_properties.build_indicator_variables()
@@ -179,6 +188,9 @@ class Model:
         try:
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             self.scenario_properties.build_model()
+            
+
+
             self.scenario_properties.run_model()
             
             # CSI Index
@@ -187,6 +199,8 @@ class Model:
             # save self as a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
+
+            return self.scenario_properties
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -237,7 +251,6 @@ if __name__ == "__main__":
     )
 
     species = simulation_data["species"]
-
     species_list = model.configure_species(species)
 
     results = model.run_model()
