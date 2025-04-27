@@ -56,7 +56,7 @@ The following SEPs are supported in pySSEM:
    :widths: 25 25 50
    :header-rows: 1
 
-   * - **Scenario**   
+   * - **Scenario**
      - **Non-Market Demand for Space Services**
      - **Market Demand for Space Services**
      - **Level of Sustainability Effort**
@@ -65,7 +65,7 @@ The following SEPs are supported in pySSEM:
      - None
      - Current
    * - **SEP 2 Continuing Current Behaviors**
-     - Current 
+     - Current
      - Current
      - Current
    * - **SEP 3 M/H Space Winter**
@@ -80,11 +80,10 @@ The following SEPs are supported in pySSEM:
      - Low
      - High
      - Med (primary) / High (secondary)
-    * - **SEP 6 M/H Intensive Space Demand**
+   * - **SEP 6 M/H Intensive Space Demand**
      - High
      - High
      - Med (secondary) / High (primary)
-     
 
 How SEPs Work in pySSEM
 -----------------------
