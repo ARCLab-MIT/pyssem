@@ -23,6 +23,9 @@ extensions = [
     'sphinx.ext.viewcode'   # Adds links to the source code
 ]
 
+def setup(app):
+    app.add_css_file('style.css')
+
 templates_path = ['_templates']
 exclude_patterns = []
 
