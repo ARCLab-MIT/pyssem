@@ -16,31 +16,40 @@ Available SEPs
 
 The following SEPs are supported in pySSEM:
 
-- **SEP 1**: No Future Launch  
+- **SEP 1**: No Future Launch
+
   Represents a scenario where no additional launches occur after the initial population. Used primarily for model comparison.
 
-- **SEP 2**: Continuing Current Behaviors  
+- **SEP 2**: Continuing Current Behaviors
+
   Assumes that current launch behaviors (not trends) continue without significant changes.
 
-- **SEP 3 M**: Space Winter (Medium Sustainability Effort)  
+- **SEP 3 M**: Space Winter (Medium Sustainability Effort)
+
   Models a scenario where demand for space activity crashes after an initial period of rapid growth, with moderate efforts to improve sustainability in space activities.
 
-- **SEP 3 H**: Space Winter (High Sustainability Effort)  
+- **SEP 3 H**: Space Winter (High Sustainability Effort)
+
   Represents the same Space Winter scenario, with high sustainability efforts.
 
-- **SEP 4**: Strategic Rivalry  
+- **SEP 4**: Strategic Rivalry
+
   International tensions lead to significant government-backed non-market demand, with backsliding on sustainability effort. Predicted increased commercial demand for satellite services fails to materialize.
 
-- **SEP 5 M**: Commercial-driven Development (Medium Sustainability Effort)  
+- **SEP 5 M**: Commercial-driven Development (Medium Sustainability Effort)
+
   Significant commercial demands drive expansion of space traffic.
 
-- **SEP 5 H**: Commercial-driven Development (High Sustainability Effort)  
+- **SEP 5 H**: Commercial-driven Development (High Sustainability Effort)
+
   Models the same scenario of commercial growth and high sustainability measures.
 
-- **SEP 6 M**: Intensive Space Demand (Medium Sustainability Effort)  
+- **SEP 6 M**: Intensive Space Demand (Medium Sustainability Effort)
+
   A combination of international tensions and validation of commercial business cases leads to doubly intensive space demand.
 
-- **SEP 6 H**: Intensive Space Demand (High Sustainability Effort)  
+- **SEP 6 H**: Intensive Space Demand (High Sustainability Effort)
+  
   Simulates the same high-demand scenario with significant sustainability measures.
 
 +----------------------+-----------------------------+-----------------------------+-----------------------------+
