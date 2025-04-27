@@ -16,67 +16,75 @@ Available SEPs
 
 The following SEPs are supported in pySSEM:
 
-- **SEP 1**: No Future Launch
+- **SEP 1: No Future Launch**
 
   Represents a scenario where no additional launches occur after the initial population. Used primarily for model comparison.
 
-- **SEP 2**: Continuing Current Behaviors
+- **SEP 2: Continuing Current Behaviors**
 
   Assumes that current launch behaviors (not trends) continue without significant changes.
 
-- **SEP 3 M**: Space Winter (Medium Sustainability Effort)
+- **SEP 3 M: Space Winter (Medium Sustainability Effort)**
 
   Models a scenario where demand for space activity crashes after an initial period of rapid growth, with moderate efforts to improve sustainability in space activities.
 
-- **SEP 3 H**: Space Winter (High Sustainability Effort)
+- **SEP 3 H: Space Winter (High Sustainability Effort)**
 
   Represents the same Space Winter scenario, with high sustainability efforts.
 
-- **SEP 4**: Strategic Rivalry
+- **SEP 4: Strategic Rivalry**
 
   International tensions lead to significant government-backed non-market demand, with backsliding on sustainability effort. Predicted increased commercial demand for satellite services fails to materialize.
 
-- **SEP 5 M**: Commercial-driven Development (Medium Sustainability Effort)
+- **SEP 5 M: Commercial-driven Development (Medium Sustainability Effort)**
 
   Significant commercial demands drive expansion of space traffic.
 
-- **SEP 5 H**: Commercial-driven Development (High Sustainability Effort)
+- **SEP 5 H: Commercial-driven Development (High Sustainability Effort)**
 
   Models the same scenario of commercial growth and high sustainability measures.
 
-- **SEP 6 M**: Intensive Space Demand (Medium Sustainability Effort)
+- **SEP 6 M: Intensive Space Demand (Medium Sustainability Effort)**
 
   A combination of international tensions and validation of commercial business cases leads to doubly intensive space demand.
 
-- **SEP 6 H**: Intensive Space Demand (High Sustainability Effort)
-  
+- **SEP 6 H: Intensive Space Demand (High Sustainability Effort)**
+
   Simulates the same high-demand scenario with significant sustainability measures.
 
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
-| **Scenario**         | **Non-Market Demand for**  | **Market Demand for**       | **Level of Sustainability** |
-|                      | **Space Services**         | **Space Services**          | **Effort**                  |
-+======================+=============================+=============================+=============================+
-| **SEP 1**:           | None                       | None                        | Current                     |
-| No Future Launch     |                             |                             |                             |
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
-| **SEP 2**:           | Current                    | Current                     | Current                     |
-| Continuing Current   |                             |                             |                             |
-| Behaviors            |                             |                             |                             |
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
-| **SEP 3 M/H**:       | Low                        | Low                         | Med (primary) / High        |
-| Space Winter         |                             |                             | (secondary)                 |
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
-| **SEP 4**:           | High                       | Low                         | Low                         |
-| Strategic Rivalry    |                             |                             |                             |
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
-| **SEP 5 M/H**:       | Low                        | High                        | Med (primary) / High        |
-| Commercial-driven    |                             |                             | (secondary)                 |
-| Development          |                             |                             |                             |
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
-| **SEP 6 M/H**:       | High                       | High                        | Med (secondary) / High      |
-| Intensive Space      |                             |                             | (primary)                   |
-| Demand               |                             |                             |                             |
-+----------------------+-----------------------------+-----------------------------+-----------------------------+
+.. list-table:: Title
+   :widths: 25 25 50
+   :header-rows: 1
+
+   * - **Scenario**   
+     - **Non-Market Demand for Space Services**
+     - **Market Demand for Space Services**
+     - **Level of Sustainability Effort**
+   * - **SEP 1 No Future Launch**
+     - None
+     - None
+     - Current
+   * - **SEP 2 Continuing Current Behaviors**
+     - Current 
+     - Current
+     - Current
+   * - **SEP 3 M/H Space Winter**
+     - Low
+     - Low
+     - Med (primary) / High (secondary)
+   * - **SEP 4 Strategic Rivalry**
+     - High
+     - Low
+     - Low
+   * - **SEP 5 M/H Commercial-driven Development**
+     - Low
+     - High
+     - Med (primary) / High (secondary)
+    * - **SEP 6 M/H Intensive Space Demand**
+     - High
+     - High
+     - Med (secondary) / High (primary)
+     
 
 How SEPs Work in pySSEM
 -----------------------
