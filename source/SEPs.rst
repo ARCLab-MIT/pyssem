@@ -4,7 +4,7 @@
 Space Environment Pathways
 ===========================
 
-The Space Environment Pathways (SEPs) are predefined launch scenarios used in pySSEM to model the evolution of the space environment under different assumptions about future space activities. These scenarios are based on research and provide a framework for simulating the impact of various launch behaviors on the orbital environment.
+The Space Environment Pathways (SEPs) are predefined launch scenarios used in pySSEM to model the evolution of the space environment under different assumptions about future space activities. These scenarios are based on Aerospace Corporation research and provide a framework for simulating the impact of various launch behaviors on the orbital environment.
 
 Overview
 --------
@@ -17,34 +17,60 @@ Available SEPs
 The following SEPs are supported in pySSEM:
 
 - **SEP 1**: No Future Launch  
-  Represents a scenario where no additional launches occur after the initial population.
+  Represents a scenario where no additional launches occur after the initial population. Used primarily for model comparison.
 
 - **SEP 2**: Continuing Current Behaviors  
-  Assumes that current launch trends continue without significant changes.
+  Assumes that current launch behaviors (not trends) continue without significant changes.
 
 - **SEP 3 M**: Space Winter (Medium Sustainability Effort)  
-  Models a scenario with moderate efforts to improve sustainability in space activities.
+  Models a scenario where demand for space activity crashes after an initial period of rapid growth, with moderate efforts to improve sustainability in space activities.
 
 - **SEP 3 H**: Space Winter (High Sustainability Effort)  
-  Represents a scenario with high sustainability efforts to reduce the impact of space activities.
+  Represents the same Space Winter scenario, with high sustainability efforts.
 
 - **SEP 4**: Strategic Rivalry  
-  Simulates a competitive environment with increased launches driven by strategic interests.
+  International tensions lead to significant government-backed non-market demand, with backsliding on sustainability effort. Predicted increased commercial demand for satellite services fails to materialize.
 
 - **SEP 5 M**: Commercial-driven Development (Medium Sustainability Effort)  
-  Focuses on commercial growth with moderate sustainability measures.
+  Significant commercial demands drive expansion of space traffic.
 
 - **SEP 5 H**: Commercial-driven Development (High Sustainability Effort)  
-  Models a scenario with commercial growth and high sustainability measures.
+  Models the same scenario of commercial growth and high sustainability measures.
 
 - **SEP 6 M**: Intensive Space Demand (Medium Sustainability Effort)  
-  Represents a high-demand scenario with moderate sustainability efforts.
+  A combination of international tensions and validation of commercial business cases leads to doubly intensive space demand.
 
 - **SEP 6 H**: Intensive Space Demand (High Sustainability Effort)  
-  Simulates a high-demand scenario with significant sustainability measures.
+  Simulates the same high-demand scenario with significant sustainability measures.
 
-How SEPs Work
--------------
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+| **Scenario**         | **Non-Market Demand for**  | **Market Demand for**       | **Level of Sustainability** |
+|                      | **Space Services**         | **Space Services**          | **Effort**                  |
++======================+=============================+=============================+=============================+
+| **SEP 1**:           | None                       | None                        | Current                     |
+| No Future Launch     |                             |                             |                             |
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+| **SEP 2**:           | Current                    | Current                     | Current                     |
+| Continuing Current   |                             |                             |                             |
+| Behaviors            |                             |                             |                             |
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+| **SEP 3 M/H**:       | Low                        | Low                         | Med (primary) / High        |
+| Space Winter         |                             |                             | (secondary)                 |
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+| **SEP 4**:           | High                       | Low                         | Low                         |
+| Strategic Rivalry    |                             |                             |                             |
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+| **SEP 5 M/H**:       | Low                        | High                        | Med (primary) / High        |
+| Commercial-driven    |                             |                             | (secondary)                 |
+| Development          |                             |                             |                             |
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+| **SEP 6 M/H**:       | High                       | High                        | Med (secondary) / High      |
+| Intensive Space      |                             |                             | (primary)                   |
+| Demand               |                             |                             |                             |
++----------------------+-----------------------------+-----------------------------+-----------------------------+
+
+How SEPs Work in pySSEM
+-----------------------
 
 The SEPs are implemented in the `initial_pop_and_launch` and `initial_pop_and_launch2` methods of the :class:`ScenarioProperties` class. These methods determine the initial population and future launch model based on the selected SEP.
 
@@ -60,7 +86,7 @@ The SEPs are implemented in the `initial_pop_and_launch` and `initial_pop_and_la
 Using SEPs in pySSEM
 --------------------
 
-To use an SEP in your simulation, specify the desired SEP in the `launch_scenario` parameter of the `scenario_properties` section in your JSON configuration file. For example:
+To use an SEP in your simulation, specify the desired SEP in the `launch_scenario` parameter of the `scenario_properties` section in your JSON configuration file. The launch function is the last parameter in the `scenario_properties` section:
 
 .. code-block:: json
 
