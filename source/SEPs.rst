@@ -52,8 +52,8 @@ The following SEPs are supported in pySSEM:
 
   Simulates the same high-demand scenario with significant sustainability measures.
 
-.. list-table:: Title
-   :widths: 25 25 50 50
+.. list-table:: Space Environment Pathways (SEPs)
+   :widths: 25 25 25 25
    :header-rows: 1
 
    * - **Scenario**
