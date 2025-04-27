@@ -5,8 +5,8 @@ Contents
 ========
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Tutorials:
+   :maxdepth: 50
+   :caption: Contents:
 
    tutorial/getting_started
    admin_inputs
@@ -14,4 +14,5 @@ Contents
    overall_scenario_properties/advanced_options
    species_properties/physical_species_properties
    species_properties/behavioral_species_properties
-   
+   SEPs
+
