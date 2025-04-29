@@ -316,7 +316,6 @@ class ScenarioProperties:
             self.indicator_variables = None
             self.indicator_variables_list = []
             return
-        
     def configure_active_satellite_loss(self, fringe_satellites):
         """
             This will find the equations that have been created by the active_loss_per_species, then lambdify the equations and save them separately. 
@@ -367,56 +366,7 @@ class ScenarioProperties:
         return umpy
 
 
-    def initial_pop_and_launch(self, baseline=False, launch_file=None):
-        """
-           This function will determine which launch file to use. 
-           Users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
-
-           There are seven possible launch scenarios:
-                SEP1: No Future Launch 
-
-                SEP 2: Continuing Current Behaviours 
-
-                SEP 3 M: Space Winter (Medium Sustainability Effort) 
-
-                SEP 3 H: Space Winter (High Sustainability Effort) 
-
-                SEP 4: Strategic Rivalry 
-
-                SEP 5 M: Commercial-driven Development (Medium Sustainability Effort) 
-
-                SEP 5 H: Commercial-driven Development (High Sustainability Effort) 
-
-                SEP 6 M: Intensive Space Demand (Medium Sustainability Effort) 
-
-                SEP 6 H: Intensive Space Demand (High Sustainability Effort) 
-        """
-
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
-        
-        # Check to see if the data folder exists, if not, create it
-        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
-            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
-
-        # Check to see if launch_file_path exists
-        if not os.path.exists(launch_file_path):
-            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
-        
-        print('Using launch file:', launch_file_path)
-
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
-
-        # Store as part of the class, as it is needed for the run_model()
-        self.x0 = x0
-        self.FLM_steps = FLM_steps
-
-        # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-
-        if not baseline:
-            self.future_launch_model(FLM_steps)
-
-    def initial_pop_and_launch2(self, baseline=False):
+    def initial_pop_and_launch(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
         The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
