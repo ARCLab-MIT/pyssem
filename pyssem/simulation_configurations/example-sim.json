@@ -6,7 +6,7 @@
   "created": "2024-01-01T12:00:00Z",
   "modified": "2024-01-01T12:00:00Z",
   "scenario_properties": {
-    "start_date": "01/01/2025",   
+    "start_date": "03/02/2025",   
     "simulation_duration": 100,              
     "steps": 100,                            
     "min_altitude": 200,                   
@@ -18,9 +18,9 @@
     "LC": 0.1,                             
     "v_imp": 10.0,
     "fragment_spreading": false,
-    "parallel_processing": true,
+    "parallel_processing": false,
     "baseline" : false,
-    "launch_scenario": "SEP3H"                                               
+    "launch_scenario": "SEP2"                                               
   },
   "plots": [
     "all_plots"
