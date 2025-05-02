@@ -1,5 +1,4 @@
 from sympy import symbols, Matrix, pi, S, Expr, zeros
-import matplotlib.pyplot as plt
 import numpy as np
 
 class SpeciesPairClass:
