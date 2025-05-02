@@ -456,7 +456,7 @@ def create_collision_pairs(scen_properties):
 
     for index, debris in enumerate(debris_species):
         binC[index] = debris.mass
-        binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass] # Updating with Giovanni's updates - more matched to 3S
+        binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
         binW[index] = debris.mass_ub - debris.mass_lb
 
     binE = np.unique(binE)

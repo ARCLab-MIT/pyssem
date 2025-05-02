@@ -62,7 +62,7 @@
             "slotted": false, 
             "slotting_effectiveness": 1.0,
             "drag_effected": true,
-            "pmd_func": "pmd_func_opus",
+            "pmd_func": "pmd_func_none",
             "drag_func": "drag_func_exp"
         },
         {
