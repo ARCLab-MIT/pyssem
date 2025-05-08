@@ -346,7 +346,7 @@ def process_elliptical_collision_pair(args):
     # set fragment_spreading to True
     #v1 = collision_pair.species1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     #v2 = collision_pair.species2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
-    v1, v2 = 7.5, 7.5
+    v1, v2 = 10, 10
     # This the time per shell for each species - the output still assumes that it is always there, so you need to divide
     t1 = collision_pair.species1.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     t2 = collision_pair.species2.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
