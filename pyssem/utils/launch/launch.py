@@ -331,19 +331,6 @@ def SEP_traffic_model(scen_properties, file_path):
 
     T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
-    # Bin altitudes
-    for species_class in T['species_class'].unique():
-            if species_class in scen_properties.species_cells:
-                if len(scen_properties.species_cells[species_class]) == 1:
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                    T_new = pd.concat([T_new, T_obj_class])
-                else:
-                    species_cells = scen_properties.species_cells[species_class]
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                    T_new = pd.concat([T_new, T_obj_class])
-
     # Convert MJD to datetime
     # def mjd_to_datetime(mjd_series):
     #     """
@@ -353,9 +340,57 @@ def SEP_traffic_model(scen_properties, file_path):
 
     # T_new['epoch_start_datetime'] = mjd_to_datetime(T_new['mjd_start'])
     # T_new['epoch_end_datetime'] = mjd_to_datetime(T_new['mjd_final'])
+    T['apogee'] = T['sma'] * (1 + T['ecc'])
+    T['perigee'] = T['sma'] * (1 - T['ecc'])
+    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+
+    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
+
+    # Mapping species gets more complicated if there are elliptical orbits.
+    elliptical_species_flag = False
+    for species_group in scen_properties.species.values():
+            for species in species_group:
+                if species.elliptical:
+                    elliptical_species_flag = True
+
+    if elliptical_species_flag:
+        # Assign elliptical sub-species
+        for species_class in T['species_class'].unique():            
+            if species_class in scen_properties.species_cells:
+                T_obj_class = T[T['species_class'] == species_class].copy()
+                species_cells = scen_properties.species_cells[species_class]
+
+                if len(species_cells) == 1:
+                    # Only one species → assign directly
+                    T_obj_class['species'] = species_cells[0].sym_name
+                else:
+                    # Multiple species → use row-wise logic
+                    T_obj_class['species'] = T_obj_class.apply(
+                        find_species_bin,
+                        axis=1,
+                        args=(scen_properties, species_cells)
+                    )
+
+                T_new = pd.concat([T_new, T_obj_class])
+    else:
+        # Bin altitudes
+        for species_class in T['species_class'].unique():
+                if species_class in scen_properties.species_cells:
+                    if len(scen_properties.species_cells[species_class]) == 1:
+                        T_obj_class = T[T['species_class'] == species_class].copy()
+                        T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                        T_new = pd.concat([T_new, T_obj_class])
+                    else:
+                        species_cells = scen_properties.species_cells[species_class]
+                        T_obj_class = T[T['species_class'] == species_class].copy()
+                        T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                        T_new = pd.concat([T_new, T_obj_class])
+
+    print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
+
     T_new['epoch_start_datetime'] = T_new['year_start'].apply(
-        lambda y: datetime(int(y), 1, 1)
-    )
+            lambda y: datetime(int(y), 1, 1)
+        )
     T_new['epoch_end_datetime'] = T_new['year_final'].apply(
         lambda y: datetime(int(y), 1, 1)
     )
@@ -363,10 +398,12 @@ def SEP_traffic_model(scen_properties, file_path):
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
     # Filter T_new to include only species present in scen_properties
-    T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
+    T_new = T_new[T_new['species'].isin(scen_properties.species_names)]
 
     # Initial population
-    x0 = T_new[T_new['epoch_end_datetime'] < scen_properties.start_date]
+    x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
+
+    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
@@ -415,6 +452,28 @@ def SEP_traffic_model(scen_properties, file_path):
 
     return x0_summary, flm_steps
 
+def find_species_bin(row, scen_properties, species_cells):
+    """
+    Determine the species bin for a given row, based on mass and/or eccentricity.
+
+    :param row: Row from DataFrame (must have 'mass' and 'ecc')
+    :param scen_properties: ScenarioProperties object
+    :param species_cells: List of Species objects
+    :return: species.sym_name that matches the object's properties
+    """
+    for species in species_cells:
+        # Check for eccentricity-based binning
+        if getattr(species, "elliptical", False):
+            if species.mass_lb <= row.mass < species.mass_ub and \
+               species.ecc_lb <= row.ecc < species.ecc_ub:
+                return species.sym_name
+        else:
+            if species.mass_lb <= row.mass < species.mass_ub:
+                return species.sym_name
+
+    return None  # No match found
+
+
 def ADEPT_traffic_model(scen_properties, file_path):
     """
     From an initial population and future model csv, this function will create for the starting population, 
@@ -445,9 +504,9 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Map species type based on object class
     species_dict = {
-        "Non-station-keeping Satellite": "Sns",
+        "Non-station-keeping Satellite": "Su",
         "Rocket Body": "B",
-        "Station-keeping Satellite": "Su",
+        "Station-keeping Satellite": "S",
         "Coordinated Satellite": "S",
         "Debris": "N",
         "Candidate Satellite": "S"
@@ -497,6 +556,10 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
+
+    if baseline:
+        # No need to calculate the launch model
+        return x0_summary, None
 
     # Future Launch Model
     flm_steps = pd.DataFrame()

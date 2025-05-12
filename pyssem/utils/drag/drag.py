@@ -218,3 +218,45 @@ def JB2008_dens_func(t, h, density_data, date_mapping, nearest_altitude_mapping)
     density_values = density_values_floor * (1 - weight) + density_values_ceil * weight
 
     return density_values
+
+
+def calculate_orbital_lifetimes(scenario_properties):
+    """
+        This function is mainly used for UMPY calculations. For each species, it will calculate the orbital lifetimes based off the static density model. 
+    """
+
+    shell_marginal_decay_rates = np.zeros(scenario_properties.n_shells)
+    shell_marginal_residence_times = np.zeros(scenario_properties.n_shells)
+
+    # loop through each of the species
+    for species_group in scenario_properties.species.values():
+        for species in species_group:
+
+            species.orbital_lifetimes = [None] * scenario_properties.n_shells
+
+            if not species.drag_effected:
+                # create an array that is the length of n_shells with each a value of deltat
+                species.orbital_lifetimes = np.full(scenario_properties.n_shells, species.deltat)
+            else:
+                for k in range(scenario_properties.n_shells):
+                    rhok = densityexp(scenario_properties.R0_km[k])
+
+                    # satellite 
+                    # beta = 0.0172 # ballastic coefficient, area * mass * drag coefficient. This should be done for each species!
+                    if species.beta is None:
+                        raise ValueError("Beta is not defined for species")
+                    
+                    rvel_current_D = -rhok * species.beta * np.sqrt(scenario_properties.mu * scenario_properties.R0[k]) * (24 * 3600 * 365.25)
+                    shell_marginal_decay_rates[k] = -rvel_current_D/scenario_properties.Dhl
+                    shell_marginal_residence_times[k] = 1/shell_marginal_decay_rates[k]
+    
+                species.orbital_lifetimes = np.cumsum(shell_marginal_residence_times)
+                
+                # Maximum orbital lifetime is the simulation duration
+                species.orbital_lifetimes = np.minimum(
+                    species.orbital_lifetimes,
+                    scenario_properties.simulation_duration
+                )
+    
+    return scenario_properties.species
+

@@ -1,12 +1,16 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import Plots, results_to_json
+# from .utils.drag.drag import calculate_orbital_lifetimes
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
+from utils.drag.drag import calculate_orbital_lifetimes
+from utils.plotting.plotting import results_to_json, Plots
+import numpy as np
 from datetime import datetime
-from utils.plotting.plotting import Plots, results_to_json
 import json
 import os
 import pickle
@@ -150,6 +154,10 @@ class Model:
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
+                # Calculate Orbital Lifetimes if "umpy" is in the indicator variables
+                if "umpy" in self.scenario_properties.indicator_variables:
+                    self.scenario_properties.species = calculate_orbital_lifetimes(self.scenario_properties)
+
                 self.scenario_properties.build_indicator_variables()
 
             return species_list
@@ -158,19 +166,66 @@ class Model:
         except Exception as e:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
         
-    def build_sym_model(self):
+    def calculate_collisions(self):
+        """
+        Calculate the collisions between species in the simulation.
+        
+        Parameters:
+        - scenario_properties (ScenarioProperties): Scenario properties object.
+        """
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.build_sym_model()
-
-            with open('test_to_delete.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
-
-            return self.scenario_properties
-
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
         except Exception as e:
-            raise RuntimeError(f"Failed to run model: {str(e)}")
+            raise ValueError(f"An error occurred calculating collisions: {str(e)}")
+        
+    def opus_active_loss_setup(self, fringe_species):
+        """
+        The OPUS economic model requires an indicator variable to be correctly configured: "actactive_loss_per_species" to be a proxy for probability of collision. 
+
+        This function find the correct economic indicator, lambdify the equations for numpy, then add it to its own variable for easy access.
+
+        Parameters:
+        - fringe_species (str): The fringe satellite name that is going to be used for the active satellites
+        - scenario_properties (ScenarioProperties): Scenario properties object.
+
+        Returns:
+        - None
+
+        Raises:
+        - ValueError: If the fringe species is not found in the species list.
+        - TypeError: If scenario_properties is not passed
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise TypeError("Invalid scenario properties provided.")
+        if fringe_species not in self.scenario_properties.species_names:
+            raise ValueError(f"Invalid fringe species provided: {fringe_species}. Please ensure that a fringe species name is provided in the configuration JSON.")
+        if self.scenario_properties.indicator_variables is None:
+            raise NameError("Indicator variables not found. Please ensure that the indicator variables are provided in the configuration JSON. If you are an OPUS user please use 'active_loss_per_species'")
+        
+        try:
+            self.scenario_properties.configure_active_satellite_loss(fringe_species)
+        except Exception as e:
+            raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
+    
+    def opus_umpy_calculation(self, state_matrix):
+        """
+        This will calculate the UMPY (Undisposed Mass Per Year metric). 
+        """
+        # First check that current self has 'umpy' within indicator_variables
+        if 'umpy' not in self.scenario_properties.indicator_variables:
+            raise ValueError("Indicator variable 'umpy' not found in the scenario properties. Please configure it in the MOCAT json.")
+
+        try:
+            umpy = self.scenario_properties.calculate_umpy_for_opus(state_matrix)
+            return umpy
+        except Exception as e:
+            raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
+        
+
+        
 
     def run_model(self):
         """
@@ -193,11 +248,63 @@ class Model:
 
             # save the scenario properties to a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
+
+                # first remove the lambdified equations as pickle cannot serialize them
+                self.scenario_properties.equations = None
+                self.scenario_properties.coll_eqs_lambd = None
+                self.scenario_properties.full_lambda_flattened = None
+            
                 pickle.dump(self.scenario_properties, f)
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
-    
+        
+    def initial_population(self):
+        """
+            Initialize the population of the species in the simulation.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            # If this function is called, only create x0. 
+            self.scenario_properties.initial_pop_and_launch(baseline=True)
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize population: {str(e)}")
+
+
+    def build_model(self):
+        """
+            Build the model for the simulation.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.build_model()
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to build model: {str(e)}")
+        
+
+    def propagate(self, times, population, launch=False):
+        """
+            This is when you would like to integrate forward a specific population set. This can be any amount aslong as it follows the same structure of x0 to fit the equations.
+
+            Parameters:
+            - times (list): List of times to integrate over.
+            - population: One dimensional array, n_species x n_shells.
+        """
+        
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            results = self.scenario_properties.propagate(population, times, launch)
+            return results
+        except Exception as e:
+            raise RuntimeError(f"Failed to integrate: {str(e)}")
+                                                        
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
@@ -217,7 +324,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_opt.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]

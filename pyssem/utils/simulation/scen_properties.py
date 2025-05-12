@@ -101,11 +101,11 @@ class ScenarioProperties:
         R0 = (self.re + R0) * 1000  # Convert to meters and the radius of the earth
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
         if self.v_imp is not None:
-            self.v_imp2 = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
+            self.v_imp_all = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
         else: 
             # Calculate v_imp for each orbital shell using the vis viva equation
-            self.v_imp2 = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
-        self.v_imp2 * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
+            self.v_imp_all = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
+        self.v_imp_all * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
         self.Dhl = self.deltaH * 1000 # thickness of the shell [m]
         self.Dhu = -self.deltaH * 1000 # thickness of the shell [m]
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
@@ -113,7 +113,6 @@ class ScenarioProperties:
 
         # An empty list for the species
         self.species = []
-        self.species_types = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
         self.species_names = []
         self.species_length = 0
@@ -130,6 +129,7 @@ class ScenarioProperties:
         self.drag_term_upper = None
         self.drag_term_cur = None
         self.sym_drag = False
+        self.coll_eqs_lambd = None # Used for OPUS when only collision equations are required
         self.full_control = sp.Matrix([])
         
         # Outputs
@@ -305,6 +305,10 @@ class ScenarioProperties:
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
                                                                                     per_species = True))
+                elif indicator == "umpy":
+                    self.indicator_variables_list.append(make_umpy_indicator(self,
+                                                                             X=4
+                                                                             ))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         
@@ -314,57 +318,57 @@ class ScenarioProperties:
             self.indicator_variables = None
             self.indicator_variables_list = []
             return
-
-    def initial_pop_and_launch(self, baseline=False, launch_file=None):
+    def configure_active_satellite_loss(self, fringe_satellites):
         """
-           This function will determine which launch file to use. 
-           Users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
+            This will find the equations that have been created by the active_loss_per_species, then lambdify the equations and save them separately. 
 
-           There are seven possible launch scenarios:
-                SEP1: No Future Launch 
+            This function is normally required for the OPUS model.
 
-                SEP 2: Continuing Current Behaviours 
-
-                SEP 3 M: Space Winter (Medium Sustainability Effort) 
-
-                SEP 3 H: Space Winter (High Sustainability Effort) 
-
-                SEP 4: Strategic Rivalry 
-
-                SEP 5 M: Commercial-driven Development (Medium Sustainability Effort) 
-
-                SEP 5 H: Commercial-driven Development (High Sustainability Effort) 
-
-                SEP 6 M: Intensive Space Demand (Medium Sustainability Effort) 
-
-                SEP 6 H: Intensive Space Demand (High Sustainability Effort) 
+            Parameters:
+                fringe_satellites (str): Fringe Satellite Name
         """
 
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
+        fringe_satellite_items = [
+            item for sublist in self.indicator_variables_list for item in sublist 
+            if item.name.startswith("Su")
+        ]
+
+        # there should only be one item
+        if len(fringe_satellite_items) != 1:
+            raise ValueError("There should only be one fringe satellite. Multiple found.")
         
-        # Check to see if the data folder exists, if not, create it
-        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
-            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
+        fringe_satellite_items = fringe_satellite_items[0].eqs
 
-        # Check to see if launch_file_path exists
-        if not os.path.exists(launch_file_path):
-            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
+        # Lambdify the equations
+        simplified_eqs = sp.simplify(fringe_satellite_items)
+        self.fringe_active_loss = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
         
-        print('Using launch file:', launch_file_path)
+        return
+    
+    def calculate_umpy_for_opus(self, state_matrix):
+        """
+            Calculate the undispossed mass per year (UMPY) from the current state_matrix using indicator variables.
+        """
 
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+        # if self.umpy_lambdified exists
+        if not hasattr(self, 'umpy_lambdified'):
+            # Get the index of umpy in list
+            umpy_index = self.indicator_variables.index("umpy")
 
-        # Store as part of the class, as it is needed for the run_model()
-        self.x0 = x0
-        self.FLM_steps = FLM_steps
+            # Use this index to get the indicator vars
+            umpy_eqs = self.indicator_variables_list[umpy_index][0].eqs
+            
+            # Simplify and Lambdify the equations
+            simplified_eqs = sp.simplify(umpy_eqs)
+            self.umpy_lambdified = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
 
-        # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+        # Calculate the UMPY
+        umpy = self.umpy_lambdified(*state_matrix)
+        
+        return umpy
 
-        if not baseline:
-            self.future_launch_model(FLM_steps)
 
-    def initial_pop_and_launch2(self, baseline=False):
+    def initial_pop_and_launch(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
         The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
@@ -395,7 +399,7 @@ class ScenarioProperties:
         # Example usage: print the filepath to verify
         print("File used for launch model:", filepath)
               
-        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath, baseline)
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0
@@ -541,7 +545,6 @@ class ScenarioProperties:
         # self.equations = self.full_Cdot_PMD + self.full_coll
         self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
 
-
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: 
             # Take the shell altitudes, this will be n_shells + 1
@@ -591,9 +594,57 @@ class ScenarioProperties:
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
-            
-        return
 
+        # Lambdify the equations to be used for Scipy integration
+        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+  
+        return
+    
+    def lambdify_equations(self):
+        """
+            Convert the Sympy symbolic equations to lambda functions, this allows for a quicker integration for SciPy.
+
+            Returns: equations, full_lambda_flattened
+        """
+
+        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+
+        # Convert the equations to lambda functions
+        if self.parallel_processing:
+            equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
+        else:
+            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+
+        return equations
+
+    def lambdify_launch(self, full_lambda=None):
+        """ 
+            Convert the Numpy launch rates to Scipy lambdified functions for integration.
+        
+        """
+        # Launch rates
+        full_lambda_flattened = []
+
+        if full_lambda is None:
+            for i in range(len(self.full_lambda)):
+                if self.full_lambda[i] is not None:
+                    full_lambda_flattened.extend(self.full_lambda[i])
+                else:
+                    # Append None to the list, length of scenario_properties.n_shells
+                    full_lambda_flattened.extend([None]*self.n_shells)
+        else:
+            for i in range(len(full_lambda)):
+                if full_lambda[i] is not None:
+                    full_lambda_flattened.extend(full_lambda[i])
+                else:
+                    # Append None to the list, length of scenario_properties.n_shells
+                    full_lambda_flattened.extend([None]*self.n_shells)
+
+        return full_lambda_flattened
+    
     def run_model(self):
         """
         For each species, integrate the equations of population change for each shell and species.
@@ -608,24 +659,6 @@ class ScenarioProperties:
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
-
-        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
-
-        # Convert the equations to lambda functions
-        if self.parallel_processing:
-            equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
-        else:
-            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
-
-        # Launch rates
-        full_lambda_flattened = []
-
-        for i in range(len(self.full_lambda)):
-            if self.full_lambda[i] is not None:
-                full_lambda_flattened.extend(self.full_lambda[i])
-            else:
-                # Append None to the list, length of scenario_properties.n_shells
-                full_lambda_flattened.extend([None]*self.n_shells)
 
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
@@ -652,7 +685,7 @@ class ScenarioProperties:
 
             print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(full_lambda_flattened, equations, self.scen_times),
+                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
@@ -662,7 +695,7 @@ class ScenarioProperties:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(full_lambda_flattened, equations, self.scen_times),
+                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             # output = 1
             self.progress_bar.close()
@@ -700,6 +733,61 @@ class ScenarioProperties:
 
 
         return 
+    
+    def propagate(self, population, times, launch=None):
+        """
+            This will use the equations that have been built already by the model, and then integrate the differential equations
+            over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
+
+            :param population: Initial population
+            :param times: Times to integrate over
+            :param launch: Launch rates
+
+            :return: results_matrix
+        """
+        # check to see if the equations have already been lamdified
+        if self.equations is None:
+            self.equations = self.lambdify_equations()
+
+        # if launch is not None:
+        #     full_lambda_flattened = self.lambdify_launch(launch)
+
+        output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
+                            args=(self.equations, times, launch), 
+                            t_eval=times, method=self.integrator)
+        
+        if output.success:
+            # Extract the results at the specified time points
+            results_matrix = output.y.T  # Transpose to make it [time, variables]
+            return results_matrix
+        else:
+            print(f"Model run failed: {output.message}")
+            return None
+
+        
+    def population_shell_for_OPUS(self, t, N, equations, times, launch):
+        dN_dt = np.zeros_like(N)
+
+        # Iterate over each component in N
+        for i in range(len(N)):
+        
+            # Compute and add the external modification rate, if applicable
+            # Now using np.interp to calculate the increase
+            if launch[i] is not None:
+                # increase = np.interp(t, times, launch[i])
+                increase = launch[i]
+                # If increase is nan set to 0
+                if np.isnan(increase) or np.isinf(increase) or increase is None:
+                    increase = 0
+                else:
+                    dN_dt[i] += increase
+
+            # Compute the intrinsic rate of change from the differential equation
+            change = equations[i](*N)
+        
+            dN_dt[i] += change
+
+        return dN_dt
 
     def population_shell_time_varying_density(self, t, N, full_lambda, equations, times):
         """
@@ -755,7 +843,7 @@ class ScenarioProperties:
 
         return dN_dt
     
-    def population_shell(self, t, N, full_lambda, equations, times):
+    def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
@@ -768,7 +856,7 @@ class ScenarioProperties:
         :return: Rate of change of population at the given timestep, t. 
         """
         # Update the progress bar
-        if self.progress_bar is not None:
+        if self.progress_bar is not None and progress_bar:
             self.progress_bar.update(t - self.progress_bar.n)
 
         # Initialize the rate of change array

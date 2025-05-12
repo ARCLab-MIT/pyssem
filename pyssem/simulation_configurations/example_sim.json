@@ -1,44 +1,31 @@
 {
-  "simulation_name": "SEP2-for-maya",
-  "id": "1234567890",
-  "owner": "Indigo Brownhall",
-  "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
-  "created": "2024-01-01T12:00:00Z",
-  "modified": "2024-01-01T12:00:00Z",
-  "scenario_properties": {
-    "start_date": "01/01/2025",   
-    "simulation_duration": 100,              
-    "steps": 100,                            
-    "min_altitude": 200,                   
-    "max_altitude": 1400,                   
-    "n_shells": 40,                         
-    "launch_function": "Constant", 
-    "integrator": "BDF",                
-    "density_model": "static_exp_dens_func", 
-    "LC": 0.1,                             
-    "v_imp": 10.0,
-    "fragment_spreading": false,
-    "parallel_processing": false,
-    "baseline" : false,
-    "launch_scenario": "SEP2",
-    "indicator_variables": [
-      "active_loss_per_shell",
-      "active_loss_per_shell_percentage",
-      "active_loss_per_species",
-      "active_loss_per_species_percentage",
-      "umpy"
-    ]                                             
-  },
-  "plots": [
-    "all_plots"
-  ],
-  "SEP_mapping": [
-      "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'S'",
-      "T.loc[(T['obj_type'] == 2) & (T['maneuverable'] == 0), 'species_class'] = 'Sns'",
-      "T.loc[(T['obj_type'] >= 3), 'species_class'] = 'N'",
-      "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
-  ],
-  "species": [
+    "simulation_name": "AMOS Simulation",
+    "id": "1234567890",
+    "owner": "Indigo Brownhall",
+    "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
+    "created": "2024-01-01T12:00:00Z",
+    "modified": "2024-01-01T12:00:00Z",
+    "scenario_properties": {
+      "start_date": "01/03/2022",   
+      "simulation_duration": 100,              
+      "steps": 100,                            
+      "min_altitude": 200,                   
+      "max_altitude": 1400,                   
+      "n_shells": 40,                         
+      "launch_function": "Constant", 
+      "integrator": "BDF",                
+      "density_model": "static_exp_dens_func", 
+      "LC": 0.1,                             
+      "v_imp": 10.0,
+      "fragment_spreading": false, 
+      "parallel_processing" : true,
+      "baseline": false,
+      "indicator_variables": ["active_loss_per_shell", "active_loss_per_species", "umpy"]                          
+    },
+    "plots" : [
+      "indicator_variables"
+    ],
+    "species": [
       {
         "sym_name": "S",
         "Cd": 2.2,
@@ -57,8 +44,27 @@
         "drag_effected": false,
         "launch_func": "launch_func_null",
         "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"     
-      },
+        "drag_func": "drag_func_exp"
+    },
+    {
+        "sym_name": "Su",
+        "Cd": 2.2,
+        "mass": [260, 473],
+        "A": [1.6652, 13.5615],
+        "radius": [0.728045069, 2.077681285],
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": [8, 8],
+        "Pm": 0.65,
+        "alpha": 1e-5,
+        "alpha_active": 1e-5,
+        "RBflag": 0,
+        "slotting_effectiveness": 1.0,
+        "drag_effected": false,
+        "pmd_func": "pmd_func_sat",
+        "drag_func": "drag_func_exp"
+    },
     {
         "sym_name": "N",
         "Cd": 2.2,

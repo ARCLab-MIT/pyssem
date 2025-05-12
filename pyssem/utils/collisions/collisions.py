@@ -348,11 +348,11 @@ def process_species_pair(args):
         RBflag = max(s1.RBflag, s2.RBflag)
 
     # Calculate the number of fragments made for each debris species
-    frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
+    frags_made = np.zeros((len(scen_properties.v_imp_all), len(debris_species)))
     alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
 
     # This will tell you the number of fragments in each debris bin
-    for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
+    for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits 
 
         dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. This can change later. 
 
