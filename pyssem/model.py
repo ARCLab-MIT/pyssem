@@ -217,7 +217,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_mult.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_opt.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
