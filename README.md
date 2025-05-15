@@ -38,7 +38,7 @@ When creating a model, the following properties are required within the `scenari
   - Example: `"integrator": "BDF"`
 
 - **density_model**: The model used to define atmospheric density.
-  - Example: `"density_model": "static_exp_dens_func"`
+  - Example: `"density_model": " "`
 
 - **LC**: Characteristic length scale (in kilometers).
   - Example: `"LC": 0.1`
