@@ -296,11 +296,15 @@ def assign_species_to_population(T, species_mapping):
     T['species_class'] = "Unknown"
 
     # Apply each mapping rule via exec
-    for rule in species_mapping:
-        try:
-            exec(rule)
-        except Exception as e:
-            print(f"Error applying rule: {rule}\n\t{e}")
+    try:
+        for rule in species_mapping:
+            try:
+                exec(rule)
+            except Exception as e:
+                print(f"Error applying rule: {rule}\n\t{e}")
+    except Exception as e:
+        print(f"Error in species mapping: {e} \n Have you defined the species mapping in the configuration JSON?")
+        exit(1)
 
     # Print summary of resulting species_class assignments
     print("\nSpecies class distribution:")
@@ -402,8 +406,6 @@ def SEP_traffic_model(scen_properties, file_path):
 
     # Initial population
     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
-
-    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 

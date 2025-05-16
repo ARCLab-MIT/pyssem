@@ -20,10 +20,11 @@
       "fragment_spreading": false, 
       "parallel_processing" : true,
       "baseline": false,
-      "indicator_variables": ["active_loss_per_shell", "active_loss_per_species", "umpy"]                          
+      "indicator_variables": ["active_loss_per_shell", "active_loss_per_shell_percentage", "active_loss_per_species", "active_loss_per_species_percentage"],
+      "launch_scenario": "SEP1"                          
     },
     "plots" : [
-      "indicator_variables"
+      "all_plots"
     ],
     "species": [
       {

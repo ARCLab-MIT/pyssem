@@ -1,5 +1,6 @@
 from sympy import zeros, symbols, sqrt, exp
 import numpy as np
+from scipy.interpolate import interp1d
 import pandas as pd
 from scipy.spatial import KDTree
 import json
@@ -65,6 +66,66 @@ def densityexp(h):
     p[mask] = p0 * np.exp((h0 - h[mask]) / H)
 
     return p
+
+def density_jb2008(h, solar_activity='medium'):
+    """
+    Calculates atmospheric density based on altitude using empirical JB2008 values.
+
+    Args:
+        h (np.array or float): Altitude(s) in km.
+        solar_activity (str): One of 'low', 'medium', or 'high'.
+
+    Returns:
+        np.ndarray or float: Atmospheric density in kg/km^3.
+    """
+    # Fixed altitudes corresponding to the empirical densities
+    altitudes = np.arange(200, 2001, 50)
+
+    # Densities for different solar conditions (in kg/km^3)
+    densities_medium = np.array([
+        2.583811e-10, 5.520264e-11, 1.534066e-11, 4.964659e-12, 1.760085e-12,
+        6.636416e-13, 2.637648e-13, 1.110813e-13, 5.034028e-14, 2.496753e-14,
+        1.375360e-14, 8.467861e-15, 5.746924e-15, 4.183609e-15, 3.185043e-15,
+        2.492537e-15, 1.983579e-15, 1.608618e-15, 1.333113e-15, 1.123039e-15,
+        9.574195e-16, 8.229503e-16, 7.110234e-16, 6.276950e-16, 5.557886e-16,
+        4.923830e-16, 4.358694e-16, 3.862553e-16, 3.435880e-16, 3.068270e-16,
+        2.750936e-16, 2.476455e-16, 2.238544e-16, 2.031884e-16, 1.851967e-16,
+        1.694964e-16, 1.557627e-16
+    ])
+
+    densities_high = np.array([
+        4.032914e-10, 1.291032e-10, 5.192007e-11, 2.361588e-11, 1.161449e-11,
+        6.025391e-12, 3.246434e-12, 1.798721e-12, 1.018771e-12, 5.870399e-13,
+        3.430245e-13, 2.036214e-13, 1.234507e-13, 7.678226e-14, 4.909259e-14,
+        3.239541e-14, 2.212791e-14, 1.553517e-14, 1.113301e-14, 8.145061e-15,
+        6.076367e-15, 4.616357e-15, 3.570131e-15, 2.813420e-15, 2.264531e-15,
+        1.867488e-15, 1.582198e-15, 1.358270e-15, 1.189058e-15, 1.098725e-15,
+        1.016880e-15, 9.423028e-16, 8.740684e-16, 8.114525e-16, 7.538693e-16,
+        7.008309e-16, 6.519211e-16
+    ])
+
+    densities_low = np.array([
+        1.399477e-10, 2.457026e-11, 5.744655e-12, 1.578052e-12, 4.782331e-13,
+        1.566717e-13, 5.593621e-14, 2.238905e-14, 1.040424e-14, 5.693723e-15,
+        3.605487e-15, 2.545575e-15, 1.927992e-15, 1.524718e-15, 1.240213e-15,
+        1.029953e-15, 8.702084e-16, 7.558953e-16, 6.804000e-16, 6.308542e-16,
+        5.990412e-16, 5.796341e-16, 5.607305e-16, 5.136811e-16, 4.718594e-16,
+        4.336292e-16, 3.978549e-16, 3.656085e-16, 3.379428e-16, 3.140788e-16,
+        2.933788e-16, 2.753197e-16, 2.594714e-16, 2.454803e-16, 2.330546e-16,
+        2.219532e-16, 2.119764e-16
+    ])
+
+    # Pick the dataset
+    if solar_activity == 'high':
+        selected = densities_high
+    elif solar_activity == 'low':
+        selected = densities_low
+    else:
+        selected = densities_medium
+
+    # Interpolate density values
+    interp_func = interp1d(altitudes, selected, bounds_error=False, fill_value="extrapolate")
+    return interp_func(h)
 
 def drag_func_none(t, species, scen_properties):
     """
