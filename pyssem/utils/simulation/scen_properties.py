@@ -450,50 +450,6 @@ class ScenarioProperties:
         umpy = self.umpy_lambdified(*state_matrix)
         
         return umpy
-
-
-    def initial_pop_and_launch(self, baseline=False):
-        """
-        Generate the initial population and the launch rates. 
-        The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
-        
-        Returns: None
-        """
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-
-        # Check to see if the data folder exists, if not, create it
-        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
-            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
-
-        if os.path.exists(launch_file_path):
-            filepath = launch_file_path
-        else:
-            print('As no file is provided. Downloading a launch file...:')
-            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE' # This is a google docs link - eventually should be added as a .env
-            
-            download_file_from_google_drive(file_id, launch_file_path)
-
-            # Check to see if the file has been downloaded
-            if os.path.exists(launch_file_path):
-                filepath = launch_file_path
-                print('File downloaded successfully.')
-            else:
-                print('Failed to download the file.')
-
-        # Example usage: print the filepath to verify
-        print("File used for launch model:", filepath)
-              
-        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath, baseline)
-
-        # Store as part of the class, as it is needed for the run_model()
-        self.x0 = x0
-        self.FLM_steps = FLM_steps
-
-        # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-
-        if not baseline:
-            self.future_launch_model(FLM_steps)
             
     def build_model(self):
         """
@@ -576,139 +532,139 @@ class ScenarioProperties:
             
         return
     
-    def build_model(self):
-        """
-        Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
+    # def build_model(self):
+    #     """
+    #     Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
 
-        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species, launch, pmd, drag and collisions equations
-        and add them shape them into a matrix of symbolic expressions. 
+    #     This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species, launch, pmd, drag and collisions equations
+    #     and add them shape them into a matrix of symbolic expressions. 
 
-        :return: None
-        """
-        t = sp.symbols('t')
+    #     :return: None
+    #     """
+    #     t = sp.symbols('t')
 
-        species_list = [species for group in self.species.values() for species in group]
-        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
-        # self.full_lambda = []
-        self.full_lambda = sp.zeros(self.n_shells, self.species_length)
-        self.full_coll = sp.zeros(self.n_shells, self.species_length)
-        self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
-        self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
-        self.full_control = sp.zeros(self.n_shells, self.species_length)
+    #     species_list = [species for group in self.species.values() for species in group]
+    #     self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
+    #     # self.full_lambda = []
+    #     self.full_lambda = sp.zeros(self.n_shells, self.species_length)
+    #     self.full_coll = sp.zeros(self.n_shells, self.species_length)
+    #     self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
+    #     self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
+    #     self.full_control = sp.zeros(self.n_shells, self.species_length)
 
-        # Equations are going to be a matrix of symbolic expressions
-        # Each row corresponds to a shell, and each column corresponds to a species
-        for i, species in enumerate(species_list):
+    #     # Equations are going to be a matrix of symbolic expressions
+    #     # Each row corresponds to a shell, and each column corresponds to a species
+    #     for i, species in enumerate(species_list):
 
-            # lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
-            # self.full_lambda.append(lambda_expr)
-            lambda_expr = species.launch_func(t, self.HMid, species, self)
-            self.full_lambda[:, i] = lambda_expr
+    #         # lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+    #         # self.full_lambda.append(lambda_expr)
+    #         lambda_expr = species.launch_func(t, self.HMid, species, self)
+    #         self.full_lambda[:, i] = lambda_expr
 
-            # Post mission Disposal
-            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
-            self.full_Cdot_PMD[:, i] = Cdot_PMD
+    #         # Post mission Disposal
+    #         Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
+    #         self.full_Cdot_PMD[:, i] = Cdot_PMD
 
-            # Control
-            U = species.control_func(t, self.HMid, species, self)
-            self.full_control[:, i] = U
+    #         # Control
+    #         U = species.control_func(t, self.HMid, species, self)
+    #         self.full_control[:, i] = U
 
-            # Drag
-            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
-            try:
-                self.drag_term_upper[:, i] = upper_term
-                self.drag_term_cur[:, i] = current_term
-            except:
-                continue
+    #         # Drag
+    #         [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
+    #         try:
+    #             self.drag_term_upper[:, i] = upper_term
+    #             self.drag_term_cur[:, i] = current_term
+    #         except:
+    #             continue
         
-        # Collisions
-        for i in self.collision_pairs:
-            self.full_coll += i.eqs
+    #     # Collisions
+    #     for i in self.collision_pairs:
+    #         self.full_coll += i.eqs
 
-        self.equations = sp.zeros(self.n_shells, self.species_length)      
-        # self.equations = self.full_Cdot_PMD + self.full_coll
-        self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
+    #     self.equations = sp.zeros(self.n_shells, self.species_length)      
+    #     # self.equations = self.full_Cdot_PMD + self.full_coll
+    #     self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
 
-        # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: 
-            # Take the shell altitudes, this will be n_shells + 1
-            rho = self.density_model(0, self.R0_km, self.species, self)
-            rho_reshape = rho.reshape(-1, 1) # Convert to column vector
-            rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
-            rho_mat = sp.Matrix(rho_mat)
+    #     # Recalculate objects based on density, as this is time varying 
+    #     if not self.time_dep_density: 
+    #         # Take the shell altitudes, this will be n_shells + 1
+    #         rho = self.density_model(0, self.R0_km, self.species, self)
+    #         rho_reshape = rho.reshape(-1, 1) # Convert to column vector
+    #         rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
+    #         rho_mat = sp.Matrix(rho_mat)
             
-            # Second to last row
-            upper_rho = rho_mat[1:, :]
+    #         # Second to last row
+    #         upper_rho = rho_mat[1:, :]
             
-            # First to penultimate row (mimics rho_mat(1:end-1, :))
-            current_rho = rho_mat[:-1, :]
+    #         # First to penultimate row (mimics rho_mat(1:end-1, :))
+    #         current_rho = rho_mat[:-1, :]
 
-            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
-            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
-            self.full_drag = drag_upper_with_density + drag_cur_with_density
-            self.equations += self.full_drag
-            self.sym_drag = True 
+    #         drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
+    #         drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
+    #         self.full_drag = drag_upper_with_density + drag_cur_with_density
+    #         self.equations += self.full_drag
+    #         self.sym_drag = True 
 
-        # Get the equations in the correct format for lambdification
-        if self.time_dep_density:
-            # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
-            drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
-            drag_current_flattened = [self.drag_term_cur[i, j] for j in range(self.drag_term_cur.cols) for i in range(self.drag_term_cur.rows)]
+    #     # Get the equations in the correct format for lambdification
+    #     if self.time_dep_density:
+    #         # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
+    #         drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
+    #         drag_current_flattened = [self.drag_term_cur[i, j] for j in range(self.drag_term_cur.cols) for i in range(self.drag_term_cur.rows)]
 
-            self.drag_upper_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_upper_flattened]
-            self.drag_cur_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_current_flattened]
+    #         self.drag_upper_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_upper_flattened]
+    #         self.drag_cur_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_current_flattened]
 
-            # Set up time varying density 
-            self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
-                                                                                                                                       ))
+    #         # Set up time varying density 
+    #         self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
+    #         self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
+    #                                                                                                                                    ))
             
-            # This will change when jb2008 is updated
-            available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
-            available_altitudes.sort()
+    #         # This will change when jb2008 is updated
+    #         available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
+    #         available_altitudes.sort()
 
-            self.nearest_altitude_mapping = precompute_nearest_altitudes(available_altitudes)
+    #         self.nearest_altitude_mapping = precompute_nearest_altitudes(available_altitudes)
 
-            self.prev_t = -1  # Initialize to an invalid time
-            self.prev_rho = None
+    #         self.prev_t = -1  # Initialize to an invalid time
+    #         self.prev_rho = None
 
-        # Make Integrated Indicator Variables if passed
-        if hasattr(self, 'integrated_indicator_var_list'):
-            integrated_indicator_var_list = self.integrated_indicator_var_list
-            for ind_var in integrated_indicator_var_list:
-                if not ind_var.eqs:
-                    ind_var = self.make_indicator_eqs(ind_var)
+    #     # Make Integrated Indicator Variables if passed
+    #     if hasattr(self, 'integrated_indicator_var_list'):
+    #         integrated_indicator_var_list = self.integrated_indicator_var_list
+    #         for ind_var in integrated_indicator_var_list:
+    #             if not ind_var.eqs:
+    #                 ind_var = self.make_indicator_eqs(ind_var)
 
-            self.num_integrated_indicator_vars = 0
-            end_indicator_idxs = len(self.xdot_eqs)
+    #         self.num_integrated_indicator_vars = 0
+    #         end_indicator_idxs = len(self.xdot_eqs)
 
-            for ind_var in integrated_indicator_var_list:
-                num_add_indicator_vars = len(ind_var.eqs)
-                self.num_integrated_indicator_vars += num_add_indicator_vars
+    #         for ind_var in integrated_indicator_var_list:
+    #             num_add_indicator_vars = len(ind_var.eqs)
+    #             self.num_integrated_indicator_vars += num_add_indicator_vars
 
-                start_indicator_idxs = end_indicator_idxs + 1
-                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
-                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
+    #             start_indicator_idxs = end_indicator_idxs + 1
+    #             end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
+    #             ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
 
-                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
+    #             self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
 
-            if not self.sym_lambda:
-                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
-                self.full_lambda.extend(indicator_pad)
+    #         if not self.sym_lambda:
+    #             indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
+    #             self.full_lambda.extend(indicator_pad)
 
-        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
+    #     # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
                 
-        # Dont add drag if time dependent density, this will be added during integration due to time dependent density
-        if self.time_dep_density:
-            self.full_drag = self.drag_term_upper + self.drag_term_cur
+    #     # Dont add drag if time dependent density, this will be added during integration due to time dependent density
+    #     if self.time_dep_density:
+    #         self.full_drag = self.drag_term_upper + self.drag_term_cur
 
-        # Lambdify the equations to be used for Scipy integration
-        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
-        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+    #     # Lambdify the equations to be used for Scipy integration
+    #     collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+    #     self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+    #     self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
   
-        return
+    #     return
 
     def run_model(self):
         """
@@ -808,8 +764,7 @@ class ScenarioProperties:
 
 
             print("Integrating equations...")
-            output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
+            output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], self.x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
@@ -819,8 +774,7 @@ class ScenarioProperties:
         else:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
-            output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
+            output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], self.x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             # output = 1
@@ -998,7 +952,6 @@ class ScenarioProperties:
         return dN_dt
     
     def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
-    def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
@@ -1011,7 +964,6 @@ class ScenarioProperties:
         :return: Rate of change of population at the given timestep, t. 
         """
         # Update the progress bar
-        if self.progress_bar is not None and progress_bar:
         if self.progress_bar is not None and progress_bar:
             self.progress_bar.update(t - self.progress_bar.n)
 
