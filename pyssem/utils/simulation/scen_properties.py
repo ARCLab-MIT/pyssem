@@ -332,7 +332,7 @@ class ScenarioProperties:
 
         fringe_satellite_items = [
             item for sublist in self.indicator_variables_list for item in sublist 
-            if item.name.startswith(fringe_satellites)
+            if item.name == fringe_satellites or item.name.split('_')[0] == fringe_satellites
         ]
 
         # there should only be one item
