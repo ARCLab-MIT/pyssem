@@ -85,6 +85,7 @@ class SpeciesProperties:
         self.eccentricity_bins = None
         self.time_per_shells = []
         self.velocity_per_shells = []
+        self.eccentricity = 0 # Default eccentricity for circular orbits
         self.ecc_lb = 0
         self.ecc_ub = 1
 

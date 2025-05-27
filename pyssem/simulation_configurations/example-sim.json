@@ -1,5 +1,5 @@
 {
-  "simulation_name": "SEP1-Elliptical",
+  "simulation_name": "SEP2-Elliptical-Debris",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -62,8 +62,8 @@
     {
         "sym_name": "N",
         "Cd": 2.2,
-        "mass": [0.00141372, 0.5670],
-        "radius": [0.01, 0.1321],
+        "mass": [0.00141372, 0.5670, 4, 15, 20],
+        "radius": [0.01, 0.1321, 0.5, 1.0, 1.5],
         "A": "Calculated based on radius",
         "active": false,
         "maneuverable": false,
@@ -79,7 +79,7 @@
         "pmd_func": "pmd_func_derelict",
         "drag_func": "drag_func_exp",
         "elliptical": true,
-        "eccentricity_bins" : [0.001, 0.01, 0.1, 0.2]
+        "eccentricity_bins" : [0.001, 0.01, 0.05, 0.1]
     },
     {
         "sym_name": "Sns",

@@ -613,36 +613,7 @@ def filter_objclass_fragments_int(class_parent):
     return class_parent
 
 # Example usage
-if __name__ == "__main__":
-    # Define p1_in and p2_in
-    # p1_in = 1.0e+03 * np.array([1.2500, 0.0040, 2.8016, 2.7285, 6.2154, -0.0055, -0.0030, 0.0038, 0.0010])
-
-    # p2_in = 1.0e+03 * np.array([0.0060, 0.0001, 2.8724, 2.7431, 6.2248, 0.0032, 0.0054, -0.0039, 0.0010])
-
-    # p1_in = np.array([
-    #     1000,  # mass in kg
-    #     5,     # radius in meters
-    #     2100.4,  # r_x in km
-    #     2100.1,  # r_y in km
-    #     6224.8,  # r_z in km
-    #     -5.5,    # v_x in km/s
-    #     -3.0,    # v_y in km/s
-    #     3.8,     # v_z in km/s
-    #     1.0      # object_class (dimensionless)
-    # ])
-
-    # p2_in = np.array([
-    #     100,     # mass in kg
-    #     1,     # radius in meters
-    #     2100.4,  # r_x in km
-    #     2100.1,  # r_y in km
-    #     6224.8,  # r_z in km
-    #     3.2,     # v_x in km/s
-    #     5.4,     # v_y in km/s
-    #     -3.9,    # v_z in km/s
-    #     1.0      # object_class (dimensionless)
-    # ])
-    
+if __name__ == "__main__":    
     # Define the param dictionary
     param = {
         'req': 6.3781e+03,
@@ -656,64 +627,16 @@ if __name__ == "__main__":
     # # Lower bound (LB)
     LB = 0.1  # Assuming this is the lower bound in meters
 
-    # debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
-
-    # # if debris 1 is empty then contine
-    # if debris1.size == 0:
-    #     print("No debris fragments were generated")
-    #     exit()
-
-    # # Assuming debris1 is already defined
-    # idx_a = 0
-    # idx_ecco = 1
-
-    # # 1. 1D Histogram for SMA (semi-major axis)
-    # plt.figure()
-    # plt.hist((debris1[:, idx_a] - 1) * 6371, bins=np.arange(0, 5001, 100))
-    # plt.title('SMA as altitude (km)')
-    # plt.xlabel('SMA as altitude (km)')
-    # plt.ylabel('Frequency')
-    # plt.grid(True)
-    # plt.show()
-
-    # # 2. 1D Histogram for Eccentricity
-    # plt.figure()
-    # plt.hist(debris1[:, idx_ecco], bins=50)
-    # plt.title('Eccentricity')
-    # plt.xlabel('Eccentricity')
-    # plt.ylabel('Frequency')
-    # plt.grid(True)
-    # plt.show()
-
-    # # 3. 2D Histogram using histogram2d with LogNorm for color scale
-    # plt.figure()
-    # hist, xedges, yedges = np.histogram2d(
-    #     (debris1[:, idx_a] - 1) * 6371, debris1[:, idx_ecco],
-    #     bins=[np.arange(0, 5001, 100), np.arange(0, 1.01, 0.01)]
-    # )
-
-    # # Avoid any zero counts for logarithmic color scaling
-    # hist[hist == 0] = np.nan  # Replace zeros with NaNs to avoid LogNorm issues
-
-    # # Plotting the 2D histogram
-    # mappable = plt.imshow(
-    #     hist.T, origin='lower', norm=LogNorm(), 
-    #     extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='auto'
-    # )
-    # plt.colorbar(mappable, label='Count')
-    # plt.xlim([0, 3000])
-    # plt.xlabel('SMA as altitude (km)')
-    # plt.ylabel('Eccentricity')
-    # plt.title('2D Histogram of SMA and Eccentricity')
-    # plt.grid(True)
-
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
 
-    def test_fragmentation_by_sma(frag_col_func, param, LB):
+    def test_fragmentation_by_sma_new(frag_col_func, param, LB):
         """
-        Run frag_col_SBM_vec_lc2 at different SMA altitudes using realistic r and v vectors.
+        Run frag_col_SBM_vec_lc2 at different SMA altitudes using realistic r and v vectors
+        derived from orbital mechanics. Object 1 uses a base orbit, object 2 impacts at 45 degrees
+        using same position but rotated velocity vector.
+
         Generates a grid of 2D histograms with dynamic subplot layout (max 4 columns).
         """
         import numpy as np
@@ -721,22 +644,48 @@ if __name__ == "__main__":
         from matplotlib.colors import LogNorm
         import math
 
-        sma_tests = [6671, 6871, 6971, 7171, 7371, 7571, 7771, 7971]  # km
+        # SMA test values (Earth radius + altitude in km)
+        sma_tests = [6671, 6871, 6971, 7171, 7371, 7571, 7771, 7971]
         earth_radius_km = 6371
+        ecc_1 = 0   # Eccentricity of object 1
+        ecc_2 = 0  # Eccentricity of object 2
+        true_anomaly_deg = 90
+        TA = np.radians(true_anomaly_deg)
+        mu = param["mu"]
+
+        # === Helper functions ===
+        def perifocal_r_and_v(a, e, nu, mu):
+            r_mag = a * (1 - e**2) / (1 + e * np.cos(nu))
+            r = r_mag * np.array([np.cos(nu), np.sin(nu), 0.0])
+
+            h = np.sqrt(mu * a * (1 - e**2))
+            v = (mu / h) * np.array([-np.sin(nu), e + np.cos(nu), 0.0])
+            return r, v
+
+        def rotate_vector_45_deg_in_plane(v):
+            theta = np.pi / 4  # 45 degrees
+            rot_matrix = np.array([
+                [np.cos(theta), -np.sin(theta), 0],
+                [np.sin(theta),  np.cos(theta), 0],
+                [0,              0,             1]
+            ])
+            return rot_matrix @ v
 
         results = []
 
-        # Reference vectors from working example
-        base_r = np.array([2100.4, 2100.1, 6224.8])  # km
-        v1 = np.array([-5.5, -3.0, 3.8])             # km/s
-        v2 = np.array([3.2, 5.4, -3.9])              # km/s
-
         for sma in sma_tests:
-            scaling = sma / np.linalg.norm(base_r)
-            r_vec = base_r * scaling
+            # Object 1 (larger mass): low eccentricity
+            r1, v1 = perifocal_r_and_v(sma, ecc_2, TA, mu)
 
-            p1 = np.array([1000, 5, *r_vec, *v1, 1.0])
-            p2 = np.array([100, 1, *r_vec, *v2, 1.0])
+            # Object 2 (lighter mass): higher eccentricity, rotated velocity
+            _, v2_mag_vec = perifocal_r_and_v(sma, ecc_1, TA, mu)
+            v2_hat_rotated = rotate_vector_45_deg_in_plane(v1 / np.linalg.norm(v1))
+            v2 = np.linalg.norm(v2_mag_vec) * v2_hat_rotated
+            r2 = r1  # collision point is same
+
+            # Define input vectors
+            p1 = np.array([1000, 5, *r1, *v1, 1.0])
+            p2 = np.array([10, 1, *r2, *v2, 1.0])
 
             debris1, _, isCatastrophic = frag_col_func(0, p1, p2, param, LB)
 
@@ -746,14 +695,14 @@ if __name__ == "__main__":
 
             results.append((sma, debris1))
 
-        # --- Determine dynamic grid layout ---
+        # === Dynamic 2D Histogram Plotting ===
         n_cases = len(results)
         max_cols = 4
         n_cols = min(max_cols, n_cases)
         n_rows = math.ceil(n_cases / n_cols)
 
         fig, axs = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows), constrained_layout=True)
-        axs = np.array(axs).reshape(-1)  # flatten in case of single row or column
+        axs = np.array(axs).reshape(-1)
         mappable = None
 
         for ax, (sma, debris) in zip(axs, results):
@@ -778,6 +727,7 @@ if __name__ == "__main__":
             ax.set_xlabel("SMA as altitude (km)")
             ax.set_ylabel("Eccentricity")
             ax.set_xlim(0, 2000)
+            ax.set_ylim(0, 0.5)
             ax.grid(True)
 
         # Turn off any unused axes
@@ -790,83 +740,4 @@ if __name__ == "__main__":
         fig.suptitle("2D Histogram of SMA and Eccentricity for Varying Initial SMA", fontsize=16)
         plt.show()
 
-    def test_fragmentation_by_sma(frag_col_func, param, LB):
-        """
-        Sweep SMA from altitudes of 200 to 1500 km in 100 km steps,
-        run frag_col_SBM_vec_lc2, and plot 2D histograms of SMA vs eccentricity.
-        """
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from matplotlib.colors import LogNorm
-        import math
-
-        earth_radius_km = 6371
-        altitudes = np.arange(200, 1501, 100)  # km altitudes
-        sma_tests = earth_radius_km + altitudes
-
-        base_r = np.array([2100.4, 2100.1, 6224.8])  # km
-        v1 = np.array([-5.5, -3.0, 3.8])             # km/s
-        v2 = np.array([3.2, 5.4, -3.9])              # km/s
-
-        results = []
-
-        for sma, alt in zip(sma_tests, altitudes):
-            scaling = sma / np.linalg.norm(base_r)
-            r_vec = base_r * scaling
-
-            p1 = np.array([1000, 5, *r_vec, *v1, 1.0])
-            p2 = np.array([100, 1, *r_vec, *v2, 1.0])
-
-            debris1, _, isCatastrophic = frag_col_func(0, p1, p2, param, LB)
-
-            label = f"Alt = {alt} km"
-            if debris1.size == 0:
-                print(f"[{label}] No debris generated")
-                continue
-
-            results.append((label, debris1))
-
-        # --- Dynamic subplot layout ---
-        n_cases = len(results)
-        max_cols = 4
-        n_cols = min(max_cols, n_cases)
-        n_rows = math.ceil(n_cases / n_cols)
-
-        fig, axs = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows), constrained_layout=True)
-        axs = np.array(axs).reshape(-1)
-        mappable = None
-
-        for ax, (label, debris) in zip(axs, results):
-            sma_alt_km = (debris[:, 0] - 1) * earth_radius_km
-            ecc = debris[:, 1]
-
-            hist, xedges, yedges = np.histogram2d(
-                sma_alt_km, ecc,
-                bins=[np.arange(0, 5001, 100), np.arange(0, 0.4, 0.01)]
-            )
-            hist[hist == 0] = np.nan
-
-            if np.isnan(hist).all():
-                ax.set_title(f"{label} (No data)")
-                continue
-
-            mappable = ax.imshow(
-                hist.T, origin='lower', norm=LogNorm(vmin=np.nanmin(hist), vmax=np.nanmax(hist)),
-                extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='auto'
-            )
-            ax.set_title(label)
-            ax.set_xlabel("SMA as altitude (km)")
-            ax.set_ylabel("Eccentricity")
-            ax.set_xlim(0, 1500)
-            ax.grid(True)
-
-        for ax in axs[len(results):]:
-            ax.axis('off')
-
-        if mappable:
-            fig.colorbar(mappable, ax=axs.tolist(), label='Count')
-
-        fig.suptitle("Fragmentation Distributions by Initial Altitude (200–1500 km)", fontsize=16)
-        plt.show()
-
-    test_fragmentation_by_sma(frag_col_SBM_vec_lc2, param, LB)
+    test_fragmentation_by_sma_new(frag_col_SBM_vec_lc2, param, LB)

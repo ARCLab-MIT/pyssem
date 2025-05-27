@@ -358,7 +358,8 @@ def process_elliptical_collision_pair(args):
         if m1 < 1 or m2 < 1:
             fragments = None
         else:
-            fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
+            fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, collision_pair.species1.eccentricity, collision_pair.species2.eccentricity, 
+                                    binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
     except Exception as e:
         print("Error in Evolve Bins")
         print(f"Exception caught: {e}")
@@ -393,8 +394,142 @@ def func_de(R_list, V_list):
     # Return the list of eccentricities
     return eccentricities
 
-def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_index, n_shells=0):
+# def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_index, n_shells=0):
         
+#         # Need to now follow the NASA SBM route, first we need to create p1_in and p2_in
+#         #  Parameters:
+#         # - ep: Epoch
+#         # - p1_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+#         # - p2_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+#         # - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID', etc.
+#         # - LB: Lower bound for fragment sizes (meters)
+#         # Super sampling ratio
+#         SS = 20
+#         R_EARTH = 6371.0  # km
+#         theta = np.radians(45)  # Rotation angle
+
+#         # Get collision altitude and position magnitude
+#         collision_altitude = scen_properties.HMid[collision_index]
+#         r_mag = R_EARTH + collision_altitude
+
+#         # Define position vectors with slight z offsets
+#         r1_vec = r_mag * np.array([np.cos(theta), np.sin(theta), 0.01])
+#         r2_vec = r_mag * np.array([np.cos(theta + np.pi/2), np.sin(theta + np.pi/2), -0.01])
+
+#         # Define velocity vectors with orthogonal direction and small z component
+#         v_half = v1 / 2
+#         v1_vec = v_half * np.array([-np.sin(theta), np.cos(theta), 0.02])
+#         v2_vec = v_half * np.array([np.sin(theta), -np.cos(theta), -0.02])
+
+#         # Compose p1 and p2 inputs
+#         p1_in = np.array([m1, r1, *r1_vec, *v1_vec, 1]) # 1 is the object class (dimensionless)
+#         p2_in = np.array([m2, r2, *r2_vec, *v2_vec, 1])
+
+#         param = {
+#             'req': 6.3781e+03,
+#             'mu': 3.9860e+05,
+#             'j2': 0.0011,
+#             'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+#             'maxID': 0,
+#             'density_profile': 'static'
+#         }
+        
+#         altitude = scen_properties.HMid[collision_index] 
+#         earth_radius = 6371  # Earth's mean radius in km
+#         latitude_deg = 45  # in degrees
+#         longitude_deg = 60  # in degrees
+
+#         # Convert degrees to radians
+#         latitude_rad = math.radians(latitude_deg)
+#         longitude_rad = math.radians(longitude_deg)
+
+#         # Compute the radial distance from Earth's center
+#         r = earth_radius + altitude
+
+#         # Calculate the position vector in ECEF coordinates
+#         x = r * math.cos(latitude_rad) * math.cos(longitude_rad)
+#         y = r * math.cos(latitude_rad) * math.sin(longitude_rad)
+#         z = r * math.sin(latitude_rad)
+
+#         # Return the position vector
+#         x, y, z
+
+#         # up to correct mass too
+#         if m1 < m2:
+#             m1, m2 = m2, m1
+#             r1, r2 = r2, r1
+
+#         p1_in[0], p2_in[0] = m1, m2 
+#         p1_in[1], p2_in[1] = r1, r2
+
+#         # remove a from r_x from both p1_in and p2_in
+#         # the initial norm is 1000, so we need to remove the difference
+#         p1_in[2], p1_in[3], p1_in[4] = x, y, z 
+#         p2_in[2], p2_in[3], p2_in[4] = x, y, z
+            
+#         LB = 0.1
+
+#         try:
+#             debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
+#         except Exception as e:
+#             print("Error in frag_col_SBM_vec_lc2")
+#             print(f"Exception caught: {e}")
+#             return None
+#         # print(len(debris1), len(debris2))
+
+#         # Loop through 
+#         frag_a = []
+#         frag_e = []
+#         frag_mass = []
+
+#         for debris in debris1:
+#             norm_earth_radius = debris[0]
+#             if norm_earth_radius < 1:
+#                 continue # decayed
+
+#             frag_a.append((norm_earth_radius - 1) * 6371) 
+#             frag_e.append(debris[1])
+#             frag_mass.append(debris[7])
+        
+#         for debris in debris2:
+#             norm_earth_radius = debris[0]
+#             if norm_earth_radius < 1:
+#                 continue # decayed
+
+#             frag_a.append((norm_earth_radius - 1) * 6371) 
+#             frag_e.append(debris[1])
+#             frag_mass.append(debris[7])
+
+#         frag_properties = np.array([frag_a, frag_mass, frag_e]).T
+
+#         binE_alt = np.linspace(scen_properties.min_altitude, scen_properties.max_altitude, n_shells + 1)  # We add 1 for bin edges
+
+#         bins = [binE_alt, binE_mass, binE_ecc]
+
+#         hist, edges = np.histogramdd(frag_properties, bins=bins)
+
+#         hist = hist / (SS * 3)
+
+#         return hist
+
+def perifocal_r_and_v(a, e, nu, mu):
+            r_mag = a * (1 - e**2) / (1 + e * np.cos(nu))
+            r = r_mag * np.array([np.cos(nu), np.sin(nu), 0.0])
+
+            h = np.sqrt(mu * a * (1 - e**2))
+            v = (mu / h) * np.array([-np.sin(nu), e + np.cos(nu), 0.0])
+            return r, v
+
+def rotate_vector_45_deg_in_plane(v):
+    theta = np.pi / 4  # 45 degrees
+    rot_matrix = np.array([
+        [np.cos(theta), -np.sin(theta), 0],
+        [np.sin(theta),  np.cos(theta), 0],
+        [0,              0,             1]
+    ])
+    return rot_matrix @ v
+
+def evolve_bins(scen_properties, m1, m2, radius_1, radius_2, v1, v2, ecc_1, ecc_2, binE_mass, binE_ecc, collision_index, n_shells=0):  
         # Need to now follow the NASA SBM route, first we need to create p1_in and p2_in
         #  Parameters:
         # - ep: Epoch
@@ -405,25 +540,8 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
         # Super sampling ratio
         SS = 20
         R_EARTH = 6371.0  # km
-        theta = np.radians(45)  # Rotation angle
-
-        # Get collision altitude and position magnitude
-        collision_altitude = scen_properties.HMid[collision_index]
-        r_mag = R_EARTH + collision_altitude
-
-        # Define position vectors with slight z offsets
-        r1_vec = r_mag * np.array([np.cos(theta), np.sin(theta), 0.01])
-        r2_vec = r_mag * np.array([np.cos(theta + np.pi/2), np.sin(theta + np.pi/2), -0.01])
-
-        # Define velocity vectors with orthogonal direction and small z component
-        v_half = v1 / 2
-        v1_vec = v_half * np.array([-np.sin(theta), np.cos(theta), 0.02])
-        v2_vec = v_half * np.array([np.sin(theta), -np.cos(theta), -0.02])
-
-        # Compose p1 and p2 inputs
-        p1_in = np.array([m1, r1, *r1_vec, *v1_vec, 1]) # 1 is the object class (dimensionless)
-        p2_in = np.array([m2, r2, *r2_vec, *v2_vec, 1])
-
+        true_anomaly_deg = 90
+        TA = np.radians(true_anomaly_deg)
         param = {
             'req': 6.3781e+03,
             'mu': 3.9860e+05,
@@ -432,49 +550,29 @@ def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, co
             'maxID': 0,
             'density_profile': 'static'
         }
+
+        results = []
+        collision_altitude = scen_properties.HMid[collision_index] + R_EARTH  # Convert altitude to radius in km
         
-        altitude = scen_properties.HMid[collision_index] 
-        earth_radius = 6371  # Earth's mean radius in km
-        latitude_deg = 45  # in degrees
-        longitude_deg = 60  # in degrees
+        # Calculate position and velocity vectors in perifocal coordinates
+        # Object 1 (larger mass): low eccentricity
+        r1, v1 = perifocal_r_and_v(collision_altitude, ecc_2, TA, param["mu"])
 
-        # Convert degrees to radians
-        latitude_rad = math.radians(latitude_deg)
-        longitude_rad = math.radians(longitude_deg)
+         # Object 2 (lighter mass): higher eccentricity, rotated velocity
+        _, v2_mag_vec = perifocal_r_and_v(collision_altitude, ecc_1, TA, param["mu"])
+        v2_hat_rotated = rotate_vector_45_deg_in_plane(v1 / np.linalg.norm(v1))
+        v2 = np.linalg.norm(v2_mag_vec) * v2_hat_rotated
+        r2 = r1 # Same position as r1, but different velocity
 
-        # Compute the radial distance from Earth's center
-        r = earth_radius + altitude
+        # Define input vectors
+        p1 = np.array([m1, radius_1, *r1, *v1, 1.0])
+        p2 = np.array([m2, radius_2, *r2, *v2, 1.0])
 
-        # Calculate the position vector in ECEF coordinates
-        x = r * math.cos(latitude_rad) * math.cos(longitude_rad)
-        y = r * math.cos(latitude_rad) * math.sin(longitude_rad)
-        z = r * math.sin(latitude_rad)
+        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, param, scen_properties.LC)
 
-        # Return the position vector
-        x, y, z
+        if debris1.size == 0:
+            print(f"[{collision_altitude} km] No debris generated")
 
-        # up to correct mass too
-        if m1 < m2:
-            m1, m2 = m2, m1
-            r1, r2 = r2, r1
-
-        p1_in[0], p2_in[0] = m1, m2 
-        p1_in[1], p2_in[1] = r1, r2
-
-        # remove a from r_x from both p1_in and p2_in
-        # the initial norm is 1000, so we need to remove the difference
-        p1_in[2], p1_in[3], p1_in[4] = x, y, z 
-        p2_in[2], p2_in[3], p2_in[4] = x, y, z
-            
-        LB = 0.1
-
-        try:
-            debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1_in, p2_in, param, LB)
-        except Exception as e:
-            print("Error in frag_col_SBM_vec_lc2")
-            print(f"Exception caught: {e}")
-            return None
-        # print(len(debris1), len(debris2))
 
         # Loop through 
         frag_a = []

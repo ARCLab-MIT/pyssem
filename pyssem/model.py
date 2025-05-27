@@ -267,4 +267,3 @@ if __name__ == "__main__":
         Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
     except Exception as e:
         print(e)
-        print("No plots specified in the simulation configuration file.")
