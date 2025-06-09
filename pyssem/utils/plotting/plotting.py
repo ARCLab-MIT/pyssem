@@ -22,16 +22,17 @@ class Plots:
     :param plots: List of plots to generate. If 'all_plots' is included, all plots will be generated.
     """
 
-    def __init__(self, scenario_properties: ScenarioProperties, plots: list):
+    def __init__(self, scenario_properties: ScenarioProperties, plots: list, simulation_name: str = None):
         self.scenario_properties = scenario_properties
         self.output = scenario_properties.output
         self.n_species = scenario_properties.species_length
         self.num_shells = scenario_properties.n_shells
         self.plots = plots
         self.species_names = scenario_properties.species_names
+        self.simulation_name = simulation_name
 
         # Create the figures directory if it doesn't exist
-        os.makedirs('figures', exist_ok=True)
+        os.makedirs(f'figures/{self.simulation_name}', exist_ok=True)
 
         if "all_plots" in self.plots:
             self.all_plots()
@@ -75,7 +76,7 @@ class Plots:
 
         plt.suptitle('Species 1 All Shells')
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.savefig('figures/species_all_shells.png')
+        plt.savefig(f'figures/{self.simulation_name}/species_all_shells.png')
         plt.close(fig)
 
         # Plot total objects over time for each species and total
@@ -98,7 +99,7 @@ class Plots:
         plt.xlim(0, max(self.output.t))
         plt.legend()
         plt.tight_layout()
-        plt.savefig('figures/total_objects_over_time.png')
+        plt.savefig(f'figures/{self.simulation_name}/total_objects_over_time.png')
         plt.close()
 
     def heatmaps_species(self):
@@ -136,7 +137,7 @@ class Plots:
             fig.delaxes(axs.flatten()[i])
 
         plt.tight_layout()
-        plt.savefig('figures/heatmaps_species.png')
+        plt.savefig(f'figures/{self.simulation_name}/heatmaps_species.png')
         plt.close(fig)
 
     def evolution_of_species_gif(self):
@@ -243,7 +244,7 @@ class Plots:
 
         # Create the GIF
         images = [imageio.imread(os.path.join(frames_dir, f'frame_{t_idx:04d}.png')) for t_idx in range(len(time_points))]
-        gif_path = 'figures/species_shells_evolution_side_by_side.gif'
+        gif_path = f'figures/{self.simulation_name}/species_shells_evolution_side_by_side.gif'
         imageio.mimsave(gif_path, images, duration=0.5)
 
         # Cleanup frames
@@ -302,7 +303,7 @@ class Plots:
         plt.yscale('log')
 
         # Save the figure
-        plt.savefig('figures/total_objects_by_species_group.png')
+        plt.savefig(f'figures/{self.simulation_name}/total_objects_by_species_group.png')
         plt.close()
 
     def indicator_variables(self):
@@ -311,7 +312,7 @@ class Plots:
         from mpl_toolkits.mplot3d import Axes3D
 
         # Define the directory for saving indicator plots
-        indicator_dir = 'figures/indicator_vars'
+        indicator_dir = f'figures/{self.simulation_name}/indicator_vars'
         os.makedirs(indicator_dir, exist_ok=True)  # Create the directory if it does not exist
 
         # Loop through all indicators in the dataset
@@ -433,10 +434,7 @@ def results_to_json(self):
             })
 
         # Convert the dictionary to a JSON string
-        data = json.dumps(data, indent=4, default=str)
+        self.output = data #json.dumps(data, indent=4, default=str)  # Use default=str to handle datetime serialization
 
-        # Save data to json file
-        with open('results.json', 'w') as f:
-            f.write(data)
-        return data
+        return self.output
 
