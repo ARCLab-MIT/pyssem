@@ -1,8 +1,8 @@
 from .utils.simulation.scen_properties import ScenarioProperties
 from .utils.simulation.species import Species
 from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import Plots, results_to_json
 from .utils.drag.drag import calculate_orbital_lifetimes
+from .utils.plotting.plotting import results_to_json, Plots
 # if testing locally, use the following import statements
 # from utils.simulation.scen_properties import ScenarioProperties
 # from utils.simulation.species import Species
@@ -14,7 +14,6 @@ from datetime import datetime
 import json
 import os
 import pickle
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -264,7 +263,7 @@ class Model:
         
     def initial_population(self):
         """
-            Initialize the population of the species in the simulation.
+            Initialize the population of the species in the simulation. This is mainly used by the OPUS model, so baseline is forced True. 
         """
 
         if not isinstance(self.scenario_properties, ScenarioProperties):
@@ -291,7 +290,7 @@ class Model:
             raise RuntimeError(f"Failed to build model: {str(e)}")
         
 
-    def propagate(self, times, population, launch=False):
+    def propagate(self, times, population, launch=False, time_step=0):
         """
             This is when you would like to integrate forward a specific population set. This can be any amount aslong as it follows the same structure of x0 to fit the equations.
 
@@ -303,7 +302,7 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            results = self.scenario_properties.propagate(population, times, launch)
+            results = self.scenario_properties.propagate(population, times, launch, time_step)
             return results
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
