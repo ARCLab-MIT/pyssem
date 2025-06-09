@@ -143,6 +143,91 @@ class Plots:
         plt.savefig(f'figures/{self.simulation_name}/grouped_species_objects_over_time.png')
         plt.close()
 
+    def heatmap_total_objects(self):
+        """
+        Plot a single heatmap showing the total number of objects summed across all species
+        at each orbital shell and timestep.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import os
+
+        # Reshape: (n_species, n_shells, n_timesteps)
+        y = self.output["y"]
+        reshaped = y.reshape(self.n_species, self.num_shells, -1)
+        summed = np.sum(reshaped, axis=0)  # shape: (n_shells, n_timesteps)
+
+        # Plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        cax = ax.imshow(
+            summed,
+            aspect='auto',
+            origin='lower',
+            extent=[self.output["t"][0], self.output["t"][-1], 0, self.num_shells],
+            interpolation='nearest'
+        )
+
+        fig.colorbar(cax, ax=ax, label='Total Number of Objects')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Orbital Shell')
+        ax.set_title('Total Objects Heatmap (All Species)')
+        ax.set_xticks(np.linspace(self.output["t"][0], self.output["t"][-1], num=5))
+        ax.set_yticks(np.arange(0, self.num_shells, max(1, self.num_shells // 5)))
+        ax.set_yticklabels([f'{alt:.0f}' for alt in self.scenario_properties.HMid[::max(1, self.num_shells // 5)]])
+
+        # Save
+        output_dir = f'figures/{self.simulation_name}'
+        os.makedirs(output_dir, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/heatmap_total_objects.png')
+        plt.close(fig)
+
+    def heatmap_total_mass(self):
+        """
+        Plot a heatmap of total mass per shell and timestep (summed over all species).
+        Each species' object count is multiplied by its mass.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import os
+
+        # Ensure shape: (n_species, n_shells, n_timesteps)
+        y = self.output["y"]
+        reshaped = y.reshape(self.n_species, self.num_shells, -1)  # shape: (n_species, n_shells, n_timesteps)
+
+        # Get species masses in kg
+        mass_vector = np.array([sp.mass for sp in self.species])  # shape: (n_species,)
+        mass_reshaped = mass_vector[:, np.newaxis, np.newaxis]  # shape: (n_species, 1, 1)
+
+        # Broadcast multiply and sum over species
+        mass_weighted_y = reshaped * mass_reshaped
+        total_mass = np.sum(mass_weighted_y, axis=0)  # shape: (n_shells, n_timesteps)
+
+        # Plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        cax = ax.imshow(
+            total_mass,
+            aspect='auto',
+            origin='lower',
+            extent=[self.output["t"][0], self.output["t"][-1], 0, self.num_shells],
+            interpolation='nearest'
+        )
+
+        fig.colorbar(cax, ax=ax, label='Total Mass (kg)')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Orbital Shell')
+        ax.set_title('Total Orbital Mass Heatmap (All Species)')
+        ax.set_xticks(np.linspace(self.output["t"][0], self.output["t"][-1], num=5))
+        ax.set_yticks(np.arange(0, self.num_shells, max(1, self.num_shells // 5)))
+        ax.set_yticklabels([f'{alt:.0f}' for alt in self.scenario_properties.HMid[::max(1, self.num_shells // 5)]])
+
+        # Save
+        output_dir = f'figures/{self.simulation_name}'
+        os.makedirs(output_dir, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/heatmap_total_mass.png')
+        plt.close(fig)
+
     def heatmaps_species(self):
         # Implementation for heatmaps_species plot
         # Plot heatmap for each species
