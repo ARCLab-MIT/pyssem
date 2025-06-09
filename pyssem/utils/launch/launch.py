@@ -436,7 +436,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Map species type based on object class
     species_dict = {
-        "Non-station-keeping Satellite": "Su",
+        "Non-station-keeping Satellite": "S",
         "Rocket Body": "B",
         "Station-keeping Satellite": "S",
         "Coordinated Satellite": "S",
