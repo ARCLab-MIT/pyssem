@@ -271,7 +271,7 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
             # If this function is called, only create x0. 
-            self.scenario_properties.initial_pop_and_launch(baseline=True)
+            self.scenario_properties.initial_pop_and_launch(baseline=True, launch_file=self.scenario_properties.launch_scenario)
         
         except Exception as e:
             raise RuntimeError(f"Failed to initialize population: {str(e)}")
@@ -327,7 +327,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'opus_test.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
