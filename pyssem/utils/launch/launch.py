@@ -3,7 +3,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from ..handlers.datetime_helper import jd_to_datetime, mjd_to_jd
 import os
+from ..handlers.datetime_helper import jd_to_datetime, mjd_to_jd
+import os
 import numpy as np
+from tqdm import tqdm 
 from tqdm import tqdm 
 
 def find_alt_bin(altitude, scen_properties):
@@ -497,7 +500,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Map species type based on object class
     species_dict = {
-        "Non-station-keeping Satellite": "Su",
+        "Non-station-keeping Satellite": "S",
         "Rocket Body": "B",
         "Station-keeping Satellite": "S",
         "Coordinated Satellite": "S",
