@@ -271,7 +271,7 @@ class Model:
             raise ValueError("Invalid scenario properties provided.")
         try:
             # If this function is called, only create x0. 
-            self.scenario_properties.initial_pop_and_launch(baseline=True)
+            self.scenario_properties.initial_pop_and_launch(baseline=True, launch_file=self.scenario_properties.launch_scenario)
         
         except Exception as e:
             raise RuntimeError(f"Failed to initialize population: {str(e)}")
