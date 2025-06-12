@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
@@ -10,17 +9,6 @@ from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from utils.drag.drag import calculate_orbital_lifetimes
 from utils.plotting.plotting import results_to_json, Plots
-=======
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.plotting.plotting import create_plots, results_to_json
-# if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.plotting.plotting import create_plots, results_to_json
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
 import numpy as np
 from datetime import datetime
 import json

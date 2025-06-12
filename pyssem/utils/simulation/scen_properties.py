@@ -555,7 +555,13 @@ class ScenarioProperties:
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
-            
+
+        # Lambdify the equations to be used for Scipy integration
+        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+  
         return
     
     # def build_model(self):
@@ -710,7 +716,6 @@ class ScenarioProperties:
         return equations
 
     def lambdify_launch(self, full_lambda=None):
-<<<<<<< HEAD
         """ 
             Convert the Numpy launch rates to Scipy lambdified functions for integration.
         
@@ -753,8 +758,6 @@ class ScenarioProperties:
         return equations
 
     def lambdify_launch(self, full_lambda=None):
-=======
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
         """ 
             Convert the Numpy launch rates to Scipy lambdified functions for integration.
         
@@ -851,7 +854,6 @@ class ScenarioProperties:
 
         return 
     
-<<<<<<< HEAD
     def propagate(self, population, times, launch=None, time_idx=None):
         """
             This will use the equations that have been built already by the model, and then integrate the differential equations
@@ -868,32 +870,11 @@ class ScenarioProperties:
         if self.equations is None:
             self.equations = self.lambdify_equations()
 
-=======
-    def propagate(self, population, times, launch=None):
-        """
-            This will use the equations that have been built already by the model, and then integrate the differential equations
-            over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
-
-            :param population: Initial population
-            :param times: Times to integrate over
-            :param launch: Launch rates
-
-            :return: results_matrix
-        """
-        # check to see if the equations have already been lamdified
-        # if not hasattr(self, 'equations'):
-        self.equations = self.lambdify_equations()
-
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
         # if launch is not None:
         #     full_lambda_flattened = self.lambdify_launch(launch)
 
         output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
-<<<<<<< HEAD
                             args=(self.equations, times, launch, time_idx), 
-=======
-                            args=(self.equations, times, launch), 
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
                             t_eval=times, method=self.integrator)
         
         if output.success:
@@ -905,11 +886,7 @@ class ScenarioProperties:
             return None
 
         
-<<<<<<< HEAD
     def population_shell_for_OPUS(self, t, N, equations, times, launch, time_idx):
-=======
-    def population_shell_for_OPUS(self, t, N, equations, times, launch):
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
         dN_dt = np.zeros_like(N)
 
         if self.time_dep_density:
@@ -928,7 +905,6 @@ class ScenarioProperties:
 
         # Iterate over each component in N
         for i in range(len(N)):
-<<<<<<< HEAD
             if self.time_dep_density:
                 shell_index = i // species_per_shell
 
@@ -944,9 +920,6 @@ class ScenarioProperties:
                     dN_dt[i] += upper_drag
 
             # Incoming new species
-=======
-        
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
             # Compute and add the external modification rate, if applicable
             # Now using np.interp to calculate the increase
             if launch[i] is not None:
@@ -960,10 +933,6 @@ class ScenarioProperties:
 
             # Compute the intrinsic rate of change from the differential equation
             change = equations[i](*N)
-<<<<<<< HEAD
-=======
-        
->>>>>>> 7c1d4b4 (propagator for opus now implemented)
             dN_dt[i] += change
 
         return dN_dt
