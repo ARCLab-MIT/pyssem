@@ -558,7 +558,6 @@ class ScenarioProperties:
             
         return
     
-<<<<<<< HEAD
     # def build_model(self):
     #     """
     #     Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
@@ -694,9 +693,6 @@ class ScenarioProperties:
     #     return
 
     def run_model(self):
-=======
-    def lambdify_equations(self):
->>>>>>> dd44a3a (old eccentricity functions for x0)
         """
             Convert the Sympy symbolic equations to lambda functions, this allows for a quicker integration for SciPy.
 
@@ -713,7 +709,6 @@ class ScenarioProperties:
 
         return equations
 
-<<<<<<< HEAD
     def lambdify_launch(self, full_lambda=None):
         """ 
             Convert the Numpy launch rates to Scipy lambdified functions for integration.
@@ -757,9 +752,6 @@ class ScenarioProperties:
         return equations
 
     def lambdify_launch(self, full_lambda=None):
-=======
-    def lambdify_launch(self):
->>>>>>> dd44a3a (old eccentricity functions for x0)
         """ 
             Convert the Numpy launch rates to Scipy lambdified functions for integration.
         
@@ -774,28 +766,6 @@ class ScenarioProperties:
                 # Append None to the list, length of scenario_properties.n_shells
                 full_lambda_flattened.extend([None]*self.n_shells)
 
-<<<<<<< HEAD
-=======
-        return full_lambda_flattened
-    
-    def run_model(self):
-        """
-        For each species, integrate the equations of population change for each shell and species.
-
-        The starting point will be, x0, the initial population.
-
-        The launch rate will be first calculated at time t, then the change of population in that species will be calculated using the ODEs. 
-
-        :return: None
-        """
-        print("Preparing equations for integration (Lambdafying) ...")
-        
-        # Initial Population
-        x0 = self.x0.T.values.flatten()
-
-        equations, full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
-
->>>>>>> dd44a3a (old eccentricity functions for x0)
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
             drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]

@@ -148,7 +148,6 @@ class Model:
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
-<<<<<<< HEAD
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
@@ -160,8 +159,6 @@ class Model:
 
                 self.scenario_properties.build_indicator_variables()
 
-=======
->>>>>>> d038e7f (removing collisions from species creations)
             return species_list
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
@@ -169,23 +166,6 @@ class Model:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
         
     def calculate_collisions(self):
-<<<<<<< HEAD
-=======
-        """
-        Calculate the collisions between species in the simulation.
-        
-        Parameters:
-        - scenario_properties (ScenarioProperties): Scenario properties object.
-        """
-        if not isinstance(self.scenario_properties, ScenarioProperties):
-            raise ValueError("Invalid scenario properties provided.")
-        try:
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-        except Exception as e:
-            raise ValueError(f"An error occurred calculating collisions: {str(e)}")
-
-    def run_model(self):
->>>>>>> d038e7f (removing collisions from species creations)
         """
         Calculate the collisions between species in the simulation.
         
@@ -371,25 +351,6 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-<<<<<<< HEAD
-    model.build_model()
+    model.calculate_collisions()
 
-    model.run_model()
-
-    try:
-        plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names)
-    except Exception as e:
-        print(e)
-        print("No plots specified in the simulation configuration file.")
-=======
-    # model.initial_population()
-    # model.build_model()
-
-    # times = [0, 1, 2, 3, 4, 5]
-
-    # output = model.integrate(times)
-
-    results = model.run_model()
-    # model.create_plots()
->>>>>>> dd44a3a (old eccentricity functions for x0)
+    model.calculate_collisions()

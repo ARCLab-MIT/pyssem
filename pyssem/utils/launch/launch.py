@@ -534,35 +534,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
                 T_obj_class = T[T['obj_class'] == obj_class].copy()
                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                 T_new = pd.concat([T_new, T_obj_class])
-<<<<<<< HEAD
-=======
-
-    # for obj_class in T['obj_class'].unique():
-    #     species_class = species_dict.get(obj_class)
-        
-    #     if species_class in scen_properties.species_cells:     
-    #         if species_class == 'B':
-    #             # Handle the case where species_class is 'B' and match by mass bin
-    #             T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #             species_cells = scen_properties.species_cells[species_class]
-                      
-    #             T_obj_class['species'] = T_obj_class['ecc'].apply(find_eccentricity_bin, args=(scen_properties, species_cells))
-                
-    #             T_new = pd.concat([T_new, T_obj_class])
-            
-    #         else:
-    #             # General case for all other species_class
-    #             if len(scen_properties.species_cells[species_class]) == 1:
-    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-
-    #                 T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-    #                 T_new = pd.concat([T_new, T_obj_class])
-    #             else:
-    #                 T_obj_class = T[T['obj_class'] == obj_class].copy()
-    #                 species_cells = scen_properties.species_cells[species_class]
-    #                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells))
-    #                 T_new = pd.concat([T_new, T_obj_class])
->>>>>>> dd44a3a (old eccentricity functions for x0)
 
     # Assign objects to corresponding altitude bins
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
@@ -589,11 +560,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
-
-    if baseline:
-        # No need to calculate the launch model
-        return x0_summary, None
-
     # Future Launch Model
     flm_steps = pd.DataFrame()
 
