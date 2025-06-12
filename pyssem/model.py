@@ -371,6 +371,7 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
+<<<<<<< HEAD
     model.build_model()
 
     model.run_model()
@@ -381,3 +382,14 @@ if __name__ == "__main__":
     except Exception as e:
         print(e)
         print("No plots specified in the simulation configuration file.")
+=======
+    # model.initial_population()
+    # model.build_model()
+
+    # times = [0, 1, 2, 3, 4, 5]
+
+    # output = model.integrate(times)
+
+    results = model.run_model()
+    # model.create_plots()
+>>>>>>> dd44a3a (old eccentricity functions for x0)
