@@ -223,9 +223,6 @@ class Model:
         except Exception as e:
             raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
         
-
-        
-
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
@@ -323,7 +320,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'OPUS.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'geo.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -345,7 +342,7 @@ if __name__ == "__main__":
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
         indicator_variables=scenario_props.get("indicator_variables", None),
-        launch_scenario=scenario_props.get("indicator_variables", None),
+        launch_scenario=scenario_props.get("launch_scenario", None),
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
     )
 
@@ -353,7 +350,6 @@ if __name__ == "__main__":
 
 
     species_list = model.configure_species(species)
-
 
     model.build_model()
 
