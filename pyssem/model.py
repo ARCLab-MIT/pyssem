@@ -1,8 +1,8 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import Plots, results_to_json
 # from .utils.drag.drag import calculate_orbital_lifetimes
-# from .utils.plotting.plotting import results_to_json, Plots
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
@@ -14,6 +14,7 @@ from datetime import datetime
 import json
 import os
 import pickle
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -223,6 +224,9 @@ class Model:
         except Exception as e:
             raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
         
+
+        
+
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
@@ -241,8 +245,11 @@ class Model:
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+            
+            # CSI Index
+            # self.scenario_properties.cum_CSI()
 
-            # save the scenario properties to a pickle file
+            # save self as a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
 
                 # first remove the lambdified equations as pickle cannot serialize them
@@ -257,14 +264,14 @@ class Model:
         
     def initial_population(self):
         """
-            Initialize the population of the species in the simulation. This is mainly used by the OPUS model, so baseline is forced True. 
+            Initialize the population of the species in the simulation.
         """
 
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
             # If this function is called, only create x0. 
-            self.scenario_properties.initial_pop_and_launch(baseline=True, launch_file=self.scenario_properties.launch_scenario)
+            self.scenario_properties.initial_pop_and_launch(baseline=True)
         
         except Exception as e:
             raise RuntimeError(f"Failed to initialize population: {str(e)}")
@@ -284,7 +291,7 @@ class Model:
             raise RuntimeError(f"Failed to build model: {str(e)}")
         
 
-    def propagate(self, times, population, launch=False, time_step=0):
+    def propagate(self, times, population, launch=False):
         """
             This is when you would like to integrate forward a specific population set. This can be any amount aslong as it follows the same structure of x0 to fit the equations.
 
@@ -296,7 +303,7 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            results = self.scenario_properties.propagate(population, times, launch, time_step)
+            results = self.scenario_properties.propagate(population, times, launch)
             return results
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
@@ -320,7 +327,11 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'geo.json')) as f:
+<<<<<<< HEAD
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+=======
+    with open(os.path.join('pyssem', 'SEP', 'example-sim_copy.json')) as f:
+>>>>>>> e25b74f (all changes from spring25 semester)
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -342,15 +353,26 @@ if __name__ == "__main__":
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
         indicator_variables=scenario_props.get("indicator_variables", None),
-        launch_scenario=scenario_props.get("launch_scenario", None),
+        launch_scenario=scenario_props["launch_scenario"],
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
     )
 
     species = simulation_data["species"]
 
-
     species_list = model.configure_species(species)
 
-    model.calculate_collisions()
+    results = model.run_model()
 
-    model.calculate_collisions()
+    data = model.results_to_json()
+    # Create the figures directory if it doesn't exist
+    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+    # Save the results to a JSON file
+    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+        json.dump(data, f, indent=4)
+
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")
