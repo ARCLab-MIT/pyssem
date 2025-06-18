@@ -45,6 +45,15 @@ def launch_func_null(t, h, species_properties, scen_properties):
 
     return Lambdadot_list
 
+def launch_lambda_sym(t, h, species_properties, scen_properties):
+
+    Lambdadot = zeros(scen_properties.n_shells, 1)
+
+    for k in range(scen_properties.n_shells):
+        Lambdadot[k, 0] = symbols(f'lambda_{species_properties.sym_name}{k+1}')
+
+    return Lambdadot
+
 def launch_func_constant(t, h, species_properties, scen_properties):
     """
     Adds a constant launch rate from species_properties.lambda_constant.
@@ -287,11 +296,15 @@ def assign_species_to_population(T, species_mapping):
     T['species_class'] = "Unknown"
 
     # Apply each mapping rule via exec
-    for rule in species_mapping:
-        try:
-            exec(rule)
-        except Exception as e:
-            print(f"Error applying rule: {rule}\n\t{e}")
+    try:
+        for rule in species_mapping:
+            try:
+                exec(rule)
+            except Exception as e:
+                print(f"Error applying rule: {rule}\n\t{e}")
+    except Exception as e:
+        print(f"Error in species mapping: {e} \n Have you defined the species mapping in the configuration JSON?")
+        exit(1)
 
     # Print summary of resulting species_class assignments
     print("\nSpecies class distribution:")
@@ -394,8 +407,6 @@ def SEP_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
 
-    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
-
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
     # Create a pivot table, keep alt_bin
@@ -410,6 +421,8 @@ def SEP_traffic_model(scen_properties, file_path):
 
     # Fill remaining NaNs with 0
     x0_summary.fillna(0, inplace=True)
+
+    x0_summary.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_summary.csv'))
 
     # Future Launch Model (updated)
     flm_steps = pd.DataFrame()
@@ -547,11 +560,6 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
-
-    if baseline:
-        # No need to calculate the launch model
-        return x0_summary, None
-
     # Future Launch Model
     flm_steps = pd.DataFrame()
 

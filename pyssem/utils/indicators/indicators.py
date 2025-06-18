@@ -177,18 +177,6 @@ def make_intrinsic_cap_indicator(scen_properties, sep_dist_method, sep_angle=0.2
     unconsumed_intrinsic_capacity = N_sat - slotted_sats_eqs
     ind_struct = Indicator("unconsumed_intrinsic_capacity", "manual", None, unconsumed_intrinsic_capacity)
 
-    if graph:
-        # create a plot and save in the figures folder at root
-        plt.figure()
-        plt.scatter(scen_properties.R0[1:], N_sat)
-        plt.title("Intrinsic Capacity per Altitude Bin")
-        plt.xlabel("Altitude of Bin Ceiling [km]")
-        plt.ylabel("Intrinsic Capacity [Satellites]")
-        # Check to see if the figures directory exists, if not create it
-        if not os.path.exists("figures"):
-            os.makedirs("figures")
-        plt.savefig("figures/intrinsic_capacity.png")
-
     return ind_struct
 
 
