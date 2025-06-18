@@ -327,11 +327,7 @@ class Model:
 
 if __name__ == "__main__":
 
-<<<<<<< HEAD
     with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
-=======
-    with open(os.path.join('pyssem', 'SEP', 'example-sim_copy.json')) as f:
->>>>>>> e25b74f (all changes from spring25 semester)
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
