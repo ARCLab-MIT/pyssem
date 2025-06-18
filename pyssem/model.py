@@ -225,6 +225,8 @@ class Model:
             raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
         
 
+        
+
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
@@ -243,9 +245,12 @@ class Model:
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+            
+            # CSI Index
+            # self.scenario_properties.cum_CSI()
 
-            # save the scenario properties to a pickle file
-            with open('test_3_species.pkl', 'wb') as f:
+            # save self as a pickle file
+            with open('scenario-properties-baseline.pkl', 'wb') as f:
 
                 # first remove the lambdified equations as pickle cannot serialize them
                 self.scenario_properties.equations = None
@@ -280,12 +285,7 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
-            self.scenario_properties.build_sym_model()
-
-            # save the scenario properties to a pickle file
-            with open('test_3_species_sym.pkl', 'wb') as f:            
-                pickle.dump(self.scenario_properties, f)
+            self.scenario_properties.build_model()
         
         except Exception as e:
             raise RuntimeError(f"Failed to build model: {str(e)}")
@@ -327,8 +327,11 @@ class Model:
 
 if __name__ == "__main__":
 
-    # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
+<<<<<<< HEAD
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+=======
+    with open(os.path.join('pyssem', 'SEP', 'example-sim_copy.json')) as f:
+>>>>>>> e25b74f (all changes from spring25 semester)
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -358,24 +361,18 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    ### To use symbolic equations for policy roses jup. notebook
-    ### (note: load the correct .json file)
-    results = model.build_model()
-    
-    ### To use numerical equations as per standard pySSEM
-    # results = model.run_model()
-    # ## Plotting and saving results
-    # data = model.results_to_json()
-    # # Create the figures directory if it doesn't exist
-    # os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
-    # # Save the results to a JSON file
-    # with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-    #     json.dump(data, f, indent=4)
+    results = model.run_model()
 
-    # try:
-    #     plot_names = simulation_data["plots"]
-    #     Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
-    # except Exception as e:
-    #     print(e)
-    #     print("No plots specified in the simulation configuration file.")
+    data = model.results_to_json()
+    # Create the figures directory if it doesn't exist
+    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+    # Save the results to a JSON file
+    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+        json.dump(data, f, indent=4)
 
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")
