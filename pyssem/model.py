@@ -351,6 +351,5 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    model.calculate_collisions()
-
-    model.calculate_collisions()
+    model.build_model()
+    model.run_model()
