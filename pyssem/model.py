@@ -320,7 +320,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'geo.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -348,8 +348,5 @@ if __name__ == "__main__":
 
     species = simulation_data["species"]
 
-
     species_list = model.configure_species(species)
-
-    model.build_model()
     model.run_model()

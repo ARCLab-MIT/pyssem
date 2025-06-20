@@ -334,7 +334,6 @@ def SEP_traffic_model(scen_properties, file_path):
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
     T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
-
     # Convert MJD to datetime
     # def mjd_to_datetime(mjd_series):
     #     """
@@ -349,6 +348,8 @@ def SEP_traffic_model(scen_properties, file_path):
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
     T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
+
+    print(T_new['species_class'].value_counts())
 
     # Mapping species gets more complicated if there are elliptical orbits.
     elliptical_species_flag = False
