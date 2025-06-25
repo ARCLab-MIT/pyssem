@@ -95,6 +95,10 @@ class ScenarioProperties:
 
         # MOCAT specific parameters
         R0 = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1) # Altitude of the shells [km]
+        # semi-major-axis midpoints in meters:
+        R0_alt_km = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1)
+        self.R0_rad_km = self.re + R0_alt_km          # length = n_shells+1
+        self.sma_HMid_km = 0.5 * (self.R0_rad_km[:-1] + self.R0_rad_km[1:]) 
         self.R0_km = R0  # Lower bound of altitude of the shells [km]
         self.HMid = R0[:-1] + np.diff(R0) / 2 # Midpoint of the shells [km]
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
@@ -353,54 +357,12 @@ class ScenarioProperties:
         
         print('Using launch file:', launch_file_path)
 
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+        [x0, FLM_steps, species] = SEP_traffic_model(self, launch_file_path)
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0
         self.FLM_steps = FLM_steps
-
-        # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-
-        if not baseline:
-            self.future_launch_model(FLM_steps)
-
-    def initial_pop_and_launch2(self, baseline=False):
-        """
-        Generate the initial population and the launch rates. 
-        The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
-        
-        Returns: None
-        """
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-
-        # Check to see if the data folder exists, if not, create it
-        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
-            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
-
-        if os.path.exists(launch_file_path):
-            filepath = launch_file_path
-        else:
-            print('As no file is provided. Downloading a launch file...:')
-            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE' # This is a google docs link - eventually should be added as a .env
-            
-            download_file_from_google_drive(file_id, launch_file_path)
-
-            # Check to see if the file has been downloaded
-            if os.path.exists(launch_file_path):
-                filepath = launch_file_path
-                print('File downloaded successfully.')
-            else:
-                print('Failed to download the file.')
-
-        # Example usage: print the filepath to verify
-        print("File used for launch model:", filepath)
-              
-        [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
-
-        # Store as part of the class, as it is needed for the run_model()
-        self.x0 = x0
-        self.FLM_steps = FLM_steps
+        self.species = species
 
         # Export x0 to csv
         x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
@@ -408,6 +370,120 @@ class ScenarioProperties:
         if not baseline:
             self.future_launch_model(FLM_steps)
     
+    def build_model_elliptical(self):
+        # This is a temp function to test out the elliptical model. 
+        t = sp.symbols('t')
+
+        species_list = [species for group in self.species.values() for species in group]
+        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
+        self.full_lambda = []
+        self.full_coll = sp.zeros(self.n_shells, self.species_length)
+
+        # Equations are going to be a matrix of symbolic expressions
+        # Each row corresponds to a shell, and each column corresponds to a species
+        for i, species in enumerate(species_list):
+            lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+            self.full_lambda.append(lambda_expr)
+
+            # Post mission Disposal
+            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
+            self.full_Cdot_PMD[:, i] = Cdot_PMD
+        
+        # Collisions
+        for i in self.collision_pairs:
+            self.full_coll += i.eqs
+
+        self.equations = sp.zeros(self.n_shells, self.species_length)      
+        self.equations = self.full_Cdot_PMD + self.full_coll
+
+        return
+
+    def run_model_elliptical(self):
+
+        # Initial Population
+        x0 = self.x0.T.values.flatten()
+
+        # Equations 
+        # For elliptical orbits - this should only collisions and PMD Equations
+        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+        equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy', dummify=False) for eq in equations_flattened]
+
+        # Launch rates
+        full_lambda_flat = []
+        species_list =  [species for species_group in self.species.values() for species in species_group]
+        for sp, lam in zip(species_list, self.full_lambda):
+            if lam is None:
+                # No launches → pad with zeros for every (sma,ecc) bin
+                if sp.elliptical:
+                    full_lambda_flat.extend([0.0] * (self.n_shells * len(sp.eccentricity_bins)))
+                else:
+                    full_lambda_flat.extend([0.0] * self.n_shells)
+            else:
+                # lam is an array of length n_shells
+                if sp.elliptical:
+                    n_e = len(sp.eccentricity_bins)
+                    # for each sma‐bin, put lam[i] into the j=0 slot, zeros elsewhere
+                    for li in lam:
+                        full_lambda_flat.append(li)            # j=0
+                        full_lambda_flat.extend([0.0]*(n_e-1)) # j=1..n_ecc-1
+                else:
+                    # circular: one column per sma
+                    full_lambda_flat.extend(lam)
+
+
+        self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
+        output = solve_ivp(self.population_shell_elliptical, [self.scen_times[0], self.scen_times[-1]], x0,
+                        args=(full_lambda_flat, equations, self.scen_times),
+                        t_eval=self.scen_times, method=self.integrator)
+        
+        self.progress_bar.close()
+        self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+
+        if output.success:
+            print(f"Model run completed successfully.")
+        else:
+            print(f"Model run failed: {output.message}")
+
+        self.output = output # Save
+
+    def population_shell_elliptical(self, t, N_flat, full_lambda, equations, times):
+        
+        # Update the progress bar
+        if self.progress_bar is not None:
+            self.progress_bar.update(t - self.progress_bar.n)
+
+        # Initialize the rate of change array
+        dN_flat = np.zeros_like(N_flat)
+
+        # 1) Launch + PMD 
+        for idx in range(len(N_flat)):
+            if full_lambda[idx] is not None:
+                inc = np.interp(t, times, full_lambda[idx])
+                dN_flat[idx] += 0 if np.isnan(inc) else inc
+            dN_flat[idx] += equations[idx](*N_flat)
+
+        # Iterate over each component in N
+        for i in range(len(N)):
+        
+            # Compute and add the external modification rate, if applicable
+            # Now using np.interp to calculate the increase
+            if full_lambda[i] is not None:
+                increase = np.interp(t, times, full_lambda[i])
+                # If increase is nan set to 0
+                if np.isnan(increase) or np.isinf(increase):
+                    increase = 0
+                else:
+                    dN_dt[i] += increase
+
+            # Compute the intrinsic rate of change from the differential equation
+            dN_dt[i] += equations[i](*N)
+
+        return dN_dt
+
+
+
+
     def build_model(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.

@@ -7,7 +7,8 @@ import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
-from ..elliptical.elliptical import compute_time_fractions_for_orbit
+from ..elliptical.elliptical import compute_time_fractions_for_orbit, vis_viva
+from ..simulation.scen_properties import ScenarioProperties
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -42,36 +43,20 @@ class SpeciesProperties:
         self.RBflag = None  # bool 1 = rocket body, 0 = not rocket body
 
         # Orbit Raising (Not implemented)
-        self.orbit_raising = False  # Bool
-        self.insert_altitude = None  # altitude -> semimajor axis
-        self.onstation_altitude = None
-        self.epsilon = None  # lt_mag
-        self.e_mean = None
+        # self.orbit_raising = False  # Bool
+        # self.insert_altitude = None  # altitude -> semimajor axis
+        # self.onstation_altitude = None
+        # self.epsilon = None  # lt_mag
+        # self.e_mean = None
 
         # For Launch Functions
-        self.lambda_multiplier = None  # only for launch_func_fixed_multiplier
         self.lambda_funs = None  # only for launch_func_gauss
         self.lambda_constant = None  # only for launch_func_constant
         self.launch_altitude = None # km
-        self.lambda_python_args = None
 
         # For Derelicts
         self.pmd_linked_species = []
         self.pmd_linked_multiplier = None  # Used when multiple shells dispose to one orbit.
-
-        # References
-        self.eq_idxs = None  # indexes of species states in X
-
-        # For knowing when to recalculate custom launch functions.
-        self.last_calc_x = float('nan')
-        self.last_calc_t = float('nan')
-        self.last_lambda_dot = float('nan')
-
-        # For looped model
-        self.saved_model_path = None
-        self.t_plan_max = -1
-        self.t_plan_period = 1
-        self.prev_prop_results = None
 
         # Functions
         self.launch_func = None
@@ -80,15 +65,18 @@ class SpeciesProperties:
 
         self.trackable_radius_threshold = 0.05  # m
 
+        # Elliptical Orbits
         self.elliptical = False
         self.semi_major_axis_bins = None
         self.eccentricity_bins = None
-        self.time_per_shells = []
-        self.velocity_per_shells = []
-        self.eccentricity = 0 # Default eccentricity for circular orbits
+        self.time_per_shells = np.array([]) # sma bins x ecc bins
+        self.velocity_per_shells = np.array([]) # sma bins x ecc bins
         self.ecc_lb = 0
         self.ecc_ub = 1
-
+        self.sma_ecc_pop = np.array([])  
+        self.ecc_distribution = [] # This will be the same length as the ecc_bins, it will sum to 1 and will show the distribution of eccentricities in the bins.
+        self.semi_major_axis_bins_HMid = None  # Midpoint of the semi-major axis bins, used for elliptical orbits
+        
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
             for key, value in properties_json.items():
@@ -119,6 +107,18 @@ class SpeciesProperties:
             if self.beta is None:
                 print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
 
+            # Handle Eccentricity Bins if provided
+            if 'eccentricity_bins' in properties_json:
+                # check that there the list is three items long
+                if isinstance(properties_json['eccentricity_bins'], list) and len(properties_json['eccentricity_bins']) == 3:
+                    # eccentricity bines is a list of [ecc_lb, ecc_ub, n_bins]
+                    self.eccentricity_bins = np.linspace(
+                        properties_json['eccentricity_bins'][0],
+                        properties_json['eccentricity_bins'][1],
+                        properties_json['eccentricity_bins'][2]
+                    )
+                else:
+                    raise ValueError("Eccentricity bins must be a list of three items: [ecc_lb, ecc_ub, n_bins].")
     def copy(self):
         """
         Create a direct copy of a species object.
@@ -451,89 +451,82 @@ class Species:
             time_in_shell /= total_time
 
         return time_in_shell, velocity_in_shell
-
-    def set_elliptical_orbits(self, n_shells: int, R0_km: np.ndarray, HMid: float, mu: float, parellel_processing: bool):
+    
+    def set_elliptical_orbits(self, scenario_properties: ScenarioProperties):
         """
         Set up elliptical orbits for species and calculate the time spent in each shell.
+        
+        This will build a species.time_in_shells and species.velocity_per_shells array for each species. 
+        An array of n_shells x n_eccentricity_bins x n_shells is built, this is the same for circular orbits, 
+        where it is n_shells x 1 x n_shells.
+
+        Velocity is calculated using the vis-viva equation. 
         """
-        for species_group in self.species.values():
-            processed_species = set()  # Set to track species that have already been processed
-
-            for species in list(species_group):  # Create a list to avoid modifying the group during iteration
-                if species.elliptical and species.sym_name not in processed_species:
-                    species.semi_major_axis_bins = HMid
-
-                    # Process each eccentricity bin
-                    for i, ecc in enumerate(species.eccentricity_bins):
-                        
-                        # Create a new species based on the original
-                        new_species = species.copy()
-                        new_species.eccentricity = ecc
-                        new_species.sym_name = f"{species.sym_name}_e{ecc}"
-                        new_species.time_per_shells = []
-                        new_species.velocity_per_shells = []
-
-                        # Calculate the lower and upper bounds for the eccentricity bin
-                        if i == 0:
-                            new_species.ecc_lb = 0 
-                        else:
-                            new_species.ecc_lb = 0.5 * (species.eccentricity_bins[i - 1] + ecc)
-
-                        if i == len(species.eccentricity_bins) - 1:
-                            new_species.ecc_ub = 1  
-                        else:
-                            new_species.ecc_ub = 0.5 * (ecc + species.eccentricity_bins[i + 1])
-
-                        # Add the new species to the group
-                        species_group.append(new_species)
-
-                    # Mark the original species as processed and remove it
-                    processed_species.add(species.sym_name)
-                    species_group.remove(species)
+        # Convert radius edges from meters to km
+        semi_major_bins_km = scenario_properties.R0 / 1000
 
         for species_group in self.species.values():
             for species in species_group:
-                if species.elliptical:  # hasn't been created yet
-                    # Set semi-major axis for this species
-                    # add 6371 to each of the values in HMid
+                species.semi_major_axis_bins = semi_major_bins_km
+                species.semi_major_axis_bins_HMid = scenario_properties.sma_HMid_km
 
-                    species.semi_major_axis_bins = HMid + 6371
+                if species.elliptical:
+                    n_shells = scenario_properties.n_shells
+                    n_ecc    = len(species.eccentricity_bins)
 
-                    # Calculate time spent in each shell for the semi-major axis
-                    for a in species.semi_major_axis_bins:
-                        e = species.eccentricity
-                        bin_edges = R0_km + 6371
+                    species.ecc_distribution = np.zeros(n_ecc)
+                    species.sma_ecc_pop     = np.zeros((n_shells, n_ecc))
+                    
+                    # 3d matrix, i,j,k where i = sma bin, j = eccentricity bin, k = sma bin
+                    species.time_per_shells     = np.zeros((n_shells, n_ecc, n_shells))
+                    species.velocity_per_shells = np.zeros((n_shells, n_ecc, n_shells))
 
-                        # Calculate time spent in each shell for the semi-major axis
-                        time_in_shell = compute_time_fractions_for_orbit(a, e, bin_edges)
-                        species.time_per_shells.append(time_in_shell)
-                        species.velocity_per_shells.append(np.zeros(len(time_in_shell)))
- 
+                    for i_sma in range(n_shells):
+                        a_mid = scenario_properties.sma_HMid_km[i_sma]
+                        for j_ecc, e in enumerate(species.eccentricity_bins):
+                            # Time fractions for this (a_mid, e)
+                            time_fracs = compute_time_fractions_for_orbit(
+                                a_mid, e, species.semi_major_axis_bins
+                            )
+                            species.time_per_shells[i_sma, j_ecc, :] = time_fracs
+
+                            # Velocity at each shell midpoint
+                            r_mids = 0.5 * (
+                                species.semi_major_axis_bins[:-1] + 
+                                species.semi_major_axis_bins[1:]
+                            )
+                            v_array = vis_viva(a_mid, r_mids)
+                            species.velocity_per_shells[i_sma, j_ecc, :] = v_array
                 else:
-                    species.semi_major_axis_bins = HMid + 6371
-                    for a in tqdm(species.semi_major_axis_bins, desc=f"Calculating time in shells for {species.sym_name}"):
-                        time_in_shell, velocity_in_shell = self.calculate_time_and_velocity_in_shell_circular(None, None, R0_km, a)
-                        species.time_per_shells.append(time_in_shell)
-                        species.velocity_per_shells.append(velocity_in_shell)
+                    # Circular orbits: single eccentricity bin
+                    n_shells = scenario_properties.n_shells
+                    species.time_per_shells     = np.zeros((n_shells, 1, n_shells))
+                    species.velocity_per_shells = np.zeros((n_shells, 1, n_shells))
 
+                    for i_sma in range(n_shells):
+                        a_mid = scenario_properties.sma_HMid_km[i_sma]
 
-    def calculate_time_and_velocity_in_shell_circular(self, radii, velocities, R0_km, a):
+                        time_vec, vel_vec = self.calculate_time_and_velocity_in_shell_circular(
+                            species.semi_major_axis_bins,
+                            a_mid
+                        )
+
+                        species.time_per_shells[i_sma, 0, :]     = time_vec
+                        species.velocity_per_shells[i_sma, 0, :] = vel_vec
+    
+    def calculate_time_and_velocity_in_shell_circular(self, R0_km, a):
         """
         Calculate the time spent in a specific shell and average velocity for circular species
         where time is 1 in the shell corresponding to the semi-major axis 'a' and 0 for others.
 
         Args:
-            radii (np.ndarray): Array of orbital radii (not used in this version).
-            velocities (np.ndarray): Array of orbital velocities (not used in this version).
             R0_km (np.ndarray): Array of shell boundary altitudes in km.
             a (float): Semi-major axis (in km) for the orbit.
 
         Returns:
             tuple: Time spent in each shell (1 for the shell containing 'a', 0 for others) and 
-                average velocity in each shell (7.5 for the shell containing 'a', 0 for others).
+                average velocity in each shell from vis-viva equations.
         """
-        # Adjust R0_km to include Earth's radius
-        R0_km = R0_km + 6378
 
         # Initialize arrays for time and velocity in each shell
         num_shells = len(R0_km) - 1
@@ -546,13 +539,10 @@ class Species:
                 # Set time to 1 for the corresponding shell
                 time_in_shell[i] = 1
 
-                # Set velocity to 7.5 for the corresponding shell
-                velocity_in_shell[i] = 7.5
-
-                # Exit the loop since the correct shell is found
+                # velocity_in_shell[i] = 7.5
+                velocity_in_shell[i] = vis_viva(a, a)  # Using vis-viva equation to calculate velocity at semi-major axis 'a'
                 break
 
-        # All other shell values remain 0
         return time_in_shell, velocity_in_shell
 
 

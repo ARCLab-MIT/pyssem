@@ -477,7 +477,7 @@ def fragmentsToFile(fragments, filename='fragments.out'):
 ### Plotting fragments ###
 ##########################
             
-def plotFragments(fragments):
+def xplotFragments(fragments):
     """
     Plot the fragments in similar graphs as those from the cross-validation
     This allows for quick by eye validation of the SBM model
@@ -578,6 +578,3 @@ if __name__ == "__main__":
     
     fragments, catastrophic = createFragmentsLikeNASAdata(1000, 10, 100, printOut=1)
     print (fragments.shape)
-    plotFragments(fragments)
-    
-    #StoreAllNumFragsLargerThan1g =  numOfFragmentsBiggerThan1gramRandomTest(10000)

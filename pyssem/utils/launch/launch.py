@@ -399,47 +399,52 @@ def SEP_traffic_model(scen_properties, file_path):
 
     T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
-    # Mapping species gets more complicated if there are elliptical orbits.
-    elliptical_species_flag = False
-    for species_group in scen_properties.species.values():
-            for species in species_group:
-                if species.elliptical:
-                    elliptical_species_flag = True
-
-    if elliptical_species_flag:
-        # Assign elliptical sub-species
-        for species_class in T['species_class'].unique():            
+    # Find the correct mass bin for each object
+    for species_class in T['species_class'].unique():
             if species_class in scen_properties.species_cells:
-                T_obj_class = T[T['species_class'] == species_class].copy()
-                species_cells = scen_properties.species_cells[species_class]
-
-                if len(species_cells) == 1:
-                    # Only one species → assign directly
-                    T_obj_class['species'] = species_cells[0].sym_name
+                if len(scen_properties.species_cells[species_class]) == 1:
+                    T_obj_class = T[T['species_class'] == species_class].copy()
+                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                    T_new = pd.concat([T_new, T_obj_class])
                 else:
-                    # Multiple species → use row-wise logic
-                    T_obj_class['species'] = T_obj_class.apply(
-                        find_species_bin,
-                        axis=1,
-                        args=(scen_properties, species_cells)
-                    )
-
-                T_new = pd.concat([T_new, T_obj_class])
-    else:
-        # Bin altitudes
-        for species_class in T['species_class'].unique():
-                if species_class in scen_properties.species_cells:
-                    if len(scen_properties.species_cells[species_class]) == 1:
-                        T_obj_class = T[T['species_class'] == species_class].copy()
-                        T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                        T_new = pd.concat([T_new, T_obj_class])
-                    else:
-                        species_cells = scen_properties.species_cells[species_class]
-                        T_obj_class = T[T['species_class'] == species_class].copy()
-                        T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                        T_new = pd.concat([T_new, T_obj_class])
+                    species_cells = scen_properties.species_cells[species_class]
+                    T_obj_class = T[T['species_class'] == species_class].copy()
+                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                    T_new = pd.concat([T_new, T_obj_class])
 
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
+
+    # For each species, add the semi-major axis and eccentricity distribution
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            if not species.elliptical:
+                continue
+
+            df_sp = T_new[T_new['species'] == species.sym_name]
+            sma_bins = species.semi_major_axis_bins        # length = n_shells+1
+            ecc_bins = species.eccentricity_bins          # length = n_ecc
+
+            # digitize sma and ecc into 0..n_bin-1 indices
+            i_sma = np.digitize(df_sp['sma'], sma_bins) - 1
+            j_ecc = np.digitize(df_sp['ecc'], ecc_bins)
+
+            # clamp to valid range
+            i_sma = np.clip(i_sma, 0, scen_properties.n_shells-1)
+            j_ecc = np.clip(j_ecc, 0, len(ecc_bins)-1)
+
+            # build the 2D histogram
+            pop2d = np.zeros((scen_properties.n_shells, len(ecc_bins)))
+            for i,j in zip(i_sma, j_ecc):
+                pop2d[i, j] += 1
+            species.sma_ecc_pop = pop2d
+
+            # collapse over sma to get the 1-D ecc‐distribution
+            ecc_counts = pop2d.sum(axis=0)
+            total = ecc_counts.sum()
+            if total > 0:
+                species.ecc_distribution = ecc_counts / total
+            else:
+                species.ecc_distribution = np.zeros_like(ecc_counts)
 
     T_new['epoch_start_datetime'] = T_new['year_start'].apply(
             lambda y: datetime(int(y), 1, 1)
@@ -456,7 +461,7 @@ def SEP_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
 
-    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
+    x0['species'].value_counts()
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
@@ -503,7 +508,7 @@ def SEP_traffic_model(scen_properties, file_path):
 
         flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
 
-    return x0_summary, flm_steps
+    return x0_summary, flm_steps, scen_properties.species
 
 def ADEPT_traffic_model(scen_properties, file_path):
     """
@@ -628,7 +633,6 @@ def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     for species in species_cell:
         if species.ecc_lb <= eccentricity < species.ecc_ub:
             return species.sym_name
-
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """

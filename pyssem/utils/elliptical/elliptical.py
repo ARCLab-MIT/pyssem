@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 
 mu = 398600.4418  # km^3/s^2
 
+def vis_viva(a, r, mu=398600.4418):
+    return np.sqrt(mu*(2/r - 1/a))
+
 def solve_E_for_r(r, a, e):
     # solve for cosin(e) rearrange r = a(1 - e*cos(E)) to get cos(E), then use arcsin to find E
     # then take the arcsin to find ====> acos((r/a -1)*(1/e))
@@ -78,7 +81,7 @@ if __name__ == "__main__":
 
     # Test parameters
     a_test = 600 + 6371  # semi-major axis in km
-    e_test = 0.1   # eccentricity
+    e_test = 0.2   # eccentricity
 
 
     altitude_shells = np.array([
@@ -100,12 +103,39 @@ if __name__ == "__main__":
     # Compute bin centers for plotting
     altitude_bin_centers = (altitude_shells[:-1] + altitude_shells[1:]) / 2
 
+    # 2) Velocities at shell mid‐radii
+    r_mids = 0.5 * (shell_edges[:-1] + shell_edges[1:])
+    velocity_array = vis_viva(a_test, r_mids)
+
     # Plot the results
-    plt.figure(figsize=(10, 6))
-    plt.bar(altitude_bin_centers, time_fractions, width=50, align='center', edgecolor='black')
+    # plt.figure(figsize=(10, 6))
+    # plt.bar(altitude_bin_centers, time_fractions, width=50, align='center', edgecolor='black')
+    # plt.xlabel('Altitude Shell Center (km)')
+    # plt.ylabel('Fraction of Time Spent')
+    # plt.title(f'Time in Altitude Shells for a={a_test} km, e={e_test}')
+    # plt.grid(True)
+    # plt.tight_layout()
+    # plt.show()
+
+    # 3) Plotting
+    bin_centers = 0.5 * (altitude_shells[:-1] + altitude_shells[1:])
+
+    # Time‐fractions
+    plt.figure(figsize=(10, 4))
+    plt.subplot(1, 2, 1)
+    plt.bar(bin_centers, time_fractions, width=50, edgecolor='black')
     plt.xlabel('Altitude Shell Center (km)')
-    plt.ylabel('Fraction of Time Spent')
-    plt.title(f'Time in Altitude Shells for a={a_test} km, e={e_test}')
+    plt.ylabel('Fraction of Orbit Time')
+    plt.title(f'Time in Shells (a={a_test} km, e={e_test})')
     plt.grid(True)
+
+    # Velocity
+    plt.subplot(1, 2, 2)
+    plt.bar(bin_centers, velocity_array, width=50, edgecolor='black')
+    plt.xlabel('Altitude Shell Center (km)')
+    plt.ylabel('Velocity (km/s)')
+    plt.title(f'v(r) in Shells (a={a_test} km, e={e_test})')
+    plt.grid(True)
+
     plt.tight_layout()
     plt.show()

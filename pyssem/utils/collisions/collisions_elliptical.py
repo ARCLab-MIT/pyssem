@@ -10,8 +10,130 @@ import matplotlib.pyplot as plt
 import re
 from itertools import combinations
 import math
+import traceback
 
 def create_elliptical_collision_pairs(scen_properties):
+
+    all_species = [
+        sp for grp in scen_properties.species.values() for sp in grp
+    ]
+    pairs = list(combinations(all_species, 2)) + [(sp, sp) for sp in all_species]
+
+    collision_pairs = []
+    LC = scen_properties.LC
+    n_shells = scen_properties.n_shells
+
+    for sp1, sp2 in pairs:
+        # skip purely maneuverable–maneuverable
+        if sp1.maneuverable and sp2.maneuverable:
+            continue
+
+        cp = SpeciesCollisionPair(sp1, sp2, scen_properties)
+
+        # figure out how many ecc bins each has
+        n_e1 = sp1.time_per_shells.shape[1]
+        n_e2 = sp2.time_per_shells.shape[1]
+
+        for i_sma in range(n_shells):
+            for j_e1 in range(n_e1):
+                for j_e2 in range(n_e2):
+                    for k_shell in range(n_shells):
+                        t1 = sp1.time_per_shells[i_sma, j_e1, k_shell]
+                        t2 = sp2.time_per_shells[i_sma, j_e2, k_shell]
+
+                        if t1 > 0 and t2 > 0:
+                            # skip sub‐LC collisions
+                            if sp1.mass < LC and sp2.mass < LC:
+                                continue
+                            cp.collision_pair_by_shell.append(
+                                EllipticalCollisionPair(
+                                    species1=sp1,
+                                    species2=sp2,
+                                    sma_index=i_sma,
+                                    ecc1_index=j_e1,
+                                    ecc2_index=j_e2,
+                                    shell_index=k_shell
+                                )
+                            )
+
+        collision_pairs.append(cp)
+    
+    print(f"Total number of unique species pairs: {len(collision_pairs)}")
+    # loop through each species pair and then sum the collision pairs
+    count = 0
+    for species_pair in collision_pairs:
+        count += len(species_pair.collision_pair_by_shell)
+
+    print(f"Total number of collision pairs: {count}")
+
+    debris_species = [species for species in scen_properties.species['debris']]
+
+    # Mass Binning
+    binC_mass = np.zeros(len(debris_species))
+    binE_mass = np.zeros(2 * len(debris_species))
+    binW_mass = np.zeros(len(debris_species))
+    LBgiven = scen_properties.LC
+
+    for index, debris in enumerate(debris_species):
+        binC_mass[index] = debris.mass
+        binE_mass[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
+        binW_mass[index] = debris.mass_ub - debris.mass_lb
+
+    binE_mass = np.unique(binE_mass)
+
+    # Eccentricity Binning, multiple debris species will have the same eccentricity bins
+    binE_ecc = debris_species[0].eccentricity_bins
+    binE_ecc = np.sort(binE_ecc)
+    # Calculate the midpoints
+    binE_ecc = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+    # Create bin edges starting at 0 and finishing at 1
+    binE_ecc = np.concatenate(([0], binE_ecc, [1]))
+
+    debris_species = scen_properties.species['debris']
+    D = len(debris_species)
+    S = scen_properties.n_shells
+    E = len(binE_ecc) - 1
+
+    for i, sp_pair in tqdm(enumerate(collision_pairs),
+                        total=len(collision_pairs),
+                        desc="Processing species pairs"):
+
+        # 1) initialize per-pair accumulators
+        sp_pair.debris_per_shell_species = np.zeros((S, D), dtype=float)
+        sp_pair.eccumul_full            = np.zeros((S, E), dtype=float)
+        sp_pair.collision_processed     = []
+
+        # 2) loop over every shell_collision in this pair
+        for shell_col in sp_pair.collision_pair_by_shell:
+            gamma = process_elliptical_collision_pair(
+                (i, shell_col, scen_properties,
+                debris_species, binE_mass, binE_ecc, LBgiven)
+            )
+
+            # keep the raw fragments 3D array on gamma
+            # gamma.fragments.shape == (S, D, E)
+            if gamma.fragments is None:
+                # no fragments generated, skip this collision
+                continue
+
+        #     # collapse over ecc → (S, D)
+        #     sp_pair.debris_per_shell_species += gamma.fragments
+        #     # collapse over species → (S, E)
+        #     sp_pair.eccumul_full += gamma.ecc_matrix
+        #     sp_pair.collision_processed.append(gamma)
+
+        # # 3) build the normalized ecc distribution across all shells
+        # ecc_totals = sp_pair.eccumul_full.sum(axis=0)  # shape (E,)
+        # total     = ecc_totals.sum()
+        # if total > 0:
+        #     sp_pair.ecc_distribution = ecc_totals / total
+        # else:
+        #     sp_pair.ecc_distribution = np.zeros_like(ecc_totals)
+
+    return 
+
+
+def create_elliptical_collision_pairs2(scen_properties):
     """
     This function will take each species that is elliptical, then it will search across all other ellitpical objects and shells to assess 
     which other objects it could collide with. 
@@ -81,7 +203,7 @@ def create_elliptical_collision_pairs(scen_properties):
         
         all_elliptical_collision_species.append(collision_pair)
 
-    print(f"Total number of unique species pairs: {len(all_elliptical_collision_species)}")
+    print(f"Total number of u`nique species pairs: {len(all_elliptical_collision_species)}")
     # loop through each species pair and then sum the collision pairs
     count = 0
     for species_pair in all_elliptical_collision_species:
@@ -331,34 +453,90 @@ def generate_collision_equations(all_elliptical_collision_species, scen_properti
         
     return all_elliptical_collision_species
 
-def process_elliptical_collision_pair(args):
-    """
-    A similar function to the process_species_pair, apart from it as the shells are already defined and the velocity, 
-    you are able to calculate evolve bins just once. 
-
-    """
+def process_elliptical_collision_pair_new(args):
     i, collision_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
     m1, m2 = collision_pair.species1.mass, collision_pair.species2.mass
     r1, r2 = collision_pair.species1.radius, collision_pair.species2.radius
 
-
-    # there needs to be some changes here to account for the fact that the shells are already defined
-    # set fragment_spreading to True
-    #v1 = collision_pair.species1.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
-    #v2 = collision_pair.species2.velocity_per_shells[collision_pair.shell_index][collision_pair.shell_index]
-    v1, v2 = 10, 10
-    # This the time per shell for each species - the output still assumes that it is always there, so you need to divide
     t1 = collision_pair.species1.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     t2 = collision_pair.species2.time_per_shells[collision_pair.shell_index][collision_pair.shell_index]
     min_TIS = min(t1, t2)
     prod_TIS = t1 * t2
+
+    return
+
+def perifocal_r_and_v(a, e, nu, mu):
+    r_mag = a * (1 - e**2) / (1 + e * np.cos(nu))
+    r = r_mag * np.array([np.cos(nu), np.sin(nu), 0.0])
+
+    h = np.sqrt(mu * a * (1 - e**2))
+    v = (mu / h) * np.array([-np.sin(nu), e + np.cos(nu), 0.0])
+    return r, v
+
+def rotate_vector_45_deg_in_plane(v):
+    theta = np.pi / 4  # 45 degrees
+    rot_matrix = np.array([
+        [np.cos(theta), -np.sin(theta), 0],
+        [np.sin(theta),  np.cos(theta), 0],
+        [0,              0,             1]
+    ])
+    return rot_matrix @ v
+
+
+def process_elliptical_collision_pair(args):
+    i, collision_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
+
+    sp1 = collision_pair.species1
+    sp2 = collision_pair.species2
+    r1 = collision_pair.species1.radius
+    r2 = collision_pair.species2.radius
+    sma1 = collision_pair.species1_sma
+    sma2 = collision_pair.species2_sma
+
+    # pull out the sma, ecc1, ecc2 and shell indices
+    i_sma    = collision_pair.sma_index
+    j_e1     = collision_pair.ecc1_index
+    j_e2     = collision_pair.ecc2_index
+    k_shell  = collision_pair.shell_index
+
+    if collision_pair.species1.eccentricity_bins is not None:
+        e1 = collision_pair.species1.eccentricity_bins[j_e1]
+    else: 
+        e1 = 0
+    
+    if collision_pair.species2.eccentricity_bins is not None:
+        e2 = collision_pair.species2.eccentricity_bins[j_e2]
+    else:
+        e2 = 0
+    # instantaneous velocities in that exact (sma,ecc) cell
+    v1 = sp1.velocity_per_shells[i_sma, j_e1, k_shell]
+    v2 = sp2.velocity_per_shells[i_sma, j_e2, k_shell]
+
+    # time‐in‐shell fractions in that same cell
+    t1 = sp1.time_per_shells[i_sma, j_e1, k_shell]
+    t2 = sp2.time_per_shells[i_sma, j_e2, k_shell]
+
+    # simple “overlap” metrics
+    min_TIS  = min(t1, t2)
+    prod_TIS = t1 * t2
+
+    # now you can call your SBM with m1,m2,v_rel
+    m1, m2 = sp1.mass, sp2.mass
+
+    # if m2 is bigger than m1, swap mass radius, sma and ecc
+    if m2 > m1:
+        m1, m2 = m2, m1
+        r1, r2 = r2, r1
+        sma1, sma2 = sma2, sma1
+        e1, e2 = e2, e1
+        v1, v2 = v2, v1
 
     # This will have to change 
     try:
         if m1 < 1 or m2 < 1:
             fragments = None
         else:
-            fragments = evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, collision_pair.species1.eccentricity, collision_pair.species2.eccentricity, 
+            fragments = evolve_bins(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
                                     binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
     except Exception as e:
         print("Error in Evolve Bins")
@@ -367,8 +545,9 @@ def process_elliptical_collision_pair(args):
 
     if fragments is not None:
         collision_pair.fragments = fragments * prod_TIS
+        collision_pair.ecc_matrix = np.array([])#ecc_mat
     else: 
-        print(f'No fragments generated between species {m1} and {m2} in shell {collision_pair.shell_index}')
+        # print(f'No fragments generated between species {m1} and {m2} in shell {collision_pair.shell_index}')
         collision_pair.fragments = fragments
 
     return collision_pair
@@ -393,6 +572,99 @@ def func_de(R_list, V_list):
     
     # Return the list of eccentricities
     return eccentricities
+
+def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_mass, binE_ecc, collision_index, n_shells=0):
+    param = {
+        'req': 6.3781e+03,
+        'mu': 3.9860e+05,
+        'j2': 0.0011,
+        'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+        'maxID': 0,
+        'density_profile': 'static'
+    }
+
+    # # Lower bound (LB)
+    LB = 0.1
+    SS = 20
+    earth_radius_km = 6371
+    true_anomaly_deg = 90
+    TA = np.radians(true_anomaly_deg)
+    mu = param["mu"]
+
+    # try:
+    # Object 1 (larger mass): low eccentricity
+    r1, v1 = perifocal_r_and_v(sma1, e2, TA, mu)
+
+    # Object 2 (lighter mass): higher eccentricity, rotated velocity
+    _, v2_mag_vec = perifocal_r_and_v(sma2, e1, TA, mu)
+    v2_hat_rotated = rotate_vector_45_deg_in_plane(v1 / np.linalg.norm(v1))
+    v2 = np.linalg.norm(v2_mag_vec) * v2_hat_rotated
+    r2 = r1  # collision point is same
+
+    # Define input vectors
+    p1 = np.array([m1, rad_1, *r1, *v1, 1.0])
+    p2 = np.array([m2, rad_2, *r2, *v2, 1.0])
+
+    try:
+        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, param, LB)
+    except Exception as e:
+        print(f"Error in frag_col_SBM_vec_lc2: {e} \n for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
+        traceback.print_exc()
+        return None
+
+    if debris1.size == 0:
+        print(f"m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, No debris generated")
+        print(len(debris1), len(debris2))
+
+    # Loop through 
+    frag_a = []
+    frag_e = []
+    frag_mass = []
+
+    for debris in debris1:
+        norm_earth_radius = debris[0]
+        if norm_earth_radius < 1:
+            continue # decayed
+
+        frag_a.append((norm_earth_radius - 1) * 6371 + 6371) 
+        frag_e.append(debris[1])
+        frag_mass.append(debris[7])
+    
+    for debris in debris2:
+        norm_earth_radius = debris[0]
+        if norm_earth_radius < 1:
+            continue # decayed
+
+        frag_a.append((norm_earth_radius - 1) * 6371 + 6371) 
+        frag_e.append(debris[1])
+        frag_mass.append(debris[7])
+
+    frag_properties = np.array([frag_a, frag_mass, frag_e]).T
+
+    binE_alt = scen_properties.R0_rad_km  # We add 1 for bin edges
+
+    # hist, edges = np.histogramdd(frag_properties, bins=bins)
+
+    # hist = hist / (SS * 3)
+
+    # return hist
+    hist3d, _ = np.histogramdd(
+        frag_properties,
+        bins=[binE_alt, binE_mass, binE_ecc]
+    )
+
+    # normalize per your SS factor
+    hist3d /= (SS * 3)
+
+    # collapse into the two 2D matrices:
+    # debris_matrix = hist3d.sum(axis=2)  # shape (n_shells, n_mass_species)
+    # ecc_matrix    = hist3d.sum(axis=1)  # shape (n_shells, n_ecc_bins)
+
+    # return debris_matrix, ecc_matrix
+    return hist3d
+
+
+
 
 # def evolve_bins(scen_properties, m1, m2, r1, r2, v1, v2, binE_mass, binE_ecc, collision_index, n_shells=0):
         
@@ -529,114 +801,129 @@ def rotate_vector_45_deg_in_plane(v):
     ])
     return rot_matrix @ v
 
-def evolve_bins(scen_properties, m1, m2, radius_1, radius_2, v1, v2, ecc_1, ecc_2, binE_mass, binE_ecc, collision_index, n_shells=0):  
-        # Need to now follow the NASA SBM route, first we need to create p1_in and p2_in
-        #  Parameters:
-        # - ep: Epoch
-        # - p1_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
-        # - p2_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
-        # - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID', etc.
-        # - LB: Lower bound for fragment sizes (meters)
-        # Super sampling ratio
-        SS = 20
-        R_EARTH = 6371.0  # km
-        true_anomaly_deg = 90
-        TA = np.radians(true_anomaly_deg)
-        param = {
-            'req': 6.3781e+03,
-            'mu': 3.9860e+05,
-            'j2': 0.0011,
-            'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
-            'maxID': 0,
-            'density_profile': 'static'
-        }
+# def evolve_bins(scen_properties, m1, m2, radius_1, radius_2, v1, v2, ecc_1, ecc_2, binE_mass, binE_ecc, collision_index, n_shells=0):  
+#         # Need to now follow the NASA SBM route, first we need to create p1_in and p2_in
+#         #  Parameters:
+#         # - ep: Epoch
+#         # - p1_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+#         # - p2_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+#         # - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID', etc.
+#         # - LB: Lower bound for fragment sizes (meters)
+#         # Super sampling ratio
+#         SS = 20
+#         R_EARTH = 6371.0  # km
+#         true_anomaly_deg = 90
+#         TA = np.radians(true_anomaly_deg)
+#         param = {
+#             'req': 6.3781e+03,
+#             'mu': 3.9860e+05,
+#             'j2': 0.0011,
+#             'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+#             'maxID': 0,
+#             'density_profile': 'static'
+#         }
 
-        results = []
-        collision_altitude = scen_properties.HMid[collision_index] + R_EARTH  # Convert altitude to radius in km
+#         results = []
+#         collision_altitude = scen_properties.HMid[collision_index] + R_EARTH  # Convert altitude to radius in km
         
-        # Calculate position and velocity vectors in perifocal coordinates
-        # Object 1 (larger mass): low eccentricity
-        r1, v1 = perifocal_r_and_v(collision_altitude, ecc_2, TA, param["mu"])
+#         # Calculate position and velocity vectors in perifocal coordinates
+#         # Object 1 (larger mass): low eccentricity
+#         r1, v1 = perifocal_r_and_v(collision_altitude, ecc_2, TA, param["mu"])
 
-         # Object 2 (lighter mass): higher eccentricity, rotated velocity
-        _, v2_mag_vec = perifocal_r_and_v(collision_altitude, ecc_1, TA, param["mu"])
-        v2_hat_rotated = rotate_vector_45_deg_in_plane(v1 / np.linalg.norm(v1))
-        v2 = np.linalg.norm(v2_mag_vec) * v2_hat_rotated
-        r2 = r1 # Same position as r1, but different velocity
+#          # Object 2 (lighter mass): higher eccentricity, rotated velocity
+#         _, v2_mag_vec = perifocal_r_and_v(collision_altitude, ecc_1, TA, param["mu"])
+#         v2_hat_rotated = rotate_vector_45_deg_in_plane(v1 / np.linalg.norm(v1))
+#         v2 = np.linalg.norm(v2_mag_vec) * v2_hat_rotated
+#         r2 = r1 # Same position as r1, but different velocity
 
-        # Define input vectors
-        p1 = np.array([m1, radius_1, *r1, *v1, 1.0])
-        p2 = np.array([m2, radius_2, *r2, *v2, 1.0])
+#         # Define input vectors
+#         p1 = np.array([m1, radius_1, *r1, *v1, 1.0])
+#         p2 = np.array([m2, radius_2, *r2, *v2, 1.0])
 
-        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, param, scen_properties.LC)
+#         debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, param, scen_properties.LC)
 
-        if debris1.size == 0:
-            print(f"[{collision_altitude} km] No debris generated")
+#         if debris1.size == 0:
+#             print(f"[{collision_altitude} km] No debris generated")
 
 
-        # Loop through 
-        frag_a = []
-        frag_e = []
-        frag_mass = []
+#         # Loop through 
+#         frag_a = []
+#         frag_e = []
+#         frag_mass = []
 
-        for debris in debris1:
-            norm_earth_radius = debris[0]
-            if norm_earth_radius < 1:
-                continue # decayed
+#         for debris in debris1:
+#             norm_earth_radius = debris[0]
+#             if norm_earth_radius < 1:
+#                 continue # decayed
 
-            frag_a.append((norm_earth_radius - 1) * 6371) 
-            frag_e.append(debris[1])
-            frag_mass.append(debris[7])
+#             frag_a.append((norm_earth_radius - 1) * 6371) 
+#             frag_e.append(debris[1])
+#             frag_mass.append(debris[7])
         
-        for debris in debris2:
-            norm_earth_radius = debris[0]
-            if norm_earth_radius < 1:
-                continue # decayed
+#         for debris in debris2:
+#             norm_earth_radius = debris[0]
+#             if norm_earth_radius < 1:
+#                 continue # decayed
 
-            frag_a.append((norm_earth_radius - 1) * 6371) 
-            frag_e.append(debris[1])
-            frag_mass.append(debris[7])
+#             frag_a.append((norm_earth_radius - 1) * 6371) 
+#             frag_e.append(debris[1])
+#             frag_mass.append(debris[7])
 
-        frag_properties = np.array([frag_a, frag_mass, frag_e]).T
+#         frag_properties = np.array([frag_a, frag_mass, frag_e]).T
 
-        binE_alt = np.linspace(scen_properties.min_altitude, scen_properties.max_altitude, n_shells + 1)  # We add 1 for bin edges
+#         binE_alt = np.linspace(scen_properties.min_altitude, scen_properties.max_altitude, n_shells + 1)  # We add 1 for bin edges
 
-        bins = [binE_alt, binE_mass, binE_ecc]
+#         bins = [binE_alt, binE_mass, binE_ecc]
 
-        hist, edges = np.histogramdd(frag_properties, bins=bins)
+#         hist, edges = np.histogramdd(frag_properties, bins=bins)
 
-        hist = hist / (SS * 3)
+#         hist = hist / (SS * 3)
 
-        return hist
+#         return hist
 
 class EllipticalCollisionPair:
-    def __init__(self, species1, species2, index) -> None:
+    def __init__(self, species1, species2, sma_index, ecc1_index, ecc2_index, shell_index) -> None:
         self.species1 = species1
         self.species2 = species2
-        self.species1_TIS = species1.time_per_shells[index][index]
-        self.species2_TIS = species2.time_per_shells[index][index]
-        self.species1_VIS = species1.velocity_per_shells[index][index]
-        self.species2_VIS = species2.velocity_per_shells[index][index]
-        self.species1_TIS_all = species1.time_per_shells[index]
-        self.species2_TIS_all = species2.time_per_shells[index]
-        self.species1_VIS_all = species1.velocity_per_shells[index]
-        self.species2_VIS_all = species2.velocity_per_shells[index]
-        self.shell_index = index
-        self.s1_col_sym_name = f"{species1.sym_name}_sh_{index}"
-        self.s2_col_sym_name = f"{species2.sym_name}_sh_{index}"
-        self.col_sym_name = f"{species1.sym_name}__{species2.sym_name}_sh_{index}" 
-        self.combinEd_mass_TIS = self.species1_TIS * self.species2_TIS
+        self.sma_index = sma_index
+        self.ecc1_index = ecc1_index
+        self.ecc2_index = ecc2_index
+        self.shell_index = shell_index
+
+        self.species1_sma = self.species1.semi_major_axis_bins_HMid[shell_index]
+        self.species2_sma = self.species2.semi_major_axis_bins_HMid[shell_index]
+
+        # Time-in-shell for each species at this (sma, ecc) in this shell
+        self.species1_TIS = species1.time_per_shells[sma_index, ecc1_index, shell_index]
+        self.species2_TIS = species2.time_per_shells[sma_index, ecc2_index, shell_index]
+
+        # Velocity-in-shell for each species at this (sma, ecc) in this shell
+        self.species1_VIS = species1.velocity_per_shells[sma_index, ecc1_index, shell_index]
+        self.species2_VIS = species2.velocity_per_shells[sma_index, ecc2_index, shell_index]
+
+        # Full TIS and VIS profiles across all ecc‐bins at this sma
+        self.species1_TIS_all = species1.time_per_shells[sma_index]
+        self.species2_TIS_all = species2.time_per_shells[sma_index]
+        self.species1_VIS_all = species1.velocity_per_shells[sma_index]
+        self.species2_VIS_all = species2.velocity_per_shells[sma_index]
+
+        # Combined metrics
+        self.combined_mass_TIS = self.species1_TIS * self.species2_TIS
         self.min_TIS = min(self.species1_TIS, self.species2_TIS)
         self.max_TIS = max(self.species1_TIS, self.species2_TIS)
 
-        self.gamma = None 
-        self.fragments = None
-        self.catastrophic = None
-        self.binOut = None
-        self.altA = None
-        self.altE = None
+        # Symbolic column names include eccentricity indices
+        self.s1_col_sym_name = f"{species1.sym_name}_sh{shell_index}"
+        self.s2_col_sym_name = f"{species2.sym_name}_sh{shell_index}"
 
-        self.debris_eccentrcity_bins = None
+        # Placeholders for collision outcomes
+        self.gamma                   = None  # collision probability
+        self.fragments               = None
+        self.catastrophic            = None
+        self.binOut                  = None
+        self.altA                    = None  # debris semi-major axis
+        self.altE                    = None  # debris eccentricity
+        self.debris_eccentricity_bins = None
 
 class SpeciesCollisionPair:
     def __init__(self, species1, species2, scen_properties) -> None:

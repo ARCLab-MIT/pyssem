@@ -11,7 +11,7 @@
     "steps": 100,                            
     "min_altitude": 200,                   
     "max_altitude": 1400,                   
-    "n_shells": 10,                         
+    "n_shells": 40,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "JB2008_dens_func", 
@@ -79,7 +79,7 @@
         "pmd_func": "pmd_func_derelict",
         "drag_func": "drag_func_exp",
         "elliptical": true,
-        "eccentricity_bins" : [0.001, 0.01, 0.05, 0.1]
+        "eccentricity_bins" : [0.001, 0.2, 20]
     },
     {
         "sym_name": "Sns",
@@ -119,7 +119,7 @@
         "pmd_func": "pmd_func_none",
         "drag_func": "drag_func_exp",
         "elliptical": true,
-        "eccentricity_bins" : [0.001, 0.01, 0.1, 0.2]
+        "eccentricity_bins" : [0.001, 0.2, 20]
     }
   ]
 }
