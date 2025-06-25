@@ -20,7 +20,6 @@ def assign_species(df):
     mask = (
         (df['obj_type']     == 2) &
         (df['phase']        == 2) &
-        (df['maneuverable'] == 0) &
         (df['mass']         <= 20)
     )
     df.loc[mask, 'species_class'] = 'Sns'
