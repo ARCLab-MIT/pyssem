@@ -7,6 +7,7 @@ import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
+from ..control.control import *
 
 class SpeciesProperties:
     def __init__(self, properties_json=None):
@@ -76,6 +77,7 @@ class SpeciesProperties:
         self.launch_func = None
         self.pmd_func = None
         self.drag_func = None
+        self.control_func = None
 
         self.trackable_radius_threshold = 0.05  # m
 
@@ -86,6 +88,11 @@ class SpeciesProperties:
         self.velocity_per_shells = []
         self.ecc_lb = 0
         self.ecc_ub = 1
+
+        # Policy
+        self.country = None # U.S., China, Europe, etc.
+        self.mission_type = None # Civil, defense, commercial.
+        self.mission_objective = None # Communication, weather, remote sensing, navigation, military, etc.
 
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
@@ -186,13 +193,17 @@ class Species:
             species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{species_properties['mass'][i]}kg"
 
             try:
-                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null":
+                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null" and species_props_copy.get("launch_func") != "launch_lambda_sym":
                     # Change the lambda_constant and launch_altitude to the value of the index
                     lambda_const_temp = species_props_copy.get('lambda_constant', 0)
                     launch_alt_temp = species_props_copy.get('launch_altitude', 0)
 
                     species_props_copy['lambda_constant'] = lambda_const_temp[i-1]
                     species_props_copy['launch_altitude'] = launch_alt_temp[i-1]
+                
+                # elif species_props_copy.get("launch_func") == "launch_lambda_sym":
+                #     species_props_copy['lambda_constant'] = 0
+                #     species_props_copy['launch_altitude'] = 0
             except Exception as e:
                 raise ValueError(f"If you have lambda_constant as part of a multiple mass species. Please ensure that you have a lambda and alttiude defined for each sub-species.")
 
@@ -206,6 +217,10 @@ class Species:
                         species_props_copy[field] = field_value[i]
                     elif len(field_value) == 1:
                         species_props_copy[field] = field_value[0]
+                    elif field == "deltat" and species_props_copy.get("pmd_func") == "pmd_func_sat_sym" or species_props_copy.get("pmd_func") == "pmd_func_derelict_sym":
+                        continue
+                    elif field == "Pm" and species_props_copy.get("pmd_func") == "pmd_func_sat_sym" or species_props_copy.get("pmd_func") == "pmd_func_derelict_sym":
+                        continue
                     else:
                         raise ValueError(f"The field '{field}' list length does not match the number of species and is not a single-element list.")
                 else:
@@ -295,6 +310,9 @@ class Species:
             debris_species_template.radius = properties.radius
             debris_species_template.trackable = properties.trackable  # large debris is trackable
             debris_species_template.sym_name = f"N_{properties.mass}kg"
+            debris_species_template.country = properties.country
+            debris_species_template.mission_type = properties.mission_type
+            debris_species_template.mission_objective = properties.mission_objective
 
             self.species['debris'].append(debris_species_template)
 
@@ -316,6 +334,10 @@ class Species:
                     species.pmd_func = pmd_func_derelict
                 elif species.pmd_func == "pmd_func_sat":
                     species.pmd_func = pmd_func_sat
+                elif species.pmd_func == "pmd_func_sat_sym":
+                    species.pmd_func = pmd_func_sat_sym
+                elif species.pmd_func == "pmd_func_derelict_sym":
+                    species.pmd_func = pmd_func_derelict_sym 
                 else:
                     species.pmd_func = pmd_func_none
 
@@ -328,7 +350,19 @@ class Species:
                 #     species.launch_func = launch_func_constant
                 # else:
                 #     species.launch_func = launch_func_lambda_fun   
-                species.launch_func = launch_func_lambda_fun 
+                if species.launch_func == 'launch_lambda_sym':
+                    species.launch_func = launch_lambda_sym
+                elif species.launch_func == 'launch_func_null':
+                    species.launch_func = launch_func_null
+                else:
+                    species.launch_func = launch_func_lambda_fun 
+
+                if species.control_func == 'control_launch_sym':
+                    species.control_func = control_launch_sym
+                elif species.control_func == 'control_adr_sym':
+                    species.control_func = control_adr_sym
+                else:
+                    species.control_func = control_none 
 
         return
 
@@ -369,13 +403,15 @@ class Species:
         # Assign matching debris increase for a species due to failed PMD
         for active_spec in active_species:
             found_mass_match_debris = False
-            spec_mass = active_spec.mass
-
+            spec_mass = active_spec.mass 
+            
             for deb_spec in debris_species:
                 if spec_mass == deb_spec.mass:
                     if active_spec.pmd_func == pmd_func_opus:
                         deb_spec.pmd_func = pmd_func_opus
-                    else:                    
+                    elif active_spec.Pm == []: # if no pm, then it will be replaced by sym
+                        deb_spec.pmd_func = pmd_func_derelict_sym
+                    else:
                         deb_spec.pmd_func = pmd_func_derelict
                     
                     deb_spec.pmd_linked_species = []                

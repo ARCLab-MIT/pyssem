@@ -245,11 +245,8 @@ class Model:
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
-            
-            # CSI Index
-            # self.scenario_properties.cum_CSI()
 
-            # save self as a pickle file
+            # save the scenario properties to a pickle file
             with open('scenario-properties-baseline.pkl', 'wb') as f:
 
                 # first remove the lambdified equations as pickle cannot serialize them
@@ -327,7 +324,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -349,7 +346,7 @@ if __name__ == "__main__":
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
         indicator_variables=scenario_props.get("indicator_variables", None),
-        launch_scenario=scenario_props["launch_scenario"],
+        launch_scenario=scenario_props.get("indicator_variables", None),
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
     )
 
@@ -357,18 +354,20 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    results = model.run_model()
+results = model.build_sym_model()
 
-    data = model.results_to_json()
-    # Create the figures directory if it doesn't exist
-    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
-    # Save the results to a JSON file
-    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-        json.dump(data, f, indent=4)
+    # ## Plotting and saving results
+    # data = model.results_to_json()
+    # # Create the figures directory if it doesn't exist
+    # os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+    # # Save the results to a JSON file
+    # with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+    #     json.dump(data, f, indent=4)
 
-    try:
-        plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
-    except Exception as e:
-        print(e)
-        print("No plots specified in the simulation configuration file.")
+    # try:
+    #     plot_names = simulation_data["plots"]
+    #     Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    # except Exception as e:
+    #     print(e)
+    #     print("No plots specified in the simulation configuration file.")
+
