@@ -354,7 +354,7 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    results = model.build_sym_model()
+results = model.build_sym_model()
 
     # ## Plotting and saving results
     # data = model.results_to_json()
@@ -370,3 +370,4 @@ if __name__ == "__main__":
     # except Exception as e:
     #     print(e)
     #     print("No plots specified in the simulation configuration file.")
+
