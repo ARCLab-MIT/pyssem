@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import json
-import imageio
+# import imageio
 from ..simulation.scen_properties import ScenarioProperties
 
 class Plots:

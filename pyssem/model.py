@@ -225,8 +225,6 @@ class Model:
             raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
         
 
-        
-
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
@@ -247,7 +245,7 @@ class Model:
             self.scenario_properties.run_model()
 
             # save the scenario properties to a pickle file
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
+            with open('test_3_species.pkl', 'wb') as f:
 
                 # first remove the lambdified equations as pickle cannot serialize them
                 self.scenario_properties.equations = None
@@ -282,7 +280,12 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.build_model()
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+            self.scenario_properties.build_sym_model()
+
+            # save the scenario properties to a pickle file
+            with open('test_3_species_sym.pkl', 'wb') as f:            
+                pickle.dump(self.scenario_properties, f)
         
         except Exception as e:
             raise RuntimeError(f"Failed to build model: {str(e)}")
@@ -324,7 +327,8 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -346,7 +350,7 @@ if __name__ == "__main__":
         parallel_processing=scenario_props.get("parallel_processing", True),
         baseline=scenario_props.get("baseline", False),
         indicator_variables=scenario_props.get("indicator_variables", None),
-        launch_scenario=scenario_props.get("indicator_variables", None),
+        launch_scenario=scenario_props["launch_scenario"],
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
     )
 
@@ -354,8 +358,12 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-results = model.build_sym_model()
-
+    ### To use symbolic equations for policy roses jup. notebook
+    ### (note: load the correct .json file)
+    results = model.build_model()
+    
+    ### To use numerical equations as per standard pySSEM
+    # results = model.run_model()
     # ## Plotting and saving results
     # data = model.results_to_json()
     # # Create the figures directory if it doesn't exist

@@ -54,6 +54,9 @@ def launch_lambda_sym(t, h, species_properties, scen_properties):
 
     return Lambdadot
 
+def launch_lambda_sym_null(t, h, species_properties, scen_properties):
+    return launch_func_null(t, h, species_properties, scen_properties)
+
 def launch_func_constant(t, h, species_properties, scen_properties):
     """
     Adds a constant launch rate from species_properties.lambda_constant.
@@ -325,11 +328,11 @@ def SEP_traffic_model(scen_properties, file_path):
     # Calculate Apogee, Perigee, and altitude
     T = pd.read_csv(file_path)
 
-    T['apogee'] = T['sma'] * (1 + T['ecc'])
-    T['perigee'] = T['sma'] * (1 - T['ecc'])
-    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+    # T['apogee'] = T['sma'] * (1 + T['ecc'])
+    # T['perigee'] = T['sma'] * (1 - T['ecc'])
+    # T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
-    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
+    # T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
     # Convert MJD to datetime
     # def mjd_to_datetime(mjd_series):

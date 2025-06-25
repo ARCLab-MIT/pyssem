@@ -367,8 +367,56 @@ class ScenarioProperties:
         
         return umpy
 
+    def initial_pop_and_launch(self, baseline=False, launch_file=None):
+        """
+           This function will determine which launch file to use. 
+           Users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
 
-    def initial_pop_and_launch(self, baseline=False):
+           There are seven possible launch scenarios:
+                SEP1: No Future Launch 
+
+                SEP 2: Continuing Current Behaviours 
+
+                SEP 3 M: Space Winter (Medium Sustainability Effort) 
+
+                SEP 3 H: Space Winter (High Sustainability Effort) 
+
+                SEP 4: Strategic Rivalry 
+
+                SEP 5 M: Commercial-driven Development (Medium Sustainability Effort) 
+
+                SEP 5 H: Commercial-driven Development (High Sustainability Effort) 
+
+                SEP 6 M: Intensive Space Demand (Medium Sustainability Effort) 
+
+                SEP 6 H: Intensive Space Demand (High Sustainability Effort) 
+        """
+
+        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
+        
+        # Check to see if the data folder exists, if not, create it
+        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
+            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
+
+        # Check to see if launch_file_path exists
+        if not os.path.exists(launch_file_path):
+            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
+        
+        print('Using launch file:', launch_file_path)
+
+        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+
+        # Store as part of the class, as it is needed for the run_model()
+        self.x0 = x0
+        self.FLM_steps = FLM_steps
+
+        # Export x0 to csv
+        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+
+        if not baseline:
+            self.future_launch_model(FLM_steps)
+
+    def initial_pop_and_launch2(self, baseline=False):
         """
         Generate the initial population and the launch rates. 
         The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
@@ -410,8 +458,8 @@ class ScenarioProperties:
 
         if not baseline:
             self.future_launch_model(FLM_steps)
-
-    def build_sym_model(self):
+    
+    def build_model(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
 
@@ -420,34 +468,25 @@ class ScenarioProperties:
 
         :return: None
         """
-
         t = sp.symbols('t')
 
         species_list = [species for group in self.species.values() for species in group]
         self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
-        # self.full_lambda = []
-        self.full_lambda = sp.zeros(self.n_shells, self.species_length)
+        self.full_lambda = []
         self.full_coll = sp.zeros(self.n_shells, self.species_length)
         self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
         self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
-        self.full_control = sp.zeros(self.n_shells, self.species_length)
 
         # Equations are going to be a matrix of symbolic expressions
         # Each row corresponds to a shell, and each column corresponds to a species
         for i, species in enumerate(species_list):
 
-            # lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
-            # self.full_lambda.append(lambda_expr)
-            lambda_expr = species.launch_func(t, self.HMid, species, self)
-            self.full_lambda[:, i] = lambda_expr
+            lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+            self.full_lambda.append(lambda_expr)
 
             # Post mission Disposal
             Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
             self.full_Cdot_PMD[:, i] = Cdot_PMD
-
-            # Control
-            U = species.control_func(t, self.HMid, species, self)
-            self.full_control[:, i] = U
 
             # Drag
             [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
@@ -462,12 +501,11 @@ class ScenarioProperties:
             self.full_coll += i.eqs
 
         self.equations = sp.zeros(self.n_shells, self.species_length)      
-        # self.equations = self.full_Cdot_PMD + self.full_coll
-        self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
+        self.equations = self.full_Cdot_PMD + self.full_coll
 
 
         # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: # static density
+        if not self.time_dep_density: 
             # Take the shell altitudes, this will be n_shells + 1
             rho = self.density_model(0, self.R0_km, self.species, self)
             rho_reshape = rho.reshape(-1, 1) # Convert to column vector
@@ -485,14 +523,46 @@ class ScenarioProperties:
             self.full_drag = drag_upper_with_density + drag_cur_with_density
             self.equations += self.full_drag
             self.sym_drag = True 
-        
+
+        # Make Integrated Indicator Variables if passed
+        if hasattr(self, 'integrated_indicator_var_list'):
+            integrated_indicator_var_list = self.integrated_indicator_var_list
+            for ind_var in integrated_indicator_var_list:
+                if not ind_var.eqs:
+                    ind_var = self.make_indicator_eqs(ind_var)
+
+            self.num_integrated_indicator_vars = 0
+            end_indicator_idxs = len(self.xdot_eqs)
+
+            for ind_var in integrated_indicator_var_list:
+                num_add_indicator_vars = len(ind_var.eqs)
+                self.num_integrated_indicator_vars += num_add_indicator_vars
+
+                start_indicator_idxs = end_indicator_idxs + 1
+                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
+                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
+
+                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
+
+            if not self.sym_lambda:
+                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
+                self.full_lambda.extend(indicator_pad)
+
+        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
+                
         # Dont add drag if time dependent density, this will be added during integration due to time dependent density
         if self.time_dep_density:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
+
+        # Lambdify the equations to be used for Scipy integration
+        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
             
         return
-    
-    def build_model(self):
+
+    def build_sym_model(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
 
@@ -596,11 +666,11 @@ class ScenarioProperties:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
 
         # Lambdify the equations to be used for Scipy integration
-        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
-        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+        # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
-  
+        # self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+
         return
     
     def lambdify_equations(self):
@@ -626,7 +696,12 @@ class ScenarioProperties:
         
         """
         # Launch rates
+        # full_lambda_flattened = list(self.full_lambda)  
         full_lambda_flattened = []
+        # # Iterate through columns first, then rows
+        # for c in range(self.full_lambda.cols):      # Iterate over column indices (0, 1, 2)
+        #     for r in range(self.full_lambda.rows):  # Iterate over row indices (0 to 23)
+        #         full_lambda_flattened.append(self.full_lambda[r, c])
 
         if full_lambda is None:
             for i in range(len(self.full_lambda)):
