@@ -1,11 +1,46 @@
 import numpy as np
-from ..collisions.rv2coe_vec import rv2coe_vec 
+# from ..collisions.rv2coe_vec import rv2coe_vec 
 # when testing locally use
-# from rv2coe_vec import rv2coe_vec 
+# from rv2coe_vec import compute_sma_ecc  
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+from numba.typed import List
+from numba import int64, float64
+from numba import njit, prange
 
+
+@njit(fastmath=True)
+def compute_sma_ecc_scalar(r, v, mu):
+    rx, ry, rz = r
+    vx, vy, vz = v
+
+    # --- angular-momentum vector h = r × v ---
+    hx = ry * vz - rz * vy
+    hy = rz * vx - rx * vz
+    hz = rx * vy - ry * vx
+    h2 = hx*hx + hy*hy + hz*hz              # |h|²
+
+    # --- specific orbital energy ε = v²/2 – μ/r ---
+    v2      = vx*vx + vy*vy + vz*vz
+    r_norm  = math.sqrt(rx*rx + ry*ry + rz*rz)
+    eps     = 0.5 * v2 - mu / r_norm
+
+    # semi-major axis a
+    a = math.inf if eps == 0.0 else -mu / (2.0 * eps)
+
+    # --- eccentricity vector ---
+    rv_dot = rx*vx + ry*vy + rz*vz
+    coef   = v2 - mu / r_norm
+    ex = (coef * rx - rv_dot * vx) / mu
+    ey = (coef * ry - rv_dot * vy) / mu
+    ez = (coef * rz - rv_dot * vz) / mu
+    ecc = math.sqrt(ex*ex + ey*ey + ez*ez)
+
+    return a, ecc
+
+
+@njit(fastmath=True)
 def calculate_amsms_for_rocket_body(logd):
     """
     Calculate alpha, mu1, sigma1, mu2, sigma2 for rocket body related objects.
@@ -42,6 +77,7 @@ def calculate_amsms_for_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
+@njit(fastmath=True)
 def calculate_amsms_not_rocket_body(logd):
     """
     Calculate alpha, mu1, sigma1, mu2, sigma2 for non-rocket body related objects.
@@ -88,104 +124,692 @@ def calculate_amsms_not_rocket_body(logd):
 
     return alpha, mu1, sigma1, mu2, sigma2
 
-
-# def func_Am(d, ObjClass):
-#     """
-#     Calculates the area-to-mass ratio for spacecraft fragments based on NASA's new breakup model of evolve 4.0.
-    
-#     Parameters:
-#     d : ndarray
-#         Array of diameters in meters.
-#     ObjClass : int or float
-#         Object class indicating whether the object is a rocket body or not.
-    
-#     Returns:
-#     out : ndarray
-#         Area-to-mass ratio for each fragment.
-#     """
-#     numObj = d.size
-#     logds = np.log10(d)
-#     amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
-
-#     if 4.5 < ObjClass < 8.5:  # Rocket-body related
-#         for ind, logd in enumerate(logds):
-#             alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_for_rocket_body(logd)
-#             amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
-#     else:  # Not rocket body
-#         for ind, logd in enumerate(logds):
-#             alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_not_rocket_body(logd)
-#             amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
-
-#     N1 = amsms[:, 1] + amsms[:, 2] * np.random.randn(numObj)
-#     N2 = amsms[:, 3] + amsms[:, 4] * np.random.randn(numObj)
-
-#     out = 10 ** (amsms[:, 0] * N1 + (1 - amsms[:, 0]) * N2)
-
-#     return out
-
+@njit
 def func_Am(d, ObjClass):
-    """
-    Calculates the area-to-mass ratio for spacecraft fragments based on NASA's new breakup model of evolve 4.0.
-    
-    Parameters:
-    d : ndarray or float
-        Array of diameters in meters (or a single diameter).
-    ObjClass : int or float
-        Object class indicating whether the object is a rocket body or not.
-    
-    Returns:
-    out : ndarray
-        Area-to-mass ratio for each fragment.
-    """
-    # --- ensure d is always an array, even if scalar ---
-    d = np.atleast_1d(d).astype(float)
+    if isinstance(d, float):  # only float allowed in njit
+        d_list = List()
+        d_list.append(d)
+    else:
+        d_list = List()
+        for x in d:
+            d_list.append(x)
 
-    numObj = d.size
-    logds = np.log10(d)
-    amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
+    numObj = len(d_list)
+    logds = List()
+    for x in d_list:
+        logds.append(math.log10(x))
 
-    if 4.5 < ObjClass < 8.5:  # Rocket-body related
-        for ind, logd in enumerate(logds):
+    out = List.empty_list(float64)
+    for ind in range(numObj):
+        logd = logds[ind]
+
+        if 4.5 < ObjClass < 8.5:
             alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_for_rocket_body(logd)
-            amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
-    else:  # Not rocket body
-        for ind, logd in enumerate(logds):
+        else:
             alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_not_rocket_body(logd)
-            amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
 
-    N1 = amsms[:, 1] + amsms[:, 2] * np.random.randn(numObj)
-    N2 = amsms[:, 3] + amsms[:, 4] * np.random.randn(numObj)
+        # You must rewrite these random.gauss() into njit-compatible versions or move out of njit
+        z1 = random.gauss(0.0, 1.0)
+        z2 = random.gauss(0.0, 1.0)
 
-    out = 10 ** (amsms[:, 0] * N1 + (1 - amsms[:, 0]) * N2)
+        N1 = mu1 + sigma1 * z1
+        N2 = mu2 + sigma2 * z2
+        am = 10 ** (alpha * N1 + (1 - alpha) * N2)
+        out.append(am)
 
     return out
 
+@njit(fastmath=True)
 def func_dv(Am, mode):
     """
-    Calculate the change in velocity (delta-v) for debris fragments based on their area-to-mass ratio.
-
-    This will tell you velocity based off H. Kilnkrad - "Space Debris: Models and Risk Analysis" (2006).
-    Equation 3.42 (Coefficients) and 3.44 (Full Equation)
+    Calculate the change in velocity (delta-v) for debris fragments based on their
+    area-to-mass ratio, without using numpy.
 
     Args:
-        Am (np.ndarray): Area-to-mass ratio of fragments.
-        mode (str): Mode of calculation, e.g., 'col' for collision-induced delta-v or 'exp' for explosions
+        Am (list of float): Area-to-mass ratios of fragments.
+        mode (str): 'col' for collision-induced Δv or 'exp' for explosion-induced Δv.
 
     Returns:
-        np.ndarray: Calculated delta-v values for each fragment.
+        list of float: Δv values (in m/s) for each fragment.
     """
-    if mode == 'col':
-       mu = 0.9 * np.log10(Am) + 2.9 # Collision
-    elif mode == 'exp':
-        mu = 1.85 * np.log10(Am) + 1.85 # Explosion
-
     sigma = 0.4
-    N = mu + sigma * np.random.randn(*np.shape(mu))
-    z = 10 ** N # m/s
-    return z 
+    result = []
+    for a_m in Am:
+        # pick the right coefficient
+        if mode == 'col':
+            mu_val = 0.9 * math.log10(a_m) + 2.9
+        elif mode == 'exp':
+            mu_val = 1.85 * math.log10(a_m) + 1.85
+        else:
+            raise ValueError(f"Unknown mode '{mode}'")
 
-def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
+        # add Gaussian noise
+        N_val = mu_val + sigma * random.gauss(0, 1)
+
+        # final Δv (in m/s)
+        result.append(10 ** N_val)
+
+    return result
+
+
+from math import sqrt
+import math
+import random
+
+@njit(fastmath=True)
+def sum_by_index(values, idx_list):
+    total = 0.0
+    for j in idx_list:
+        total += values[j]
+    return total
+
+@njit
+def mask_to_indices(mask):
+    out = []
+    for i in range(len(mask)):
+        if mask[i]:
+            out.append(i)
+    return out
+
+@njit
+def sort_indices_by_values(values, indices):
+    n = len(indices)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if values[indices[i]] > values[indices[j]]:
+                indices[i], indices[j] = indices[j], indices[i]
+    return indices
+
+@njit
+def safe_sum(arr):
+    total = 0.0
+    for x in arr:
+        total += x
+    return total
+
+@njit
+def build_largeidx(d, p2_radius, p1_radius):
+    result = List.empty_list(int64)
+    for i in range(len(d)):
+        di = d[i]
+        if di > 2 * p2_radius and di < 2 * p1_radius:
+            result.append(i)
+    return result
+
+@njit(fastmath=True)
+def frag_col_SBM_vec_lc(ep, p1_in, p2_in, req=6.3781e+03, max_frag=float('inf'), LB=0.1):
     """
+
+    Collision model following NASA EVOLVE 4.0 standard breakup model (2001)
+    with the revision in ODQN "Proper Implementation of the 1998 NASA Breakup Model" (2011)
+
+    The Debris output looks lke this:
+    1. `a`: Semi-major axis (in km) - defines the size of the orbit.
+    2. `ecco`: Eccentricity - describes the shape of the orbit (0 for circular, closer to 1 for highly elliptical).
+    3. `inclo`: Inclination (in degrees) - the tilt of the orbit relative to the equatorial plane.
+    4. `nodeo`: Right ascension of ascending node (in degrees) - describes the orientation of the orbit in the plane.
+    5. `argpo`: Argument of perigee (in degrees) - the angle between the ascending node and the orbit's closest point to Earth.
+    6. `mo`: Mean anomaly (in degrees) - the position of the debris along the orbit at a specific time.
+    7. `bstar`: Drag coefficient - relates to atmospheric drag affecting the debris.
+    8. `mass`: Mass of the debris fragment (in kg).
+    9. `radius`: Radius of the debris fragment (in meters).
+    10. `errors`: Error values (various metrics used for error tracking or uncertainty).
+    11. `controlled`: A flag indicating whether the fragment is controlled (e.g., through active debris removal or a controlled reentry).
+    12. `a_desired`: Desired semi-major axis (in km) - often used in mission planning.
+    13. `missionlife`: Expected mission lifetime (in years).
+    14. `constel`: Identifier for the constellation to which the debris belongs (if any).
+    15. `date_created`: Date the fragment data was created (format depends on implementation, e.g., `YYYY-MM-DD`).
+    16. `launch_date`: Date of launch of the parent object (format depends on implementation).
+    17. `r[idx_a]`: Position vector (in km) - describes the 3D position of the fragment in space.
+    18. `v[idx_a]`: Velocity vector (in km/s) - describes the 3D velocity of the fragment.
+    19. `frag_objectclass`: Object class - a dimensionless identifier describing the type of fragment or debris.
+    20. `ID_frag`: Unique identifier for the fragment (could be a string or numeric ID).
+    
+    Parameters:
+    - ep: Epoch
+    - p1_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+    - p2_in: Array containing [mass, radius, r_x, r_y, r_z, v_x, v_y, v_z, object_class]
+    - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID', etc.
+    - LB: Lower bound for fragment sizes (meters)
+    
+    Returns:
+    - debris1: Array containing debris fragments from parent 1
+    - debris2: Array containing debris fragments from parent 2
+    - isCatastrophic: Boolean indicating if the collision is catastrophic
+    """
+    m = List.empty_list(float64)
+    m_rem = List.empty_list(float64)
+
+    # -- swap so p1 is always the heavier/larger --
+    if p1_in[0] < p2_in[0] or (p1_in[0] == p2_in[0] and p1_in[1] < p2_in[1]):
+        p1_in, p2_in = p2_in, p1_in
+
+    p1_mass, p1_radius = p1_in[0], p1_in[1]
+    p1_r = (p1_in[2], p1_in[3], p1_in[4])
+    p1_v = (p1_in[5], p1_in[6], p1_in[7])
+    p1_objclass       = p1_in[8]
+    p2_mass, p2_radius = p2_in[0], p2_in[1]
+    p2_r = (p2_in[2], p2_in[3], p2_in[4])
+    p2_v = (p2_in[5], p2_in[6], p2_in[7])
+    p2_objclass       = p2_in[8]
+
+    # unpack velocities and compute Δv by hand
+    v1x, v1y, v1z = p1_v
+    v2x, v2y, v2z = p2_v
+    dx, dy, dz = v1x-v2x, v1y-v2y, v1z-v2z
+    dv = math.sqrt(dx*dx + dy*dy + dz*dz)    # km/s
+    catastroph_ratio = (p2_mass*(dv*1000)**2)/(2*p1_mass*1000)
+
+    if catastroph_ratio < 40:
+        M = p2_mass * dv**2
+        isCatastrophic = False
+    else:
+        M = p1_mass + p2_mass
+        isCatastrophic = True
+
+    # build dd_edges via log‐space without np.logspace
+    n_edges = 200
+    log_min = math.log10(LB)
+    log_max = math.log10(min(1.0,2.0*p1_radius))
+    step = (log_max - log_min)/(n_edges-1)
+    dd_edges = [10**(log_min + i*step) for i in range(n_edges)]
+    # compute mid‐points:
+    dd_means = List()
+    for i in range(n_edges-1):
+        a, b = dd_edges[i], dd_edges[i+1]
+        dd_means.append(10**((math.log10(a)+math.log10(b))/2))
+
+    # compute nddcdf and diff → ndd
+    nddcdf = [0.1 * M**0.75 * e**(-1.71) for e in dd_edges]
+    ndd = List()
+    for i in range(len(nddcdf)-1):
+        diff = -(nddcdf[i+1] - nddcdf[i])
+        ndd.append(diff if diff>0 else 0.0)
+
+    # stochastic floor + fractional sampling
+    floor_ndd = [int(math.floor(x)) for x in ndd]
+    frac      = [x - math.floor(x) for x in ndd]
+    d_pdf = List()
+    for mean, base in zip(dd_means, floor_ndd):
+        # deterministic count
+        for _ in range(base):
+            d_pdf.append(mean)
+    # fractional
+    for mean, f in zip(dd_means, frac):
+        if random.random() < f:
+            d_pdf.append(mean)
+
+    # shuffle
+    def shuffle_list_inplace(arr):
+        n = len(arr)
+        for i in range(n - 1, 0, -1):
+            j = int(np.floor(np.random.random() * (i + 1)))
+            tmp = arr[i]
+            arr[i] = arr[j]
+            arr[j] = tmp
+
+    shuffle_list_inplace(d_pdf)
+    d = d_pdf
+
+    # compute area, Am, mass
+    A  = [0.556945 * (di**2.0047077) for di in d]
+    Am = func_Am(d, p1_objclass)
+    m  = [A[i] / Am[i] for i in range(len(A))]
+
+
+    # initialize remnant arrays
+    idx_rem1, idx_rem2 = List(), List()
+    largeidx = build_largeidx(d, p2_radius, p1_radius)
+
+    # Handle fragment mass allocation
+    if sum(m) < M:
+        if isCatastrophic:
+            # Catastrophic fragment handling
+            for i in range(len(d)):
+                di = d[i]
+                if di > 2 * p2_radius and di < 2 * p1_radius:
+                    largeidx.append(i)
+
+            m_assigned_large = sum_by_index(m, largeidx)
+
+            if m_assigned_large > p1_mass:
+                idx_large = [i for i in largeidx]  # manual copy
+                # Sort idx_large by m values
+                dord1 = [i for _, i in sorted([(m[j], j) for j in idx_large])]
+
+                cumsum = List()
+                total = 0.0
+                for i in dord1:
+                    total += m[i]
+                    cumsum.append(total)
+
+                indices = List()
+                for j in range(len(cumsum)):
+                    if cumsum[j] < p1_mass:
+                        indices.append(j)
+
+                if len(indices) > 0:
+                    last = indices[-1]
+                    # build keep mask
+                    keep_mask = [True] * len(m)
+                    for k in range(last + 1, len(dord1)):
+                        keep_mask[dord1[k]] = False
+
+                    # filter lists in-place
+                    m_new = List()
+                    d_new = List()
+                    A_new = List()
+                    Am_new = List()
+                    new_largeidx = List()
+
+                    for i in range(len(m)):
+                        if keep_mask[i]:
+                            m_new.append(m[i])
+                            d_new.append(d[i])
+                            A_new.append(A[i])
+                            Am_new.append(Am[i])
+                            if i in largeidx:
+                                new_largeidx.append(i)
+
+                    m = m_new
+                    d = d_new
+                    A = A_new
+                    Am = Am_new
+                    largeidx = new_largeidx
+                    m_assigned_large = cumsum[last]
+                else:
+                    m_assigned_large = 0.0
+
+            mass_max_small = min(p2_mass, m_assigned_large)
+            largeidx_set = set(largeidx)
+            smallidx_temp = [i for i in range(len(d)) if i not in largeidx_set]
+            dord1 = sort_indices_by_values(m, smallidx_temp.copy())
+            cumsum = List()
+            total = 0.0
+            for i in dord1:
+                total += m[i]
+                cumsum.append(total)
+            indices = [j for j, val in enumerate(cumsum) if val <= mass_max_small]
+            if indices:
+                last = indices[-1]
+                smallidx = [False] * len(d)
+                for i in dord1[:last+1]:
+                    smallidx[i] = True
+
+                smallidx_indices = mask_to_indices(smallidx)
+                m_assigned_small = sum_by_index(m, smallidx_indices)
+            else:
+                m_assigned_small = 0
+                smallidx = [False] * len(d)
+
+            m_remaining_large = p1_mass - m_assigned_large
+            m_remaining_small = p2_mass - m_assigned_small
+            m_remaining = [m_remaining_large, m_remaining_small]
+
+            # Handle remnant mass distribution
+            m_remSum = M - sum(m)
+            remDist = [random.random() for _ in range(random.randint(2, 8))]
+            totalDist = sum(remDist)
+            m_rem_temp = [m_remSum * x / totalDist for x in remDist]
+            m_rem_sort = sorted(m_rem_temp, reverse=True)
+            rem_temp_ordered = [1 + int(round(random.random())) for _ in m_rem_sort]
+
+            for i_rem, mass_val in enumerate(m_rem_sort):
+                idx_choice = 0 if rem_temp_ordered[i_rem] == 1 else 1
+                if mass_val > m_remaining[idx_choice]:
+                    diff = mass_val - m_remaining[idx_choice]
+                    m_rem_sort[i_rem] = m_remaining[idx_choice]
+                    m_remaining[idx_choice] = 0
+                    if i_rem == len(m_rem_sort)-1:
+                        m_rem_sort.append(diff)
+                        rem_temp_ordered.append(2 if idx_choice == 0 else 1)
+                    else:
+                        share = diff / (len(m_rem_sort) - i_rem - 1)
+                        for k in range(i_rem+1, len(m_rem_sort)):
+                            m_rem_sort[k] += share
+                else:
+                    m_remaining[idx_choice] -= mass_val
+
+            m_rem = m_rem_sort
+            d_rem_approx = [0] * len(m_rem)
+            for i, mass_val in enumerate(m_rem):
+                if rem_temp_ordered[i] == 1:
+                    d_rem_approx[i] = ((mass_val / p1_mass * p1_radius**3)**(1/3)) * 2
+                else:
+                    d_rem_approx[i] = ((mass_val / p2_mass * p2_radius**3)**(1/3)) * 2
+            Am_rem = func_Am(d_rem_approx, p1_objclass)
+            A_rem = [mass_val * am for mass_val, am in zip(m_rem, Am_rem)]
+            d_rem = d_rem_approx
+        else:
+            # Non-catastrophic collision fragments are deposited from LB upward, until total mass M is reached
+            large_mask = [i for i, di in enumerate(d) if (di > 2 * p2_radius or m[i] > p2_mass) and di < 2 * p1_radius]
+            m_assigned_large = sum_by_index(m, large_mask)
+
+            if m_assigned_large > p1_mass:
+                idx_large = large_mask[:]  # assumed to be a list of ints
+                # Sort indices by mass
+                for i in range(len(idx_large)):
+                    for j in range(i + 1, len(idx_large)):
+                        if m[idx_large[i]] > m[idx_large[j]]:
+                            idx_large[i], idx_large[j] = idx_large[j], idx_large[i]
+
+                csum = List()
+                total = 0.0
+                for i in range(len(idx_large)):
+                    total += m[idx_large[i]]
+                    csum.append(total)
+
+                last = -1
+                for j in range(len(csum)):
+                    if csum[j] < p1_mass:
+                        last = j
+
+                if last >= 0:
+                    # Construct keep mask
+                    keep_mask = [True] * len(m)
+                    for i in range(last + 1, len(idx_large)):
+                        keep_mask[idx_large[i]] = False
+
+                    # Filter arrays
+                    m_new = List()
+                    d_new = List()
+                    A_new = List()
+                    Am_new = List()
+                    new_large_mask = List()
+
+                    for i in range(len(m)):
+                        if keep_mask[i]:
+                            m_new.append(m[i])
+                            d_new.append(d[i])
+                            A_new.append(A[i])
+                            Am_new.append(Am[i])
+                            if i in large_mask:
+                                new_large_mask.append(i)
+
+                    m = m_new
+                    d = d_new
+                    A = A_new
+                    Am = Am_new
+                    large_mask = new_large_mask
+                    m_assigned_large = csum[last]
+                else:
+                    m_assigned_large = 0.0
+
+            m_remaining_large = p1_mass - m_assigned_large
+            small_mask = [i for i in range(len(d)) if i not in large_mask and d[i] > 2 * p1_radius]
+            m_rem_sum = M - sum(m)
+
+            if m_rem_sum > m_remaining_large:
+                m_rem1 = m_remaining_large
+                d_rem1 = (m_rem1 / p1_mass * p1_radius**3)**(1/3) * 2
+                m_rem2 = m_rem_sum - m_remaining_large
+                d_rem2 = (m_rem2 / p2_mass * p2_radius**3)**(1/3) * 2
+                d_rem = [d_rem1, d_rem2]
+                m_rem = [m_rem1, m_rem2]
+                Am_rem = func_Am(d_rem, p1_objclass)
+                A_rem = [mr * am for mr, am in zip(m_rem, Am_rem)]
+                idx_rem1, idx_rem2 = 0, 1
+            else:
+                m_rem = [m_rem_sum]
+                d_rem = [(m_rem_sum / p1_mass * p1_radius**3)**(1/3) * 2]
+                Am_rem = func_Am(d_rem, p1_objclass)
+                A_rem = [mr * am for mr, am in zip(m_rem, Am_rem)]
+                idx_rem1, idx_rem2 = 0, None
+
+            # drop any too-small remnants
+            mask = [(d_rem[i] >= LB and m_rem[i] >= M/1000.0) for i in range(len(d_rem))]
+            d_rem = [d_rem[i] for i in range(len(d_rem)) if mask[i]]
+            m_rem = [m_rem[i] for i in range(len(m_rem)) if mask[i]]
+            A_rem = [A_rem[i] for i in range(len(A_rem)) if mask[i]]
+            Am_rem = [Am_rem[i] for i in range(len(Am_rem)) if mask[i]]
+            if len(d_rem) <= len(mask) and not mask[0]: idx_rem1 = None
+            if len(d_rem) <= len(mask) and len(mask) > 1 and not mask[1]: idx_rem2 = None
+    else:
+        # sort m ascending and keep fragments until cumulative mass < M
+        # Sort indices by ascending mass
+        dord = list(range(len(m)))
+        for i in range(len(dord)):
+            for j in range(i + 1, len(dord)):
+                if m[dord[i]] > m[dord[j]]:
+                    dord[i], dord[j] = dord[j], dord[i]
+
+        # Compute cumulative mass until total + m[i] < M
+        total = 0.0
+        valididx = List()
+        for i in range(len(dord)):
+            mi = m[dord[i]]
+            if total + mi < M:
+                valididx.append(dord[i])
+                total += mi
+        cumsum_lower = total
+
+        # Filter fragments by valididx
+        m_new = List()
+        d_new = List()
+        A_new = List()
+        Am_new = List()
+        for i in range(len(valididx)):
+            idx = valididx[i]
+            m_new.append(m[idx])
+            d_new.append(d[idx])
+            A_new.append(A[idx])
+            Am_new.append(Am[idx])
+        m = m_new
+        d = d_new
+        A = A_new
+        Am = Am_new
+
+        # Assign “large” and “small” fragments based on size and mass
+        largeidx = List()
+        for i in range(len(d)):
+            if (d[i] > 2.0 * p2_radius or m[i] > p2_mass) and d[i] < 2.0 * p1_radius:
+                largeidx.append(i)
+
+        smallidx = List()
+        for i in range(len(d)):
+            is_large = False
+            for j in range(len(largeidx)):
+                if i == largeidx[j]:
+                    is_large = True
+                    break
+            if (d[i] > 2.0 * p1_radius) and (not is_large):
+                smallidx.append(i)
+
+        # --- Check if there is mass remaining, and generate an additional fragment if needed ---
+        m_rem = M - cumsum_lower  # remaining mass to accumulate to M
+
+        if m_rem > M / 1000.0:  # if the remaining mass is larger than 0.1% of M
+            # determine how to assign the extra fragment
+            mass_small_assigned  = sum_by_index(m, smallidx)
+            mass_large_assigned  = sum_by_index(m, largeidx)
+
+            if m_rem > (p2_mass - mass_small_assigned):
+                rand_assign_frag = 1  # assign to larger satellite
+            elif m_rem > (p1_mass - mass_large_assigned):
+                rand_assign_frag = 2  # assign to smaller satellite
+            else:
+                rand_assign_frag = 1 if random.random() < 0.5 else 2  # randomly 1 or 2
+
+            # compute approximate diameter for the remnant fragment
+            if rand_assign_frag == 1:
+                d_rem_approx = (m_rem / p1_mass * p1_radius**3)**(1/3) * 2
+                idx_rem1 = 0
+                idx_rem2 = None
+            else:
+                d_rem_approx = (m_rem / p2_mass * p2_radius**3)**(1/3) * 2
+                idx_rem1 = None
+                idx_rem2 = 0
+
+            # compute its A/m and area
+            Am_rem_list = func_Am([d_rem_approx], p1_objclass)
+            A_rem = [m_rem * Am_rem_list[0]]
+            d_rem = [d_rem_approx]
+            Am_rem = [Am_rem_list[0]]
+
+            # remove if below lower bound and negligible mass
+            if d_rem_approx < LB and m_rem < M / 1000.0:
+                d_rem = List()
+                A_rem = List()
+                Am_rem = List()
+                m_rem = List()
+                idx_rem1 = None
+                idx_rem2 = None
+        else:
+            # no extra fragment needed
+            d_rem = List()
+            A_rem = List()
+            Am_rem = List()
+            m_rem = List()
+            idx_rem1 = None
+            idx_rem2 = None
+    
+    # Assign dv to random directions; create samples on unit sphere
+    # concatenate Am and Am_rem into one list for func_dv
+    # Manually concatenate Am and Am_rem
+    Am_all = List.empty_list(float64)
+    for i in range(len(Am)):
+        Am_all.append(Am[i])
+    for i in range(len(Am_rem)):
+        Am_all.append(Am_rem[i])
+
+    # calculate delta-v values (func_dv still expects an array)
+    dv_raw = func_dv(Am_all, 'col')  # returns list or array
+    dv_values = [dv / 1000.0 for dv in dv_raw]  # km/s
+
+    # number of fragments
+    N = len(dv_values)
+
+    # sample random points on the sphere
+    u = [random.random() * 2.0 - 1.0 for _ in range(N)]           # uniform in [-1, 1]
+    theta = [random.random() * 2.0 * math.pi for _ in range(N)]  # uniform in [0, 2π)
+
+    # compute spherical coordinates
+    v_vals = [math.sqrt(1.0 - u[i]*u[i]) for i in range(N)]
+    p = [
+        (v_vals[i] * math.cos(theta[i]),
+        v_vals[i] * math.sin(theta[i]),
+        u[i])
+        for i in range(N)
+    ]
+
+    # scale directions by dv_values to get dv_vec
+    dv_vec = [
+        (p[i][0] * dv_values[i],
+        p[i][1] * dv_values[i],
+        p[i][2] * dv_values[i])
+        for i in range(N)
+    ]
+
+    # --- handle the non-catastrophic remnant append ---
+    if not isCatastrophic:
+        # find remnant mass of parent object; add to *_rem object
+        p1remnantmass = p1_mass + p2_mass - (safe_sum(m) + safe_sum(m_rem))        
+        m_rem.append(p1remnantmass)
+        d_rem.append(2 * p1_radius)
+        A_rem.append(math.pi * p1_radius**2)
+        Am_rem.append(math.pi * p1_radius**2 / p1remnantmass)
+        dv_values = list(dv_values) + [0.0]  # nonchange from parent object
+        dv_vec.append((0.0, 0.0, 0.0))
+
+    # combine m and m_rem as pure-Python lists to avoid dimension mismatches
+    total_debris = safe_sum(m) + safe_sum(m_rem)
+    if abs(total_debris - (p1_mass + p2_mass)) > M * 0.05:
+        print("Warning: Total sum of debris mass differs from mass of original objects")
+
+    # ensure all fragment arrays are 1D before stacking
+    d_all = d + d_rem
+    A_all = A + A_rem
+    Am_all = list(Am) + list(Am_rem)
+    m_all = m + m_rem
+    # dv and dv_vec are already 1D or 2D with correct shape
+    fragments = List()
+    for i in range(len(d_all)):
+        fragments.append((
+            d_all[i],
+            A_all[i],
+            Am_all[i],
+            m_all[i],
+            dv_values[i],
+            dv_vec[i][0],
+            dv_vec[i][1],
+            dv_vec[i][2],
+        ))
+
+    # Distribute fragments amongst parent 1 and parent 2
+    fragments1 = List()
+    fragments2 = List()
+    if isCatastrophic:
+        # initial assignment based on diameter
+        largeidx_all = [(frag[0] > 2 * p2_radius and frag[0] < 2 * p1_radius) for frag in fragments]
+        smallidx_all = [(frag[0] > 2 * p1_radius) for frag in fragments]
+        # include any remnant indices
+        for idx in idx_rem1:
+            if 0 <= idx < len(largeidx_all):
+                largeidx_all[idx] = True
+        for idx in idx_rem2:
+            if 0 <= idx < len(largeidx_all):
+                largeidx_all[idx] = True
+        # split assigned and unassigned
+        unassigned = List()
+        cum_mass_p1 = 0.0
+        # collect initial fragments
+        for i, frag in enumerate(fragments):
+            if largeidx_all[i]:
+                fragments1.append(frag)
+                cum_mass_p1 += frag[3]
+            elif smallidx_all[i]:
+                fragments2.append(frag)
+            else:
+                unassigned.append(frag)
+        # distribute unassigned until p1_mass reached
+        for frag in unassigned:
+            if cum_mass_p1 + frag[3] <= p1_mass:
+                fragments1.append(frag)
+                cum_mass_p1 += frag[3]
+            else:
+                fragments2.append(frag)
+    else:
+        # Non-catastrophic collision: largest fragment to p1, rest to p2
+        if fragments:
+            # find maximum mass
+            max_mass = 0.0
+            if fragments:
+                max_mass = fragments[0][3]
+                for i in range(1, len(fragments)):
+                    val = fragments[i][3]
+                    if val > max_mass:
+                        max_mass = val
+    
+    # Remove fragments smaller than LB
+    if fragments1:
+        fragments1 = [frag for frag in fragments1 if frag[0] >= LB]
+    if fragments2:
+        fragments2 = [frag for frag in fragments2 if frag[0] >= LB]
+    
+    fragments = List()
+    for i in range(len(d_all)):
+        fragments.append((
+            d_all[i],
+            A_all[i],
+            Am_all[i],
+            m_all[i],
+            dv_values[i],
+            dv_vec[i][0],
+            dv_vec[i][1],
+            dv_vec[i][2],
+        ))
+    # then convert back to a numpy array if you still need it:
+    # fragments = np.array(fragments)
+
+    # the very last bit—calling func_create_tlesv2_vec—remains unchanged:
+    debris1 = func_create_tlesv2_vec(ep, p1_r, p1_v, p1_objclass, fragments1, max_frag, req)
+    debris2 = func_create_tlesv2_vec(ep, p2_r, p2_v, p2_objclass, fragments2, max_frag, req)
+    
+    return debris1, debris2, isCatastrophic
+
+def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, req=6371.0, max_frag=1000, LB=0.1):
+    """
+
     Collision model following NASA EVOLVE 4.0 standard breakup model (2001)
     with the revision in ODQN "Proper Implementation of the 1998 NASA Breakup Model" (2011)
 
@@ -268,9 +892,7 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     A = 0.556945 * d ** 2.0047077 # calculate area, eq 2.72
     Am = func_Am(d, p1_objclass) # us Am converstion of larger object
     m = A / Am
-    
-    # print(f"Number of fragments: {len(m)}")
-    
+        
     # Initialize remnant indices
     idx_rem1 = np.array([], dtype=int)
     idx_rem2 = np.array([], dtype=int)
@@ -523,7 +1145,7 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
             m_rem   = np.array([])
             idx_rem1 = None
             idx_rem2 = None
-    
+        
     # Assign dv to random directions; create samples on unit sphere
     # concatenate Am and Am_rem into one array for func_dv
     dv = func_dv(np.concatenate((Am, Am_rem)), 'col') / 1000.0  # km/s
@@ -561,8 +1183,7 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
     # combine m and m_rem as 1D arrays to avoid dimension mismatch
     total_debris = np.sum(np.concatenate((np.atleast_1d(m), np.atleast_1d(m_rem))))
     if abs(total_debris - (p1_mass + p2_mass)) > M * 0.05:
-        print(f"Warning: Total sum of debris mass ({total_debris:.1f} kg) "
-            f"differs from mass of original objects ({p1_mass + p2_mass:.1f} kg)")
+        print("Warning: Total sum of debris mass differs from mass of original objects")
 
     # ensure all fragment arrays are 1D before stacking
     d_all   = np.concatenate((np.atleast_1d(d),    np.atleast_1d(d_rem)))
@@ -581,17 +1202,17 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
         np.atleast_1d(dv_vec[:, 2]),
     ])
 
-    # Distribute fragments amongst parent 1 and parent 2
+        # Distribute fragments amongst parent 1 and parent 2
     if isCatastrophic:
         # Initialize assignment arrays
         largeidx_all = (fragments[:, 0] > 2 * p2_radius) & (fragments[:, 0] < 2 * p1_radius)
         smallidx_all = (fragments[:, 0] > 2 * p1_radius) & (~largeidx_all)
 
         # Assign remnant fragments if any
-        if 'idx_rem1' in locals() and isinstance(idx_rem1, (list, np.ndarray)) and len(idx_rem1) > 0:
-            largeidx_all = largeidx_all | np.isin(np.arange(len(fragments)), idx_rem1)
-        if 'idx_rem2' in locals() and isinstance(idx_rem2, (list, np.ndarray)) and len(idx_rem2) > 0:
-            smallidx_all = smallidx_all | np.isin(np.arange(len(fragments)), idx_rem2)
+        if idx_rem1.size > 0:
+            largeidx_all |= np.isin(np.arange(len(fragments)), idx_rem1)
+        if idx_rem2.size > 0:
+            largeidx_all |= np.isin(np.arange(len(fragments)), idx_rem2)
 
         assignedidx = largeidx_all | smallidx_all
         idx_unassigned = np.where(~assignedidx)[0]
@@ -618,7 +1239,7 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
         else:
             fragments1 = np.array([])
             fragments2 = np.array([])
-    
+        
     # Remove fragments smaller than LB
     if fragments1.size > 0:
         fragments1 = fragments1[fragments1[:, 0] >= LB]
@@ -626,130 +1247,59 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, param, LB):
         fragments2 = fragments2[fragments2[:, 0] >= LB]
     
     # Create debris objects
-    debris1 = func_create_tlesv2_vec(ep, p1_r, p1_v, p1_objclass, fragments1, param)
-    # param['maxID'] += debris1.shape[0]
-    debris2 = func_create_tlesv2_vec(ep, p2_r, p2_v, p2_objclass, fragments2, param)
-    # param['maxID'] += debris2.shape[0]
+    debris1 = func_create_tlesv2_vec(ep, p1_r, p1_v, p1_objclass, fragments1, max_frag, req)
+    debris2 = func_create_tlesv2_vec(ep, p2_r, p2_v, p2_objclass, fragments2, max_frag, req)
     
     return debris1, debris2, isCatastrophic
 
-def func_create_tlesv2_vec(ep, r_parent, v_parent, class_parent, fragments, param):
+@njit(fastmath=True)
+def func_create_tlesv2_vec(ep, r_parent, v_parent, class_parent, fragments, max_frag, req):
     """
-    Create new satellite objects from fragmentation information.
+    Pure-Python version, no NumPy.
 
     Parameters:
-    - ep: Epoch
-    - r_parent: Parent satellite position vector [x, y, z]
-    - v_parent: Parent satellite velocity vector [vx, vy, vz]
-    - class_parent: Parent satellite object class
-    - fragments: Nx8 array containing fragment data:
-        [diameter, Area, AMR, mass, total_dv, dv_X, dv_Y, dv_Z]
-    - param: Dictionary containing parameters like 'max_frag', 'mu', 'req', 'maxID'
+    - ep: Epoch (passed through, unused here)
+    - r_parent: tuple/list of 3 floats (x, y, z) [km]
+    - v_parent: tuple/list of 3 floats (vx, vy, vz) [km/s]
+    - class_parent: unused
+    - fragments: iterable of 8-tuples/lists:
+        [diameter, area, AMR, mass, total_dv, dv_x, dv_y, dv_z]
+    - max_frag: int, maximum number of fragments to keep
+    - req: float, normalization factor for semi-major axis
 
     Returns:
-    - mat_frag: Array with fragment orbital elements and related data
+    - List of (a_normalized, ecc, mass) for each valid fragment
     """
+    # 1) ensure we have a list
+    frags = list(fragments)
+    num_frag = len(frags)
 
-    max_frag = param.get('max_frag', float('inf'))
-    mu = param.get('mu')
-    req = param.get('req')
-    maxID = param.get('maxID', 0)
+    # 2) warn if too many
+    if num_frag > max_frag:
+        print(f"Warning: number of fragments ({num_frag}) exceeds max_frag ({max_frag})")
 
-    r0 = np.array(r_parent)
-    v0 = np.array(v_parent)
+    # 3) take top-mass fragments
+    n_frag = min(num_frag, max_frag)
+    frags = sorted(frags, key=lambda f: f[3], reverse=True)[:n_frag]
 
-    num_fragments = fragments.shape[0]
+    # unpack parent pos/vel
+    rx, ry, rz = r_parent
+    v0x, v0y, v0z = v_parent
 
-    if num_fragments > max_frag:
-        print(f"Warning: number of fragments {num_fragments} exceeds max_frag {max_frag}")
-    n_frag = min(num_fragments, max_frag)
+    out = []
+    for diam, area, amr, mass, total_dv, dvx, dvy, dvz in frags:
+        # new position same as parent
+        r_new = (rx, ry, rz)
+        # new velocity = parent + delta-v
+        v_new = (v0x + dvx, v0y + dvy, v0z + dvz)
 
-    # Sort fragments by mass in descending order
-    sort_idx = np.argsort(-fragments[:, 3])  # mass is in column 4 (index 3)
-    fragments = fragments[sort_idx[:n_frag], :]
+        # compute scalar SMA and ecc
+        a, ecc = compute_sma_ecc_scalar(r_new, v_new, 398600.5)  # using your existing scalar version
+        if a > 0:
+            a_norm = a / req
+            out.append((a_norm, ecc, mass))
 
-    # Compute new velocities by adding dv to parent velocity
-    v = np.column_stack((
-        fragments[:, 5] + v0[0],
-        fragments[:, 6] + v0[1],
-        fragments[:, 7] + v0[2]
-    ))
-
-    # Positions are the same as parent position
-    r = np.tile(r0, (n_frag, 1))
-
-    # Compute orbital elements from position and velocity vectors
-    r = np.atleast_2d(r)
-    v = np.atleast_2d(v)
-
-    # Initialize lists to store orbital elements
-    a_list = []
-    ecc_list = []
-    incl_list = []
-    nodeo_list = []
-    argpo_list = []
-    mo_list = []
-
-    # Loop through each fragment and compute orbital elements
-    for i in range(n_frag):
-        p,a,ecc,incl,omega,argp,nu,m,arglat,truelon,lonper = rv2coe_vec(r[i], v[i], 398600.5) # mu in km^3/s^2
-        a_list.append(a)
-        ecc_list.append(ecc)
-        incl_list.append(incl)
-        nodeo_list.append(nu)
-        argpo_list.append(argp)
-        mo_list.append(m)
-
-    # Convert lists to arrays
-    a = np.array(a_list)
-    ecc = np.array(ecc_list)
-    incl = np.array(incl_list)
-    nodeo = np.array(nodeo_list)
-    argpo = np.array(argpo_list)
-    mo = np.array(mo_list)
-
-    # Process only valid orbits (a > 0)
-    idx_a = np.where(a > 0)[0]
-    num_a = len(idx_a)
-
-    a = a[idx_a] / req
-    ecco = ecc[idx_a]
-    inclo = incl[idx_a]
-    nodeo = nodeo[idx_a]
-    argpo = argpo[idx_a]
-    mo = mo[idx_a]
-
-    # Bstar parameter
-    rho_0 = 0.157  # kg/(m^2 * Re)
-    A_M = fragments[idx_a, 2]  # AMR is in column 3 (index 2)
-    bstar = (0.5 * 2.2 * rho_0) * A_M  # Bstar in units of 1/Re
-
-    mass = fragments[idx_a, 3]  # mass is in column 4 (index 3)
-    radius = fragments[idx_a, 0] / 2  # diameter is in column 1 (index 0)
-
-    errors = np.zeros(num_a)
-    controlled = np.zeros(num_a)
-    a_desired = np.full(num_a, np.nan)
-    missionlife = np.full(num_a, np.nan)
-    constel = np.zeros(num_a)
-
-    date_created = np.full(num_a, ep)
-    launch_date = np.full(num_a, np.nan)
-
-    frag_objectclass = np.full(num_a, filter_objclass_fragments_int(class_parent))
-
-    ID_frag = np.arange(maxID + 1, maxID + num_a + 1)
-
-    # Assemble mat_frag
-    mat_frag = np.column_stack((
-        a, ecco, inclo, nodeo, argpo, mo, bstar, mass, radius,
-        errors, controlled, a_desired, missionlife, constel,
-        date_created, launch_date, r[idx_a], v[idx_a], frag_objectclass, ID_frag
-    ))
-
-    return mat_frag
-
-
+    return out
 
 def filter_objclass_fragments_int(class_parent):
     """
@@ -758,6 +1308,24 @@ def filter_objclass_fragments_int(class_parent):
     For this implementation, we'll assume fragments inherit the parent's class.
     """
     return class_parent
+
+
+def perifocal_r_and_v(a, e, nu, mu):
+        r_mag = a * (1 - e**2) / (1 + e * np.cos(nu))
+        r = r_mag * np.array([np.cos(nu), np.sin(nu), 0.0])
+
+        h = np.sqrt(mu * a * (1 - e**2))
+        v = (mu / h) * np.array([-np.sin(nu), e + np.cos(nu), 0.0])
+        return r, v
+
+def rotate_vector_45_deg_in_plane(v):
+    theta = np.pi / 4  # 45 degrees
+    R = np.array([
+        [np.cos(theta), -np.sin(theta), 0],
+        [np.sin(theta),  np.cos(theta), 0],
+        [0,              0,             1]
+    ])
+    return R @ v
 
 # Example usage
 if __name__ == "__main__":    
@@ -775,26 +1343,10 @@ if __name__ == "__main__":
     LB = 0.1  # Assuming this is the lower bound in meters
 
     import numpy as np
-    import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
 
     # === Helper functions ===
-    def perifocal_r_and_v(a, e, nu, mu):
-        r_mag = a * (1 - e**2) / (1 + e * np.cos(nu))
-        r = r_mag * np.array([np.cos(nu), np.sin(nu), 0.0])
-
-        h = np.sqrt(mu * a * (1 - e**2))
-        v = (mu / h) * np.array([-np.sin(nu), e + np.cos(nu), 0.0])
-        return r, v
-
-    def rotate_vector_45_deg_in_plane(v):
-        theta = np.pi / 4  # 45 degrees
-        R = np.array([
-            [np.cos(theta), -np.sin(theta), 0],
-            [np.sin(theta),  np.cos(theta), 0],
-            [0,              0,             1]
-        ])
-        return R @ v
+    
 
     def test_fragmentation_by_sma_new(frag_col_func, param, LB):
         """
@@ -848,14 +1400,9 @@ if __name__ == "__main__":
             debris1, debris2, isCatastrophic = frag_col_func(0, p1, p2, param, LB)
 
             if debris1.size == 0:
-                print(f"[{sma} km] No debris generated")
-                continue
+                print("No debris generated")
 
             if debris2.size > 0:
-                print(f"Debris generated at SMA {sma} km: {debris2.shape[0]} fragments from object 1, ")
-                # concatenate rows of debris2 onto debris1
-                # debris1 = np.concatenate((debris1, debris2), axis=0)
-                # alternatively:
                 debris1 = np.vstack([debris1, debris2])
 
             results.append((sma, debris1))
@@ -921,7 +1468,7 @@ if __name__ == "__main__":
         sma1=7463.1366
         sma2=7463.1366
         ecc_1=0
-        ecc_2=0.001
+        ecc_2=0.01
         # ecc_1 = 0   # Eccentricity of object 1
         # ecc_2 = 0  # Eccentricity of object 2
         true_anomaly_deg = 90
@@ -941,28 +1488,21 @@ if __name__ == "__main__":
         p1 = np.array([m1, rad1, *r1, *v1, 1.0])
         p2 = np.array([m2, rad2, *r2, *v2, 1.0])
 
-        debris1, debris2, isCatastrophic = frag_col_func(0, p1, p2, param, LB)
+        debris1, debris2, isCatastrophic = frag_col_func(0, p1, p2, LB=LB)
 
-        if debris1.size == 0:
-            print(f"[{sma1} km] No debris generated")
+        print(f"Debris generated at SMA {sma1} km: {len(debris1)} fragments")
+        print(f"Debris generated at SMA {sma2} km: {len(debris2)} fragments")
 
-        print(f"Debris generated at SMA {sma1} km: {debris1.shape[0]} fragments")
-        print(f"Debris generated at SMA {sma2} km: {debris2.shape[0]} fragments")
+        # sum together debris1 and debris2 plot sma and ecc
+        debris = np.vstack([debris1, debris2])
+        sma_alt_km = (debris[:, 0] - 1) * earth_radius_km
+        ecc = debris[:, 1]
+        plt.figure(figsize=(10, 6))
+        plt.scatter(sma_alt_km, ecc, alpha=0.5, s=10, c='blue')
+        plt.title(f"Debris Distribution at SMA {sma1} km")
+        plt.xlabel("SMA as altitude (km)")
+        plt.ylabel("Eccentricity") 
+        plt.show()
 
-        # # sum together debris1 and debris2 plot sma and ecc
-        # debris = np.vstack([debris1, debris2])
-        # sma_alt_km = (debris[:, 0] - 1) * earth_radius_km
-        # ecc = debris[:, 1]
-        # plt.figure(figsize=(10, 6))
-        # plt.scatter(sma_alt_km, ecc, alpha=0.5, s=10, c='blue')
-        # plt.title(f"Debris Distribution at SMA {sma1} km")
-        # plt.xlabel("SMA as altitude (km)")
-        # plt.ylabel("Eccentricity") 
-        # plt.show()
-
-
-    # run 100 times
-    for i in range(100):
-        print(f"Test run {i+1}")
-        test_one_sma(frag_col_SBM_vec_lc2, param, LB)
-    # test_one_sma(frag_col_SBM_vec_lc2, param, LB)
+    # Run the test
+    test_one_sma(frag_col_SBM_vec_lc, param, LB)

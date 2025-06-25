@@ -149,15 +149,15 @@ class Model:
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
 
+            with open('scenario-properties-baseline.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
+                
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
-                self.scenario_properties.build_indicator_variables()
-            
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
+                self.scenario_properties.build_indicator_variables()     
 
             # Initial population of species and any launches
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch

@@ -6,6 +6,8 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import multiprocessing as mp
+import math
+import random
 
 
 def func_Am(d, ObjClass):
@@ -56,15 +58,27 @@ def func_dv(Am, mode):
     Returns:
         np.ndarray: Calculated delta-v values for each fragment.
     """
-    if mode == 'col':
-       mu = 0.2 * np.log10(Am) + 1.85 # Explosion
-    elif mode == 'exp':
-        mu = 0.9 * np.log10(Am) + 2.9
+    # ensure Am is a list of floats
+    if isinstance(Am, (int, float)):
+        Am_list = [float(Am)]
+    else:
+        Am_list = [float(x) for x in Am]
 
     sigma = 0.4
-    N = mu + sigma * np.random.randn(*np.shape(mu))
-    z = 10 ** N # m/s
-    return z 
+    result = []
+    for am_val in Am_list:
+        if mode == 'col':
+            mu_val = 0.9 * math.log10(am_val) + 2.9
+        elif mode == 'exp':
+            mu_val = 1.85 * math.log10(am_val) + 1.85
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+        # add Gaussian noise
+        N_val = mu_val + sigma * random.gauss(0, 1)
+        result.append(10 ** N_val)
+
+    # return scalar if single input, else list
+    return result[0] if len(result) == 1 else result
 
 def calculate_amsms_for_rocket_body(logd):
     """

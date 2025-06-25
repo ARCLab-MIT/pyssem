@@ -11,6 +11,7 @@ import re
 from itertools import combinations
 import math
 import traceback
+from line_profiler import profile
 
 def create_elliptical_collision_pairs(scen_properties):
 
@@ -482,7 +483,7 @@ def rotate_vector_45_deg_in_plane(v):
     ])
     return rot_matrix @ v
 
-
+@profile
 def process_elliptical_collision_pair(args):
     i, collision_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
 
@@ -573,6 +574,7 @@ def func_de(R_list, V_list):
     # Return the list of eccentricities
     return eccentricities
 
+@profile
 def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_mass, binE_ecc, collision_index, n_shells=0):
     param = {
         'req': 6.3781e+03,
@@ -606,7 +608,8 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
     p2 = np.array([m2, rad_2, *r2, *v2, 1.0])
 
     try:
-        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, param, LB)
+        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, LB=LB)
+        # debris will now come out in the format of [a, ecco, mass]
     except Exception as e:
         print(f"Error in frag_col_SBM_vec_lc2: {e} \n for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
         traceback.print_exc()
@@ -628,7 +631,7 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
 
         frag_a.append((norm_earth_radius - 1) * 6371 + 6371) 
         frag_e.append(debris[1])
-        frag_mass.append(debris[7])
+        frag_mass.append(debris[2])
     
     for debris in debris2:
         norm_earth_radius = debris[0]
@@ -637,7 +640,7 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
 
         frag_a.append((norm_earth_radius - 1) * 6371 + 6371) 
         frag_e.append(debris[1])
-        frag_mass.append(debris[7])
+        frag_mass.append(debris[2])
 
     frag_properties = np.array([frag_a, frag_mass, frag_e]).T
 
