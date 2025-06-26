@@ -1,5 +1,5 @@
 from utils.collisions.collisions import func_Am, func_dv
-from utils.collisions.NASA_SBM_frags import frag_col_SBM_vec_lc2
+from utils.collisions.NASA_SBM_frags import frag_col_SBM_vec_lc
 from utils.collisions.NASA_SBN6 import *
 import numpy as np
 from tqdm import tqdm
@@ -12,6 +12,27 @@ from itertools import combinations
 import math
 import traceback
 from line_profiler import profile
+
+# Helper function for parallel processing of species pairs
+def _process_sp_pair(args):
+    i, sp_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
+    S = scen_properties.n_shells
+    D = len(debris_species)
+    E = len(binE_ecc) - 1
+    fragments_3d = np.zeros((S, D, E), dtype=float)
+    for shell_col in sp_pair.collision_pair_by_shell:
+        gamma = process_elliptical_collision_pair(
+            (i, shell_col, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven)
+        )
+        if gamma.fragments is None:
+            continue
+        fragments_3d += gamma.fragments
+    sp_pair.debris_per_shell_species = fragments_3d.sum(axis=2)
+    sp_pair.eccumul_full            = fragments_3d.sum(axis=1)
+    ecc_totals = sp_pair.eccumul_full.sum(axis=0)
+    total      = ecc_totals.sum()
+    sp_pair.ecc_distribution = ecc_totals/total if total > 0 else np.zeros(E)
+    return sp_pair
 
 def create_elliptical_collision_pairs(scen_properties):
 
@@ -95,43 +116,20 @@ def create_elliptical_collision_pairs(scen_properties):
     S = scen_properties.n_shells
     E = len(binE_ecc) - 1
 
-    for i, sp_pair in tqdm(enumerate(collision_pairs),
-                        total=len(collision_pairs),
-                        desc="Processing species pairs"):
-
-        # 1) initialize per-pair accumulators
-        sp_pair.debris_per_shell_species = np.zeros((S, D), dtype=float)
-        sp_pair.eccumul_full            = np.zeros((S, E), dtype=float)
-        sp_pair.collision_processed     = []
-
-        # 2) loop over every shell_collision in this pair
-        for shell_col in sp_pair.collision_pair_by_shell:
-            gamma = process_elliptical_collision_pair(
-                (i, shell_col, scen_properties,
-                debris_species, binE_mass, binE_ecc, LBgiven)
-            )
-
-            # keep the raw fragments 3D array on gamma
-            # gamma.fragments.shape == (S, D, E)
-            if gamma.fragments is None:
-                # no fragments generated, skip this collision
-                continue
-
-        #     # collapse over ecc → (S, D)
-        #     sp_pair.debris_per_shell_species += gamma.fragments
-        #     # collapse over species → (S, E)
-        #     sp_pair.eccumul_full += gamma.ecc_matrix
-        #     sp_pair.collision_processed.append(gamma)
-
-        # # 3) build the normalized ecc distribution across all shells
-        # ecc_totals = sp_pair.eccumul_full.sum(axis=0)  # shape (E,)
-        # total     = ecc_totals.sum()
-        # if total > 0:
-        #     sp_pair.ecc_distribution = ecc_totals / total
-        # else:
-        #     sp_pair.ecc_distribution = np.zeros_like(ecc_totals)
-
-    return 
+    # Parallel processing of species pairs
+    args = [
+        (i, sp_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven)
+        for i, sp_pair in enumerate(collision_pairs)
+    ]
+    
+    import multiprocessing as mp
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        collision_pairs = list(tqdm(
+            pool.imap(_process_sp_pair, args),
+            total=len(args),
+            desc="Processing species pairs in parallel"
+        ))
+    return collision_pairs
 
 
 def create_elliptical_collision_pairs2(scen_properties):
@@ -546,7 +544,6 @@ def process_elliptical_collision_pair(args):
 
     if fragments is not None:
         collision_pair.fragments = fragments * prod_TIS
-        collision_pair.ecc_matrix = np.array([])#ecc_mat
     else: 
         # print(f'No fragments generated between species {m1} and {m2} in shell {collision_pair.shell_index}')
         collision_pair.fragments = fragments
@@ -576,22 +573,21 @@ def func_de(R_list, V_list):
 
 @profile
 def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_mass, binE_ecc, collision_index, n_shells=0):
-    param = {
-        'req': 6.3781e+03,
-        'mu': 3.9860e+05,
-        'j2': 0.0011,
-        'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
-        'maxID': 0,
-        'density_profile': 'static'
-    }
+    # param = {
+    #     'req': 6.3781e+03,
+    #     'mu': 3.9860e+05,
+    #     'j2': 0.0011,
+    #     'max_frag': float('inf'),  # Inf in MATLAB translates to float('inf') in Python
+    #     'maxID': 0,
+    #     'density_profile': 'static'
+    # }
 
     # # Lower bound (LB)
     LB = 0.1
     SS = 20
-    earth_radius_km = 6371
     true_anomaly_deg = 90
     TA = np.radians(true_anomaly_deg)
-    mu = param["mu"]
+    mu = 3.9860e+05
 
     # try:
     # Object 1 (larger mass): low eccentricity
@@ -608,16 +604,16 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
     p2 = np.array([m2, rad_2, *r2, *v2, 1.0])
 
     try:
-        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, LB=LB)
+        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc(0, p1, p2, LB=LB)
         # debris will now come out in the format of [a, ecco, mass]
     except Exception as e:
         print(f"Error in frag_col_SBM_vec_lc2: {e} \n for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
         traceback.print_exc()
         return None
 
-    if debris1.size == 0:
-        print(f"m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, No debris generated")
-        print(len(debris1), len(debris2))
+    # if debris1.size == 0:
+    #     print(f"m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, No debris generated")
+    #     print(len(debris1), len(debris2))
 
     # Loop through 
     frag_a = []

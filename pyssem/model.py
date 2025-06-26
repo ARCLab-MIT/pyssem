@@ -148,12 +148,12 @@ class Model:
 
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
-
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
                 
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
+
+            with open('scenario-properties-baseline-collision.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
