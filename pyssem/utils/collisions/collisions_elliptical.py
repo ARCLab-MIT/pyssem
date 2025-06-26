@@ -27,11 +27,11 @@ def _process_sp_pair(args):
         if gamma.fragments is None:
             continue
         fragments_3d += gamma.fragments
-    sp_pair.debris_per_shell_species = fragments_3d.sum(axis=2)
-    sp_pair.eccumul_full            = fragments_3d.sum(axis=1)
-    ecc_totals = sp_pair.eccumul_full.sum(axis=0)
-    total      = ecc_totals.sum()
-    sp_pair.ecc_distribution = ecc_totals/total if total > 0 else np.zeros(E)
+    sp_pair.fragments_sd   = fragments_3d.sum(axis=2)             # → (S, D)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        dist_sde = fragments_3d / sp_pair.fragments_sd[:, :, None] # → (S, D, E)
+    # replace any NaNs (from 0/0) with 0
+    sp_pair.ecc_distribution_sde = np.nan_to_num(dist_sde, nan=0.0, posinf=0.0, neginf=0.0)
     return sp_pair
 
 def create_elliptical_collision_pairs(scen_properties):
