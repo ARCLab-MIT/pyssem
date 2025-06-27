@@ -9,6 +9,7 @@
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
+from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
@@ -151,9 +152,7 @@ class Model:
                 
             # Create Collision Pairs
             self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
-
-            with open('scenario-properties-baseline-collision.pkl', 'wb') as f:
-                pickle.dump(self.scenario_properties, f)
+            # self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -183,14 +182,17 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.build_model_elliptical()
-            self.scenario_properties.run_model_elliptical()
+            # self.scenario_properties.build_model_elliptical()
+            # self.scenario_properties.run_model_elliptical()
             
+            self.scenario_properties.build_model()
+            self.scenario_properties.run_model()
+
             # CSI Index
             # self.scenario_properties.cum_CSI()
 
             # save self as a pickle file
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
+            with open('scenario-properties-baseline-collision.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
         
         except Exception as e:
@@ -254,9 +256,9 @@ if __name__ == "__main__":
     # with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
     #     json.dump(data, f, indent=4)
 
-    # try:
-    #     plot_names = simulation_data["plots"]
-    #     Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
-    # except Exception as e:
-    #     print(e)
-    #     print("No plots specified in the simulation configuration file.")
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")
