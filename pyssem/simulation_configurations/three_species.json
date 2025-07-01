@@ -19,9 +19,16 @@
         "baseline": false,
         "fragment_spreading": false, 
         "parallel_processing": false,
+<<<<<<< HEAD
         "indicator_variables": ["active_loss_per_shell"],
         "launch_scenario": "SEP1"
+=======
+        "indicator_variables": ["active_loss_per_shell", "active_loss_per_species"]
+>>>>>>> 0783d04 (updates)
     },
+    "plots": [
+        "indicator_variables"
+        ],
     "simulation_name": "Indigo",
     "species": [
         {
@@ -82,8 +89,5 @@
             "drag_func": "drag_func_exp"
         }
     ],
-    "status": "not started",
-    "plots": [
-        "indicator_variables"
-        ]
+    "status": "not started"
 }

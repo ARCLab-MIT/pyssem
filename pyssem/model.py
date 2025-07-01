@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
@@ -10,6 +11,18 @@ from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
+=======
+from .utils.simulation.scen_properties import ScenarioProperties
+from .utils.simulation.species import Species
+from .utils.collisions.collisions import create_collision_pairs
+from .utils.plotting.plotting import Plots, results_to_json
+# if testing locally, use the following import statements
+# from utils.simulation.scen_properties import ScenarioProperties
+# from utils.simulation.species import Species
+# from utils.collisions.collisions import create_collision_pairs
+# from utils.plotting.plotting import results_to_json, Plots
+import numpy as np
+>>>>>>> 0783d04 (updates)
 from datetime import datetime
 import json
 import os
@@ -161,6 +174,56 @@ class Model:
             raise ValueError("Invalid JSON format for species.")
         except Exception as e:
             raise ValueError(f"An error occurred configuring species: {str(e)}")
+<<<<<<< HEAD
+=======
+        
+    def calculate_collisions(self):
+        """
+        Calculate the collisions between species in the simulation.
+        
+        Parameters:
+        - scenario_properties (ScenarioProperties): Scenario properties object.
+        """
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
+        except Exception as e:
+            raise ValueError(f"An error occurred calculating collisions: {str(e)}")
+        
+    def opus_active_loss_setup(self, fringe_species):
+        """
+        The OPUS economic model requires an indicator variable to be correctly configured: "actactive_loss_per_species" to be a proxy for probability of collision. 
+
+        This function find the correct economic indicator, lambdify the equations for numpy, then add it to its own variable for easy access.
+
+        Parameters:
+        - fringe_species (str): The fringe satellite name that is going to be used for the active satellites
+        - scenario_properties (ScenarioProperties): Scenario properties object.
+
+        Returns:
+        - None
+
+        Raises:
+        - ValueError: If the fringe species is not found in the species list.
+        - TypeError: If scenario_properties is not passed
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise TypeError("Invalid scenario properties provided.")
+        if fringe_species not in self.scenario_properties.species_names:
+            raise ValueError(f"Invalid fringe species provided: {fringe_species}. Please ensure that a fringe species name is provided in the configuration JSON.")
+        if self.scenario_properties.indicator_variables is None:
+            raise NameError("Indicator variables not found. Please ensure that the indicator variables are provided in the configuration JSON. If you are an OPUS user please use 'active_loss_per_species'")
+        
+        try:
+            self.scenario_properties.configure_active_satellite_loss(fringe_species)
+        except Exception as e:
+            raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
+        
+
+
+>>>>>>> 0783d04 (updates)
 
     def run_model(self):
         """
@@ -190,7 +253,57 @@ class Model:
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
+<<<<<<< HEAD
     
+=======
+        
+    def initial_population(self):
+        """
+            Initialize the population of the species in the simulation.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            # If this function is called, only create x0. 
+            self.scenario_properties.initial_pop_and_launch(baseline=True)
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize population: {str(e)}")
+
+
+    def build_model(self):
+        """
+            Build the model for the simulation.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.build_model()
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to build model: {str(e)}")
+        
+
+    def propagate(self, times, population, launch=False):
+        """
+            This is when you would like to integrate forward a specific population set. This can be any amount aslong as it follows the same structure of x0 to fit the equations.
+
+            Parameters:
+            - times (list): List of times to integrate over.
+            - population: One dimensional array, n_species x n_shells.
+        """
+        
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            results = self.scenario_properties.propagate(population, times, launch)
+            return results
+        except Exception as e:
+            raise RuntimeError(f"Failed to integrate: {str(e)}")
+                                                        
+>>>>>>> 0783d04 (updates)
     def results_to_json(self):
         """
         Convert the simulation results to JSON format.
@@ -210,7 +323,11 @@ class Model:
 
 if __name__ == "__main__":
 
+<<<<<<< HEAD
     with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+=======
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+>>>>>>> 0783d04 (updates)
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -240,6 +357,7 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
+<<<<<<< HEAD
     results = model.run_model()
 
     data = model.results_to_json()
@@ -255,3 +373,17 @@ if __name__ == "__main__":
     except Exception as e:
         print(e)
         print("No plots specified in the simulation configuration file.")
+=======
+    model.opus_active_loss_setup("Su")
+
+    # model.build_model()
+
+    # model.run_model()
+
+    # try:
+    #     plot_names = simulation_data["plots"]
+    #     Plots(model.scenario_properties, plot_names)
+    # except Exception as e:
+    #     print(e)
+        # print("No plots specified in the simulation configuration file.")
+>>>>>>> 0783d04 (updates)
