@@ -2,6 +2,7 @@ import numpy as np
 from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d
 from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
@@ -12,6 +13,35 @@ import pandas as pd
 import os
 import multiprocessing
 from collections import defaultdict
+
+class StepFunction:
+    """
+    A callable object that acts as a fast, piecewise constant step function
+    for evenly spaced time series data.
+    """
+    def __init__(self, start_time, time_step_duration, rate_values):
+        self.start_time = start_time
+        self.time_step_duration = time_step_duration
+        self.rate_values = np.array(rate_values)
+        self.num_steps = len(rate_values)
+
+    def __call__(self, t):
+        """
+        This makes the object callable, e.g., func(t).
+        It finds the correct index for time 't' and returns the corresponding rate.
+        """
+        # If t is outside the defined time range, return 0
+        if t < self.start_time or t >= self.start_time + self.num_steps * self.time_step_duration:
+            return 0.0
+
+        # Calculate the index for the time step
+        # This is extremely fast because the steps are uniform.
+        index = int((t - self.start_time) / self.time_step_duration)
+        
+        # Clamp the index to be within the valid range of the array
+        index = min(index, self.num_steps - 1)
+        
+        return self.rate_values[index]
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
@@ -257,8 +287,8 @@ class ScenarioProperties:
                     closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
 
                 for shell in range(self.n_shells):
-                    y = species_FLM.loc[shell, :].values / time_step  
-
+                    y = species_FLM.loc[shell, :].values / time_step
+                    
                     if species.launch_altitude is not None and shell == closest_shell:
                         # Add the lambda_constant to each value in the array y
                         y += species.lambda_constant
@@ -769,9 +799,41 @@ class ScenarioProperties:
         else:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
+            ## OLD
+            # output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
+            #                 args=(self.full_lambda_flattened, self.equations, self.scen_times),
+            #                 t_eval=self.scen_times, method=self.integrator)
+            
+            ## NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
+            # Let's assume full_lambda_flattened is your list of launch rate arrays
+            launch_rate_functions = []
+            start_time = self.scen_times[0]
+            time_step_duration = self.scen_times[1] - self.scen_times[0]
+            for rate_array in self.full_lambda_flattened:
+                if rate_array is not None:
+                    clean_rate_array = np.array(rate_array)
+                    clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
+                    clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
+
+                    ## USE INTERPOLATION
+                    interp_func = interp1d(self.scen_times, clean_rate_array, 
+                                        kind='cubic', # 'linear', 'cubic'
+                                        bounds_error=False, 
+                                        fill_value=0)
+                    launch_rate_functions.append(interp_func)
+
+                    # USE STEP FUNCTION
+                    # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                    # launch_rate_functions.append(step_func)
+                    
+                else:
+                    # If there are no launches, create a simple lambda that always returns 0
+                    launch_rate_functions.append(lambda t: 0.0)
+            
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
-                            t_eval=self.scen_times, method=self.integrator)
+                                        args=(launch_rate_functions, self.equations),
+                                        t_eval=self.scen_times, method=self.integrator)
+
             # output = 1
             self.progress_bar.close()
             self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
@@ -918,7 +980,8 @@ class ScenarioProperties:
 
         return dN_dt
     
-    def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
+    # def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
+    def population_shell(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
@@ -934,24 +997,37 @@ class ScenarioProperties:
         if self.progress_bar is not None and progress_bar:
             self.progress_bar.update(t - self.progress_bar.n)
 
-        # Initialize the rate of change array
-        dN_dt = np.zeros_like(N)
+        # # Initialize the rate of change array
+        # dN_dt = np.zeros_like(N)
 
-        # Iterate over each component in N
-        for i in range(len(N)):
+        # # Iterate over each component in N
+        # for i in range(len(N)):
         
-            # Compute and add the external modification rate, if applicable
-            # Now using np.interp to calculate the increase
-            if full_lambda[i] is not None:
-                increase = np.interp(t, times, full_lambda[i])
-                # If increase is nan set to 0
-                if np.isnan(increase) or np.isinf(increase):
-                    increase = 0
-                else:
-                    dN_dt[i] += increase
+        #     # Compute and add the external modification rate, if applicable
+        #     # Now using np.interp to calculate the increase
+        #     if full_lambda[i] is not None:
+        #         increase = np.interp(t, times, full_lambda[i])
+        #         # If increase is nan set to 0
+        #         if np.isnan(increase) or np.isinf(increase):
+        #             increase = 0
+        #         else:
+        #             dN_dt[i] += increase
 
-            # Compute the intrinsic rate of change from the differential equation
-            dN_dt[i] += equations[i](*N)
+        #     # Compute the intrinsic rate of change from the differential equation
+        #     dN_dt[i] += equations[i](*N)
+
+        # NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
+        dN_dt = np.zeros_like(N)
+        # --- This is now much more efficient ---
+        # Calculate the intrinsic rate of change from the differential equations
+        # This part can be vectorized if your `equations` list is lambdified correctly
+        intrinsic_rates = np.array([eq(*N) for eq in eq_funcs])
+
+        # Calculate the launch rates at the current time 't' by calling the functions
+        launch_rates = np.array([func(t) for func in launch_funcs])
+
+        # The total rate of change is the sum
+        dN_dt = intrinsic_rates + launch_rates
 
         return dN_dt
 

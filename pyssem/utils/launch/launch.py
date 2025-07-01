@@ -433,25 +433,79 @@ def SEP_traffic_model(scen_properties, file_path):
         for i in range(scen_properties.steps + 1)
     ]    
 
-    for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps) - 1, desc="Processing Time Steps"):
+    # OLD
+    # for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps) - 1, desc="Processing Time Steps"):
 
-        # Select objects that are launched during this time window
-        flm_step = T_new[
-            (T_new['epoch_start_datetime'] >= start) &
-            (T_new['epoch_start_datetime'] < end)
-        ]
+    #     # Select objects that are launched during this time window
+    #     flm_step = T_new[
+    #         (T_new['epoch_start_datetime'] >= start) &
+    #         (T_new['epoch_start_datetime'] < end)
+    #     ]
 
-        # Group and reshape
-        flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+    #     # Group and reshape
+    #     flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
 
-        # Ensure all alt_bins are present
-        flm_summary = flm_summary.reindex(range(scen_properties.n_shells), fill_value=0)
+    #     # Ensure all alt_bins are present
+    #     flm_summary = flm_summary.reindex(range(scen_properties.n_shells), fill_value=0)
 
-        flm_summary.reset_index(inplace=True)
-        flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
-        flm_summary['epoch_start_date'] = start
+    #     flm_summary.reset_index(inplace=True)
+    #     flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+    #     flm_summary['epoch_start_date'] = start
 
-        flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
+    #     flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
+
+    # NEW: Distribute the Yearly Launches, used for step function, but also works w/ current and old interp
+    start_year = scen_properties.start_date.year
+    end_year = start_year + scen_properties.simulation_duration
+
+    for year in tqdm(range(start_year, end_year), desc="Processing Launch Years"):
+        
+        launches_this_year = T_new[T_new['year_start'] == year]
+        
+        if launches_this_year.empty:
+            continue
+
+        # Group by shell and species to get total counts for the entire year
+        yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+        # --- START OF THE FIX ---
+        # Ensure the yearly_counts DataFrame has a row for every possible shell.
+        # This is the step that was missing from my previous version.
+        yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
+        # --- END OF THE FIX ---
+
+        # Find which simulation time steps fall within this calendar year
+        year_start_date = datetime(year, 1, 1)
+        year_end_date = datetime(year + 1, 1, 1)
+        
+        relevant_steps_mask = (np.array(time_steps[:-1]) >= year_start_date) & (np.array(time_steps[:-1]) < year_end_date)
+        relevant_start_times = np.array(time_steps[:-1])[relevant_steps_mask]
+
+        num_sub_steps = len(relevant_start_times)
+
+        if num_sub_steps == 0:
+            continue
+
+        # Create records for these time steps
+        for start_time in relevant_start_times:
+            # Pro-rate the yearly counts to get the count for this smaller time step
+            step_counts = yearly_counts / num_sub_steps
+            
+            step_counts = step_counts.reset_index()
+            step_counts['epoch_start_date'] = start_time
+            
+            flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
+
+    # Final re-ordering and cleanup
+    # Ensure all species columns from the scenario are present, even if they had no launches
+    all_species_columns = scen_properties.species_names
+    for col in all_species_columns:
+        if col not in flm_steps.columns:
+            flm_steps[col] = 0
+
+    # Ensure consistent column order
+    final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
+    flm_steps = flm_steps[final_cols]
 
     return x0_summary, flm_steps
 

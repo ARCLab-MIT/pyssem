@@ -99,6 +99,7 @@ class Plots:
         plt.xlim(0, max(self.output.t))
         plt.legend()
         plt.tight_layout()
+        plt.grid(True)
         plt.savefig(f'figures/{self.simulation_name}/total_objects_over_time.png')
         plt.close()
 
