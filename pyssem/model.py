@@ -191,9 +191,12 @@ class Model:
             # CSI Index
             # self.scenario_properties.cum_CSI()
 
-            # save self as a pickle file
-            # with open('scenario-properties-baseline-collision.pkl', 'wb') as f:
-            #     pickle.dump(self.scenario_properties, f)
+            # save self as a pickle file - first drop the launch as it can't be pickled
+            self.scenario_properties.coll_eqs_lambd = None
+            self.scenario_properties.equations = None
+
+            with open('scenario-properties-baseline-SEP2.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
         
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
