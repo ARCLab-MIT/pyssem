@@ -4,9 +4,6 @@ import numpy as np
 import pandas as pd
 import json
 import imageio
-import os
-import numpy as np
-import matplotlib.pyplot as plt
 from ..simulation.scen_properties import ScenarioProperties
 
 class Plots:
@@ -53,7 +50,6 @@ class Plots:
 
     def total_objects_over_time(self):
         # Implementation for total_objects_over_time plot
-
         cols = 5  # Define the number of columns you want
         rows = (self.n_species + cols - 1) // cols  # Calculate the number of rows needed
 
@@ -71,7 +67,6 @@ class Plots:
             ax.set_title(f'{self.scenario_properties.species_names[species_index]}')
             ax.set_xlabel('Time')
             ax.set_ylabel('Value')
-
 
         # Hide any unused axes
         for i in range(self.n_species, rows * cols):
@@ -104,129 +99,6 @@ class Plots:
         plt.tight_layout()
         plt.savefig(f'figures/{self.simulation_name}/total_objects_over_time.png')
         plt.close()
-
-    def total_objects_over_time_by_prefix(self):
-        """
-        Generate three vertically stacked plots:
-        1. All species starting with 'S'
-        2. All species starting with 'N'
-        3. All species starting with 'B'
-        Each shows shell-level data for species in that group.
-        Also includes total objects over time for each group and combined total.
-        """
-        prefix_groups = ['S', 'N', 'B']
-        species_names = self.scenario_properties.species_names
-
-        fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
-        total_objects_all_species = np.zeros_like(self.output.t)
-
-        for idx, prefix in enumerate(prefix_groups):
-            ax = axes[idx]
-            group_species_indices = [
-                i for i, name in enumerate(species_names) if name.startswith(prefix)
-            ]
-
-            for species_index in group_species_indices:
-                species_data = self.output.y[species_index * self.num_shells:(species_index + 1) * self.num_shells]
-                total_objects_per_species = np.sum(species_data, axis=0)
-
-                ax.plot(self.output.t, total_objects_per_species, label=f'{species_names[species_index]}')
-                total_objects_all_species += total_objects_per_species
-
-            ax.set_title(f"Total Objects Over Time – Species Starting with '{prefix}'")
-            ax.set_ylabel('Total Objects')
-            ax.legend()
-
-        axes[-1].set_xlabel('Time')
-        fig.suptitle('Object Population Over Time by Species Prefix', fontsize=16)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.savefig(f'figures/{self.simulation_name}/grouped_species_objects_over_time.png')
-        plt.close()
-
-    def heatmap_total_objects(self):
-        """
-        Plot a single heatmap showing the total number of objects summed across all species
-        at each orbital shell and timestep.
-        """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import os
-
-        # Reshape: (n_species, n_shells, n_timesteps)
-        y = self.output["y"]
-        reshaped = y.reshape(self.n_species, self.num_shells, -1)
-        summed = np.sum(reshaped, axis=0)  # shape: (n_shells, n_timesteps)
-
-        # Plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        cax = ax.imshow(
-            summed,
-            aspect='auto',
-            origin='lower',
-            extent=[self.output["t"][0], self.output["t"][-1], 0, self.num_shells],
-            interpolation='nearest'
-        )
-
-        fig.colorbar(cax, ax=ax, label='Total Number of Objects')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Orbital Shell')
-        ax.set_title('Total Objects Heatmap (All Species)')
-        ax.set_xticks(np.linspace(self.output["t"][0], self.output["t"][-1], num=5))
-        ax.set_yticks(np.arange(0, self.num_shells, max(1, self.num_shells // 5)))
-        ax.set_yticklabels([f'{alt:.0f}' for alt in self.scenario_properties.HMid[::max(1, self.num_shells // 5)]])
-
-        # Save
-        output_dir = f'figures/{self.simulation_name}'
-        os.makedirs(output_dir, exist_ok=True)
-        plt.tight_layout()
-        plt.savefig(f'{output_dir}/heatmap_total_objects.png')
-        plt.close(fig)
-
-    def heatmap_total_mass(self):
-        """
-        Plot a heatmap of total mass per shell and timestep (summed over all species).
-        Each species' object count is multiplied by its mass.
-        """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import os
-
-        # Ensure shape: (n_species, n_shells, n_timesteps)
-        y = self.output["y"]
-        reshaped = y.reshape(self.n_species, self.num_shells, -1)  # shape: (n_species, n_shells, n_timesteps)
-
-        # Get species masses in kg
-        mass_vector = np.array([sp.mass for sp in self.species])  # shape: (n_species,)
-        mass_reshaped = mass_vector[:, np.newaxis, np.newaxis]  # shape: (n_species, 1, 1)
-
-        # Broadcast multiply and sum over species
-        mass_weighted_y = reshaped * mass_reshaped
-        total_mass = np.sum(mass_weighted_y, axis=0)  # shape: (n_shells, n_timesteps)
-
-        # Plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        cax = ax.imshow(
-            total_mass,
-            aspect='auto',
-            origin='lower',
-            extent=[self.output["t"][0], self.output["t"][-1], 0, self.num_shells],
-            interpolation='nearest'
-        )
-
-        fig.colorbar(cax, ax=ax, label='Total Mass (kg)')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Orbital Shell')
-        ax.set_title('Total Orbital Mass Heatmap (All Species)')
-        ax.set_xticks(np.linspace(self.output["t"][0], self.output["t"][-1], num=5))
-        ax.set_yticks(np.arange(0, self.num_shells, max(1, self.num_shells // 5)))
-        ax.set_yticklabels([f'{alt:.0f}' for alt in self.scenario_properties.HMid[::max(1, self.num_shells // 5)]])
-
-        # Save
-        output_dir = f'figures/{self.simulation_name}'
-        os.makedirs(output_dir, exist_ok=True)
-        plt.tight_layout()
-        plt.savefig(f'{output_dir}/heatmap_total_mass.png')
-        plt.close(fig)
 
     def heatmaps_species(self):
         # Implementation for heatmaps_species plot
@@ -563,4 +435,3 @@ def results_to_json(self):
         self.output = data #json.dumps(data, indent=4, default=str)  # Use default=str to handle datetime serialization
 
         return self.output
-

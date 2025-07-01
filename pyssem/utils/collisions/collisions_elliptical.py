@@ -167,7 +167,7 @@ def create_elliptical_collision_pairs(scen_properties):
                     species_sym_vars
                 ))
         
-        sp_pair.create_symbolic_col_equation(debris_species, scen_properties.n_shells, all_individual_eqs)
+        sp_pair.create_symbolic_col_equation(all_species, debris_species, scen_properties.n_shells, all_individual_eqs)
 
     return collision_pairs
 
@@ -250,6 +250,7 @@ def process_elliptical_collision_pair(args):
         fragments = None
 
     if fragments is not None:
+        # print(prod_TIS)
         collision_pair.fragments = fragments * prod_TIS
     else: 
         # print(f'No fragments generated between species {m1} and {m2} in shell {collision_pair.shell_index}')
@@ -270,12 +271,11 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
 
     # # Lower bound (LB)
     LB = 0.1
-    SS = 20
+    SS = 60
     true_anomaly_deg = 90
     TA = np.radians(true_anomaly_deg)
     mu = 3.9860e+05
 
-    # try:
     # Object 1 (larger mass): low eccentricity
     r1, v1 = perifocal_r_and_v(sma1, e2, TA, mu)
 
@@ -454,7 +454,15 @@ class SpeciesCollisionPair:
         else:
             self.RBflag = max(species1.RBflag, species2.RBflag)
 
-        self.phi = None # Proabbility of collision, based on v_imp, shell volumen and object_radii
+        # self.phi = None # Proabbility of collision, based on v_imp, shell volumen and object_radii
+        # Square of impact parameter
+        meter_to_km = 1 / 1000
+        self.sigma = (species1.radius * meter_to_km + \
+                      species2.radius * meter_to_km) ** 2
+
+        # Scaling based on v_imp, shell volume, and object radii
+        self.phi = pi * scen_properties.v_imp2 / (scen_properties.V * meter_to_km**3) * self.sigma * S(86400) * S(365.25)
+
         self.catastrophic = None # Catastrophic flag for each shell
         self.eqs = Matrix(scen_properties.n_shells, scen_properties.species_length, lambda i, j: 0) # A zero symbolic equation n_shells x n_species
         self.sigma = None # Square of the impact parameter
@@ -462,41 +470,68 @@ class SpeciesCollisionPair:
         self.ecc_distribution_sde = None # This will store the eccentric distribution of S,D,E
         self.source_sinks = [self.species1, self.species2]
 
-    def create_symbolic_col_equation(self, debris_species, n_shells, all_individual_eqs):
-        """ 
-            Once the frags_sd and the ecc_distribution has been built, this function will be called to convert the fragments into symbolic equations. 
+    def create_symbolic_col_equation(self,
+                                    all_species, # list of all species names 
+                                    debris_species,    # list of debris Sympy symbols
+                                    n_shells,          # integer
+                                    all_individual_eqs  # list of (n_shells × D) Sympy matrices
+                                    ):
         """
-        # S_shells = scen_properties.n_shells
-        # D_debris = len(debris_species)
+        Build a block of equations where:
+        - first columns are the collision‐sink terms for each species pair
+        - next columns are the debris‐source terms
+        """
+        # --- 2) Prepare phi and n_f symbols ---
+        # phi_mat = Matrix(self.phi)                      # shape: (n_shells × num_pairs)
+        # n_f_syms = symbols(f'n_f0:{n_shells}')          # for subs later
 
-        # — 1) Build the debris‐source block (S × D)
-        all_fragments = Matrix.zeros(n_shells, len(debris_species))
+        # --- 3) Pre‐allocate the collision‐sink block (n_shells × num_pairs) ---
+        num_pairs = self.gamma.shape[1]
+        sink_block = Matrix.zeros(n_shells, num_pairs)
+
+        # --- 4) Loop over each collision pair / gamma‐column ---
+        for i in range(num_pairs):
+            gamma_col = self.gamma[:, i]                          # (n_shells × 1) Sympy Matrix
+            # find which species this column corresponds to:
+            target_name = self.source_sinks[i].sym_name
+            eq_idx = next(
+                (j for j, sp in enumerate(all_species)
+                if sp.sym_name == target_name),
+                None
+            )
+            if eq_idx is None:
+                raise ValueError(f"Could not find equation index for {target_name}")
+            
+            phi_matrix = Matrix(self.phi)
+            
+            eq = gamma_col.multiply_elementwise(phi_matrix).multiply_elementwise(self.species1.sym).multiply_elementwise(self.species2.sym)
+
+            # Insert the sink column in the right part of the equations
+            self.eqs[:, eq_idx] = self.eqs[:, eq_idx] + eq  
+
+        # 1) get the sym_name of the very first debris species
+        debris_block = Matrix.zeros(n_shells, len(debris_species))
         for m in all_individual_eqs:
-            all_fragments += m
+            debris_block += m
 
-        # # — 2) Compute phi as a PURE-PYTHON list → avoid Matrix(numpy_array)
-        # meter_to_km = 1 / 1000
-        
-        # # Square of the impact parameter
-        # self.sigma = (self.species1.radius * meter_to_km + \
-        #             self.species2.radius * meter_to_km) ** 2
+        # --- 2) Find where to insert it among all_species ---
+        first_deb_name = debris_species[0].sym_name
+        deb_start_idx = next(
+            (j for j, sp in enumerate(all_species)
+            if sp.sym_name == first_deb_name),
+            None
+        )
+        if deb_start_idx is None:
+            raise ValueError(f"Could not find debris species '{first_deb_name}' in all_species")
 
-        # # build an S-length list of Sympy expressions
-        # phi_vec = pi * scen_properties.v_imp2 / (scen_properties.V * meter_to_km**3) * self.sigma * S(86400) * S(365.25)
-        # phi_matrix_1d = Matrix(phi_vec)
-        # # turn it into an (S×1) column‐matrix
-        # phi_matrix = phi_matrix_1d.row_join(phi_matrix_1d)  
+        # --- 3) Split the existing sink_block at that column index ---
+        left  = sink_block[:, :deb_start_idx]
+        right = sink_block[:, deb_start_idx:]
 
-        # Build an (n_shells×2) matrix of symbols:
-        #   column 0 filled with species1.sym, column 1 with species2.sym
-        sym_mat = Matrix([[self.species1.sym, self.species2.sym]])
+        # --- 4) Splice them together: [ left | debris_block | right ] ---
+        self.eqs = left.row_join(debris_block).row_join(right)
 
-        # Elementwise multiply gamma_phi (shape n_shells×2) by sym_mat → sinks (n_shells×2)
-        # sinks = gamma_phi.multiply_elementwise(sym_mat)
-        sinks = self.gamma.multiply_elementwise(sym_mat)
 
-        # Then later, concatenate with your (n_shells×D) debris‐source block:
-        self.eqs = sinks.row_join(all_fragments)
 
 if __name__ == "__main__":
     p1_in = np.array([

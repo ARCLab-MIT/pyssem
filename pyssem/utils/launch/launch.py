@@ -45,6 +45,18 @@ def launch_func_null(t, h, species_properties, scen_properties):
 
     return Lambdadot_list
 
+def launch_lambda_sym(t, h, species_properties, scen_properties):
+
+    Lambdadot = zeros(scen_properties.n_shells, 1)
+
+    for k in range(scen_properties.n_shells):
+        Lambdadot[k, 0] = symbols(f'lambda_{species_properties.sym_name}{k+1}')
+
+    return Lambdadot
+
+def launch_lambda_sym_null(t, h, species_properties, scen_properties):
+    return launch_func_null(t, h, species_properties, scen_properties)
+
 def launch_func_constant(t, h, species_properties, scen_properties):
     """
     Adds a constant launch rate from species_properties.lambda_constant.
@@ -305,27 +317,6 @@ def assign_species_to_population(T, species_mapping):
 
     return T
 
-def find_species_bin(row, scen_properties, species_cells):
-    """
-    Determine the species bin for a given row, based on mass and/or eccentricity.
-
-    :param row: Row from DataFrame (must have 'mass' and 'ecc')
-    :param scen_properties: ScenarioProperties object
-    :param species_cells: List of Species objects
-    :return: species.sym_name that matches the object's properties
-    """
-    for species in species_cells:
-        # Check for eccentricity-based binning
-        if getattr(species, "elliptical", False):
-            if species.mass_lb <= row.mass < species.mass_ub and \
-               species.ecc_lb <= row.ecc < species.ecc_ub:
-                return species.sym_name
-        else:
-            if species.mass_lb <= row.mass < species.mass_ub:
-                return species.sym_name
-
-    return None  # No match found
-
 def SEP_traffic_model(scen_properties, file_path):
     """
     This will take one of the SEP files, users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
@@ -337,6 +328,21 @@ def SEP_traffic_model(scen_properties, file_path):
     # Calculate Apogee, Perigee, and altitude
     T = pd.read_csv(file_path)
 
+    # T['apogee'] = T['sma'] * (1 + T['ecc'])
+    # T['perigee'] = T['sma'] * (1 - T['ecc'])
+    # T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+
+    # T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
+
+    # Convert MJD to datetime
+    # def mjd_to_datetime(mjd_series):
+    #     """
+    #     Convert a Series of MJD floats to timezone-naive datetime.datetime objects.
+    #     """
+    #     return mjd_series.apply(lambda mjd: jd_to_datetime(mjd_to_jd(mjd)))
+
+    # T_new['epoch_start_datetime'] = mjd_to_datetime(T_new['mjd_start'])
+    # T_new['epoch_end_datetime'] = mjd_to_datetime(T_new['mjd_final'])
     T['apogee'] = T['sma'] * (1 + T['ecc'])
     T['perigee'] = T['sma'] * (1 - T['ecc'])
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
@@ -349,7 +355,7 @@ def SEP_traffic_model(scen_properties, file_path):
             for species in species_group:
                 if species.elliptical:
                     elliptical_species_flag = True
-    
+
     if elliptical_species_flag:
         # Assign elliptical sub-species
         for species_class in T['species_class'].unique():            
@@ -383,68 +389,7 @@ def SEP_traffic_model(scen_properties, file_path):
                         T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                         T_new = pd.concat([T_new, T_obj_class])
 
-
-    # Convert MJD to datetime
-    # def mjd_to_datetime(mjd_series):
-    #     """
-    #     Convert a Series of MJD floats to timezone-naive datetime.datetime objects.
-    #     """
-    #     return mjd_series.apply(lambda mjd: jd_to_datetime(mjd_to_jd(mjd)))
-
-    # T_new['epoch_start_datetime'] = mjd_to_datetime(T_new['mjd_start'])
-    # T_new['epoch_end_datetime'] = mjd_to_datetime(T_new['mjd_final'])
-    T['apogee'] = T['sma'] * (1 + T['ecc'])
-    T['perigee'] = T['sma'] * (1 - T['ecc'])
-    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
-
-    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
-
-    # Find the correct mass bin for each object
-    for species_class in T['species_class'].unique():
-            if species_class in scen_properties.species_cells:
-                if len(scen_properties.species_cells[species_class]) == 1:
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                    T_new = pd.concat([T_new, T_obj_class])
-                else:
-                    species_cells = scen_properties.species_cells[species_class]
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                    T_new = pd.concat([T_new, T_obj_class])
-
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
-
-    # For each species, add the semi-major axis and eccentricity distribution
-    for species_group in scen_properties.species.values():
-        for species in species_group:
-            if not species.elliptical:
-                continue
-
-            df_sp = T_new[T_new['species'] == species.sym_name]
-            sma_bins = species.semi_major_axis_bins        # length = n_shells+1
-            ecc_bins = species.eccentricity_bins          # length = n_ecc
-
-            # digitize sma and ecc into 0..n_bin-1 indices
-            i_sma = np.digitize(df_sp['sma'], sma_bins) - 1
-            j_ecc = np.digitize(df_sp['ecc'], ecc_bins)
-
-            # clamp to valid range
-            i_sma = np.clip(i_sma, 0, scen_properties.n_shells-1)
-            j_ecc = np.clip(j_ecc, 0, len(ecc_bins)-1)
-
-            # build the 2D histogram
-            pop2d = np.zeros((scen_properties.n_shells, len(ecc_bins)))
-            for i,j in zip(i_sma, j_ecc):
-                pop2d[i, j] += 1
-            species.sma_ecc_pop = pop2d
-
-            # collapse over sma to get the 1-D ecc‐distribution
-            ecc_counts = pop2d.sum(axis=0)
-            total = ecc_counts.sum()
-            if total > 0:
-                species.ecc_distribution = ecc_counts / total
-            else:
-                species.ecc_distribution = np.zeros_like(ecc_counts)
 
     T_new['epoch_start_datetime'] = T_new['year_start'].apply(
             lambda y: datetime(int(y), 1, 1)
@@ -461,7 +406,7 @@ def SEP_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
 
-    x0['species'].value_counts()
+    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
@@ -488,27 +433,102 @@ def SEP_traffic_model(scen_properties, file_path):
         for i in range(scen_properties.steps + 1)
     ]    
 
-    for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps) - 1, desc="Processing Time Steps"):
+    # for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps) - 1, desc="Processing Time Steps"):
 
-        # Select objects that are launched during this time window
-        flm_step = T_new[
-            (T_new['epoch_start_datetime'] >= start) &
-            (T_new['epoch_start_datetime'] < end)
-        ]
+    #     # Select objects that are launched during this time window
+    #     flm_step = T_new[
+    #         (T_new['epoch_start_datetime'] >= start) &
+    #         (T_new['epoch_start_datetime'] < end)
+    #     ]
 
-        # Group and reshape
-        flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+    #     # Group and reshape
+    #     flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
 
-        # Ensure all alt_bins are present
-        flm_summary = flm_summary.reindex(range(scen_properties.n_shells), fill_value=0)
+    #     # Ensure all alt_bins are present
+    #     flm_summary = flm_summary.reindex(range(scen_properties.n_shells), fill_value=0)
 
-        flm_summary.reset_index(inplace=True)
-        flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
-        flm_summary['epoch_start_date'] = start
+    #     flm_summary.reset_index(inplace=True)
+    #     flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+    #     flm_summary['epoch_start_date'] = start
 
-        flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
+    #     flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
 
-    return x0_summary, flm_steps, scen_properties.species
+    # Distribute the Yearly Launches, USED FOR STEP FUNCTION, but also works w/ current and old interp
+    start_year = scen_properties.start_date.year
+    end_year = start_year + scen_properties.simulation_duration
+
+    for year in tqdm(range(start_year, end_year), desc="Processing Launch Years"):
+        
+        launches_this_year = T_new[T_new['year_start'] == year]
+        
+        if launches_this_year.empty:
+            continue
+
+        # Group by shell and species to get total counts for the entire year
+        yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+        # --- START OF THE FIX ---
+        # Ensure the yearly_counts DataFrame has a row for every possible shell.
+        # This is the step that was missing from my previous version.
+        yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
+        # --- END OF THE FIX ---
+
+        # Find which simulation time steps fall within this calendar year
+        year_start_date = datetime(year, 1, 1)
+        year_end_date = datetime(year + 1, 1, 1)
+        
+        relevant_steps_mask = (np.array(time_steps[:-1]) >= year_start_date) & (np.array(time_steps[:-1]) < year_end_date)
+        relevant_start_times = np.array(time_steps[:-1])[relevant_steps_mask]
+
+        num_sub_steps = len(relevant_start_times)
+
+        if num_sub_steps == 0:
+            continue
+
+        # Create records for these time steps
+        for start_time in relevant_start_times:
+            # Pro-rate the yearly counts to get the count for this smaller time step
+            step_counts = yearly_counts / num_sub_steps
+            
+            step_counts = step_counts.reset_index()
+            step_counts['epoch_start_date'] = start_time
+            
+            flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
+
+    # Final re-ordering and cleanup
+    # Ensure all species columns from the scenario are present, even if they had no launches
+    all_species_columns = scen_properties.species_names
+    for col in all_species_columns:
+        if col not in flm_steps.columns:
+            flm_steps[col] = 0
+
+    # Ensure consistent column order
+    final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
+    flm_steps = flm_steps[final_cols]
+
+    return x0_summary, flm_steps
+
+def find_species_bin(row, scen_properties, species_cells):
+    """
+    Determine the species bin for a given row, based on mass and/or eccentricity.
+
+    :param row: Row from DataFrame (must have 'mass' and 'ecc')
+    :param scen_properties: ScenarioProperties object
+    :param species_cells: List of Species objects
+    :return: species.sym_name that matches the object's properties
+    """
+    for species in species_cells:
+        # Check for eccentricity-based binning
+        if getattr(species, "elliptical", False):
+            if species.mass_lb <= row.mass < species.mass_ub and \
+               species.ecc_lb <= row.ecc < species.ecc_ub:
+                return species.sym_name
+        else:
+            if species.mass_lb <= row.mass < species.mass_ub:
+                return species.sym_name
+
+    return None  # No match found
+
 
 def ADEPT_traffic_model(scen_properties, file_path):
     """
@@ -540,9 +560,9 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     # Map species type based on object class
     species_dict = {
-        "Non-station-keeping Satellite": "Sns",
+        "Non-station-keeping Satellite": "Su",
         "Rocket Body": "B",
-        "Station-keeping Satellite": "Su",
+        "Station-keeping Satellite": "S",
         "Coordinated Satellite": "S",
         "Debris": "N",
         "Candidate Satellite": "S"
@@ -593,6 +613,10 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
 
+    if baseline:
+        # No need to calculate the launch model
+        return x0_summary, None
+
     # Future Launch Model
     flm_steps = pd.DataFrame()
 
@@ -633,6 +657,7 @@ def find_eccentricity_bin(eccentricity, scen_properties, species_cell):
     for species in species_cell:
         if species.ecc_lb <= eccentricity < species.ecc_ub:
             return species.sym_name
+
 
 def find_mass_bin(mass, scen_properties, species_cell):
     """
