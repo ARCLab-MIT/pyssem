@@ -253,6 +253,7 @@ if __name__ == "__main__":
     results = model.run_model()
 
     data = model.results_to_json()
+
     # Create the figures directory if it doesn't exist
     os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
     # Save the results to a JSON file

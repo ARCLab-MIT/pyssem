@@ -1,5 +1,5 @@
 {
-  "simulation_name": "MOCAT Simulation",
+  "simulation_name": "SEP2-Simple",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -11,7 +11,7 @@
     "steps": 100,                            
     "min_altitude": 200,                   
     "max_altitude": 1400,                   
-    "n_shells": 40,                         
+    "n_shells": 5,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
@@ -19,8 +19,23 @@
     "v_imp": 10,
     "fragment_spreading": false,
     "parallel_processing": false,
-    "baseline" : false
+    "baseline" : false,
+    "launch_scenario" : "SEP2",
+    "indicator_variables": [
+      "active_loss_per_shell",
+      "active_loss_per_shell_percentage",
+      "active_loss_per_species",
+      "active_loss_per_species_percentage",
+      "active_loss_per_species_per_pair"
+  ]
   },
+
+  "SEP_mapping": [
+      "T.loc[(T['obj_type'] == 2) &  (T['obj_type'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'Su'",
+      "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1) & (T['const_name'].notna()), 'species_class'] = 'S'",
+      "T.loc[(T['obj_type'] >= 3) & (T['mass'] >= 0.03), 'species_class'] = 'N'",
+      "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
+  ],
   "species": [
     {
         "sym_name": "S",

@@ -340,19 +340,29 @@ class ScenarioProperties:
                 elif indicator == "active_loss_per_shell":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = False, 
-                                                                                    per_species = False))
+                                                                                    per_species = False,
+                                                                                    per_pair = False))
                 elif indicator == "active_loss_per_shell_percentage":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
-                                                                                    per_species = False))
+                                                                                    per_species = False, 
+                                                                                    per_pair = False))
                 elif indicator == "active_loss_per_species":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = False, 
-                                                                                    per_species = True))
+                                                                                    per_species = True, 
+                                                                                    per_pair = False))
+                elif indicator == "active_loss_per_species_per_pair":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True, 
+                                                                                    per_pair = True
+                                                                                    ))
                 elif indicator == "active_loss_per_species_percentage":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
-                                                                                    per_species = True))
+                                                                                    per_species = True, 
+                                                                                    per_pair=False))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         
@@ -909,19 +919,26 @@ class ScenarioProperties:
             for i in self.indicator_variables_list:
                 # Convert the symbolic equations into a callable function
                 for indicator_var in i:
-                    simplified_eqs = sp.simplify(indicator_var.eqs)
-                    indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
-                    evaluated_indicator_dict = {}
+                    try:
+                        simplified_eqs = sp.simplify(indicator_var.eqs)
+                        indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+                        evaluated_indicator_dict = {}
 
-                    # Iterate over states (rows in y) and corresponding time steps (t)
-                    for state, t in zip(self.output.y.T, self.output.t):
-                        # Evaluate the indicator function for the current state
-                        evaluated_value = indicator_fun(*state)
-                        # Store the result in the dictionary with the corresponding time step
-                        evaluated_indicator_dict[t] = evaluated_value
+                        # Iterate over states (rows in y) and corresponding time steps (t)
+                        for state, t in zip(self.output.y.T, self.output.t):
+                            # Evaluate the indicator function for the current state
+                            evaluated_value = indicator_fun(*state)
+                            # Store the result in the dictionary with the corresponding time step
+                            evaluated_indicator_dict[t] = evaluated_value
 
-                    # Store the results for this indicator in the results dictionary
-                    self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+                        # Store the results for this indicator in the results dictionary
+                        self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+                    except Exception:
+                        print(f"Cannot make indicator for {indicator_var}")
+                        print(Exception)
+
+            print("Indicator variables succesfully ran")
+            print(self.indicator_results['indicators'].keys())
 
 
         return 

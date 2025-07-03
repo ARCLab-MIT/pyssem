@@ -295,7 +295,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
 
     return spec_man_indc
 
-def make_active_loss_per_shell(scen_properties, percentage, per_species):
+def make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
     """
     Calculates the indicator variable for number of active spacecraft lost in each orbit shell
     to collision events in a given year. 
@@ -312,28 +312,40 @@ def make_active_loss_per_shell(scen_properties, percentage, per_species):
     species_pairs_classes = scen_properties.collision_pairs
     all_col_indicators = []
 
-    for species_group in scen_properties.species.values():
-        for species in species_group:
-            species_1_name = species.sym_name
-        
-            spec_col_indicators = []
+    if per_species:            
+        for species_group in scen_properties.species.values():
+            for species in species_group:
+                species_1_name = species.sym_name
+            
+                spec_col_indicators = []
 
-            for pair in species_pairs_classes:
-                if (species_1_name == pair.species1.sym_name or
-                    species_1_name == pair.species2.sym_name):
-                    
-                    species_2_name = pair.species2.sym_name
-                    ind_name = f"collisions_{species_1_name}_{species_2_name}"
-                    spec_pair = [pair.species1.sym_name, pair.species2.sym_name]
-                    col_indicator = make_indicator_struct(dummy_obj, ind_name, "collision", spec_pair)
-                    spec_col_indicators.append(col_indicator)
-            
-            ag_col_eqs = sp.zeros(scen_properties.n_shells, 1)
-            for col_ind in spec_col_indicators:
-                ag_col_eqs += col_ind.eqs
-            
-            spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_1_name}_aggregate_collisions", "manual", [species], ag_col_eqs)
-            all_col_indicators.append(spec_ag_col_indc)
+                for pair in species_pairs_classes:
+                    if (species_1_name == pair.species1.sym_name or
+                        species_1_name == pair.species2.sym_name):
+                        
+                        species_2_name = pair.species2.sym_name
+                        ind_name = f"collisions_{species_1_name}_{species_2_name}"
+                        spec_pair = [pair.species1.sym_name, pair.species2.sym_name]
+                        col_indicator = make_indicator_struct(dummy_obj, ind_name, "collision", spec_pair)
+                
+                        if per_pair:
+                            # if per pair make the indicator now rather than summing 
+                            spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_1_name}_{species_2_name}_pair_collisions", "manual", [species], col_indicator.eqs)
+                            all_col_indicators.append(spec_ag_col_indc)
+
+                        else:
+                            # Sum for species level only
+                            spec_col_indicators.append(col_indicator)
+
+                
+                # if not per pair, then you will want to sum all other collision equations that the pair interacts with
+                if not per_pair:
+                    ag_col_eqs = sp.zeros(scen_properties.n_shells, 1)
+                    for col_ind in spec_col_indicators:
+                        ag_col_eqs += col_ind.eqs
+
+                    spec_ag_col_indc = make_indicator_struct(dummy_obj, f"{species_1_name}_aggregate_collisions", "manual", [species], ag_col_eqs)
+                    all_col_indicators.append(spec_ag_col_indc)
 
     if per_species:
         if not percentage:
@@ -344,6 +356,7 @@ def make_active_loss_per_shell(scen_properties, percentage, per_species):
                 species_1_totals = col_ind.species[0].sym
                 col_ind.eqs = 100 * col_ind.eqs.multiply_elementwise(sp.Matrix(species_1_totals).applyfunc(lambda x: 1 / x))
             indicator_var = all_col_indicators
+
     else:
         ag_active_col_eqs = sp.zeros(scen_properties.n_shells, 1)
         for col_ind in all_col_indicators:
