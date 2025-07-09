@@ -1,5 +1,5 @@
 from sympy import symbols, Matrix, pi, S, Expr, zeros
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 
 class SpeciesPairClass:
@@ -118,7 +118,7 @@ class SpeciesPairClass:
                         # Multiply gammas, phi, and the sum_matrix element-wise
                         eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
 
-                        # Plotting (similar to MATLAB's imagesc)
+                        # # Plotting (similar to MATLAB's imagesc)
                         # plt.figure(100)
                         # plt.clf()
                         # plt.imshow(fragsMade2D, aspect='auto', interpolation='none')
@@ -126,7 +126,7 @@ class SpeciesPairClass:
                         # plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=10)
                         # plt.gca().invert_yaxis()
                         # plt.savefig(f"figures/frag_spread/fragsMade2D_{source_sinks[i].sym_name}.png")
-                        # print(f"eq: {eq}")
+                        # # print(f"eq: {eq}")
                     except Exception as e:
                         if np.any(fragsMadeDV == 0):
                             eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)

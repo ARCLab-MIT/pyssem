@@ -56,9 +56,9 @@ def func_dv(Am, mode):
     Returns:
         np.ndarray: Calculated delta-v values for each fragment.
     """
-    if mode == 'col':
+    if mode == 'exp':
        mu = 0.2 * np.log10(Am) + 1.85 # Explosion
-    elif mode == 'exp':
+    elif mode == 'col':
         mu = 0.9 * np.log10(Am) + 2.9
 
     sigma = 0.4
@@ -455,8 +455,9 @@ def create_collision_pairs(scen_properties):
     LBgiven = scen_properties.LC
 
     for index, debris in enumerate(debris_species):
+        # debris.mass_ub = debris.mass # Matches the Matlab version more 
         binC[index] = debris.mass
-        binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass] # Updating with Giovanni's updates - more matched to 3S
+        binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
         binW[index] = debris.mass_ub - debris.mass_lb
 
     binE = np.unique(binE)
