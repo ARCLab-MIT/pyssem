@@ -470,6 +470,47 @@ class Species:
                 species.semi_major_axis_bins = semi_major_bins_km
                 species.semi_major_axis_bins_HMid = scenario_properties.sma_HMid_km
 
+                species.time_in_shell = np.zeros((semi_major_bins_km, len(species.eccentricity_bins)))
+
+                # Loop through each mid point combination of species.time_in_shell
+
+                # pass the a, e, semi-major axis shells to compute_time_fractions_for_orbit(a, e, shell_edges)
+
+                # this will then return the fractions of time for that a, e pair and the other a bins
+
+                # store these within the cell of the 2d matrix. 
+
+                for species_group in self.species.values():
+                    for species in species_group:
+                        species.semi_major_axis_bins = semi_major_bins_km
+                        species.semi_major_axis_bins_HMid = scenario_properties.sma_HMid_km
+
+                        n_a_bins = len(semi_major_bins_km) - 1
+                        n_e_bins = species.eccentricity_bins  # This should be an int
+                        species.time_in_shell = np.zeros((n_a_bins, n_e_bins))
+
+                        species.time_in_shell = np.zeros((n_a_bins, n_e_bins))
+
+                        for a_idx in range(n_a_bins):
+                            a_mid = species.semi_major_axis_bins_HMid[a_idx]
+
+                            for e_idx in range(n_e_bins):
+                                # Get eccentricity midpoint (assumes it's stored similarly to sma_HMid_km)
+                                e_mid = species.eccentricity_bins_HMid[e_idx]
+
+                                # Compute time fractions this orbit spends in each SMA bin
+                                time_fractions = compute_time_fractions_for_orbit(
+                                    a=a_mid,
+                                    e=e_mid,
+                                    shell_edges=semi_major_bins_km
+                                )
+
+                                # Store in the 2D matrix: each row is an a_bin the orbit spends time in,
+                                # and column corresponds to the (a_mid, e_mid) pair
+                                species.time_in_shell[:, e_idx] = time_fractions
+
+
+
                 if species.elliptical:
                     n_shells = scenario_properties.n_shells
                     n_ecc    = len(species.eccentricity_bins)

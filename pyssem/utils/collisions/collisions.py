@@ -365,6 +365,8 @@ def process_species_pair(args):
     frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
     alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
 
+    # This will need to use the new evolve bins and then bin into semi-major-axis, ecc, mass
+
     # This will tell you the number of fragments in each debris bin
     for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
 

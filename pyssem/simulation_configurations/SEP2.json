@@ -15,7 +15,7 @@
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
-    "LC": 0.1,                             
+    "LC": 0.01,                             
     "v_imp": 10.0,
     "fragment_spreading": false,
     "parallel_processing": true,
