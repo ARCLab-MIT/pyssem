@@ -14,6 +14,35 @@ import os
 import multiprocessing
 from collections import defaultdict
 
+class StepFunction:
+    """
+    A callable object that acts as a fast, piecewise constant step function
+    for evenly spaced time series data.
+    """
+    def __init__(self, start_time, time_step_duration, rate_values):
+        self.start_time = start_time
+        self.time_step_duration = time_step_duration
+        self.rate_values = np.array(rate_values)
+        self.num_steps = len(rate_values)
+
+    def __call__(self, t):
+        """
+        This makes the object callable, e.g., func(t).
+        It finds the correct index for time 't' and returns the corresponding rate.
+        """
+        # If t is outside the defined time range, return 0
+        if t < self.start_time or t >= self.start_time + self.num_steps * self.time_step_duration:
+            return 0.0
+
+        # Calculate the index for the time step
+        # This is extremely fast because the steps are uniform.
+        index = int((t - self.start_time) / self.time_step_duration)
+        
+        # Clamp the index to be within the valid range of the array
+        index = min(index, self.num_steps - 1)
+        
+        return self.rate_values[index]
+
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
 

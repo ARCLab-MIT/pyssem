@@ -347,6 +347,9 @@ def SEP_traffic_model(scen_properties, file_path):
     T['perigee'] = T['sma'] * (1 - T['ecc'])
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
+    # Filter Rows Based on Min and Max_Altitude
+    T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+
     T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
     # Mapping species gets more complicated if there are elliptical orbits.
@@ -391,12 +394,23 @@ def SEP_traffic_model(scen_properties, file_path):
 
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
 
-    T_new['epoch_start_datetime'] = T_new['year_start'].apply(
-            lambda y: datetime(int(y), 1, 1)
-        )
-    T_new['epoch_end_datetime'] = T_new['year_final'].apply(
-        lambda y: datetime(int(y), 1, 1)
-    )
+    # T_new['epoch_start_datetime'] = T_new['year_start'].apply(
+    #         lambda y: datetime(int(y), 1, 1)
+    #     )
+    # T_new['epoch_end_datetime'] = T_new['year_final'].apply(
+    #     lambda y: datetime(int(y), 1, 1)
+    # )
+    T_new['epoch_start_datetime'] = pd.to_datetime(dict(
+        year=T_new['year_start'].astype(int),
+        month=T_new['month_start'].astype(int),
+        day=T_new['day_start'].astype(int)
+    ), errors='coerce')
+
+    T_new['epoch_end_datetime'] = pd.to_datetime(dict(
+        year=T_new['year_final'].astype(int),
+        month=T_new['month_final'].astype(int),
+        day=T_new['day_final'].astype(int)
+    ), errors='coerce')
 
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
@@ -406,7 +420,7 @@ def SEP_traffic_model(scen_properties, file_path):
     # Initial population
     x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
 
-    x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
+    # x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
@@ -436,26 +450,6 @@ def SEP_traffic_model(scen_properties, file_path):
         for i in range(scen_properties.steps + 1)
     ]    
 
-    # for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps) - 1, desc="Processing Time Steps"):
-
-    #     # Select objects that are launched during this time window
-    #     flm_step = T_new[
-    #         (T_new['epoch_start_datetime'] >= start) &
-    #         (T_new['epoch_start_datetime'] < end)
-    #     ]
-
-    #     # Group and reshape
-    #     flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-
-    #     # Ensure all alt_bins are present
-    #     flm_summary = flm_summary.reindex(range(scen_properties.n_shells), fill_value=0)
-
-    #     flm_summary.reset_index(inplace=True)
-    #     flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
-    #     flm_summary['epoch_start_date'] = start
-
-    #     flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
-
     # Distribute the Yearly Launches, USED FOR STEP FUNCTION, but also works w/ current and old interp
     start_year = scen_properties.start_date.year
     end_year = start_year + scen_properties.simulation_duration
@@ -483,20 +477,29 @@ def SEP_traffic_model(scen_properties, file_path):
         relevant_steps_mask = (np.array(time_steps[:-1]) >= year_start_date) & (np.array(time_steps[:-1]) < year_end_date)
         relevant_start_times = np.array(time_steps[:-1])[relevant_steps_mask]
 
-        num_sub_steps = len(relevant_start_times)
-
-        if num_sub_steps == 0:
+        if len(relevant_start_times) == 0:
             continue
 
-        # Create records for these time steps
-        for start_time in relevant_start_times:
-            # Pro-rate the yearly counts to get the count for this smaller time step
-            step_counts = yearly_counts / num_sub_steps
+        # Use only the first time step in the year (mimicking MC behavior)
+        step_counts = yearly_counts.copy()
+        step_counts = step_counts.reset_index()
+        step_counts['epoch_start_date'] = relevant_start_times[0]
+
+        flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
+        # num_sub_steps = len(relevant_start_times)
+
+        # if num_sub_steps == 0:
+        #     continue
+
+        # # Create records for these time steps
+        # for start_time in relevant_start_times:
+        #     # Pro-rate the yearly counts to get the count for this smaller time step
+        #     step_counts = yearly_counts / num_sub_steps
             
-            step_counts = step_counts.reset_index()
-            step_counts['epoch_start_date'] = start_time
+        #     step_counts = step_counts.reset_index()
+        #     step_counts['epoch_start_date'] = start_time
             
-            flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
+        #     flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
 
     # Final re-ordering and cleanup
     # Ensure all species columns from the scenario are present, even if they had no launches

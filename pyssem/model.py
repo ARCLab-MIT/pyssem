@@ -154,7 +154,7 @@ class Model:
             # self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
-            # with open('scenario-properties-baseline-collisions.pkl', 'wb') as f:
+            # with open('scenario-properties-collision.pkl', 'wb') as f:
             #     pickle.dump(self.scenario_properties, f)
 
             # Create Indicator Variables if provided
@@ -220,7 +220,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'SEP1.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'SEP2.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]

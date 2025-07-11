@@ -1444,7 +1444,6 @@ if __name__ == "__main__":
     from matplotlib.colors import LogNorm
 
     # === Helper functions ===
-    
 
     def test_fragmentation_by_sma_new(frag_col_func, param, LB):
         """
@@ -1497,7 +1496,11 @@ if __name__ == "__main__":
 
             debris1, debris2, isCatastrophic = frag_col_func(0, p1, p2, LB=LB)
 
-            results.append((sma, debris1))
+            debris = np.vstack([debris1, debris2])
+            sma_alt_km = (debris[:, 0] - 1) * earth_radius_km
+            ecc = debris[:, 1]
+
+            results.append((sma, debris))
 
         # === Dynamic 2D Histogram Plotting ===
         n_cases = len(results)
@@ -1597,4 +1600,4 @@ if __name__ == "__main__":
         plt.show()
 
     # Run the test
-    test_one_sma(frag_col_SBM_vec_lc, param, LB)
+    test_fragmentation_by_sma_new(frag_col_SBM_vec_lc, param, LB)

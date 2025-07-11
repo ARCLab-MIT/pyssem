@@ -171,11 +171,11 @@ def static_exp_dens_func(t, h, species, scen_properties):
     :param scen_properties: _description_
     :type scen_properties: _type_
     """
-    val = densityexp_jbvalues(h)
+    # val = densityexp_jbvalues(h)
 
     old = densityexp(h)
 
-    return val
+    return old
 
 def preload_density_data(file_path):
     with open(file_path, 'r') as file:
@@ -257,3 +257,6 @@ def JB2008_dens_func(t, h, density_data, date_mapping, nearest_altitude_mapping)
     density_values = density_values_floor * (1 - weight) + density_values_ceil * weight
 
     return density_values
+
+if __name__ == "__main__":
+    print(densityexp(500))

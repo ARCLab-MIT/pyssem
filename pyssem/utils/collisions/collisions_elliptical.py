@@ -15,6 +15,7 @@ import traceback
 from line_profiler import profile
 import os
 import pickle
+from utils.collisions.collisions import evolve_bins as evolve_bins_old
 
 # Helper function for parallel processing of species pairs
 def _process_sp_pair(args):
@@ -153,22 +154,43 @@ def create_elliptical_collision_pairs(scen_properties):
     species_sym_vars = { str(var): var  for var in scen_properties.all_symbolic_vars }
 
     # outer loop over species‐pairs
-    for sp_pair in tqdm(collision_pairs, desc="Processing species pairs"):
-        # inner loop over that pair’s elliptical collisions
+    # for sp_pair in tqdm(collision_pairs, desc="Processing species pairs"):
+    #     # inner loop over that pair’s elliptical collisions
+    #     all_individual_eqs = []
+    #     for ellip_pair in tqdm(
+    #         sp_pair.collision_pair_by_shell,
+    #         desc="  Elliptical collisions",
+    #         leave=False
+    #     ):
+    #         if ellip_pair.fragments is not None:
+    #             all_individual_eqs.append(ellip_pair.create_sympy_matrix_at_elliptical_level(
+    #                 scen_properties.v_imp2,
+    #                 scen_properties.V,
+    #                 species_sym_vars
+    #             ))
+        
+    #     sp_pair.create_symbolic_col_equation(all_species, debris_species, scen_properties.n_shells, all_individual_eqs)
+    # Loop over species pairs (sequential)
+    for sp_pair in collision_pairs:
         all_individual_eqs = []
-        for ellip_pair in tqdm(
-            sp_pair.collision_pair_by_shell,
-            desc="  Elliptical collisions",
-            leave=False
-        ):
+
+        # Loop over each elliptical collision for this species pair
+        for ellip_pair in sp_pair.collision_pair_by_shell:
             if ellip_pair.fragments is not None:
-                all_individual_eqs.append(ellip_pair.create_sympy_matrix_at_elliptical_level(
+                eq_matrix = ellip_pair.create_sympy_matrix_at_elliptical_level(
                     scen_properties.v_imp2,
                     scen_properties.V,
                     species_sym_vars
-                ))
-        
-        sp_pair.create_symbolic_col_equation(all_species, debris_species, scen_properties.n_shells, all_individual_eqs)
+                )
+                all_individual_eqs.append(eq_matrix)
+
+        # Build symbolic collision equation for this species pair
+        sp_pair.create_symbolic_col_equation(
+            all_species,
+            debris_species,
+            scen_properties.n_shells,
+            all_individual_eqs
+    )
 
     return collision_pairs
 
@@ -244,7 +266,10 @@ def process_elliptical_collision_pair(args):
             fragments = None
         else:
             fragments = evolve_bins(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
-                                    binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)    
+                                    binE_mass, binE_ecc, collision_pair.shell_index, n_shells=scen_properties.n_shells)
+            # fragments_old = evolve_bins_old(m1, m2, r1, r2, 10, 10, [], binE_mass, [], 0.1, [collision_pair.species1, collision_pair.species2], RBflag = 0, fragment_spreading=False, n_shells=0)
+            # n_ecc_bins = len(binE_ecc) - 1
+            # fragments = np.repeat(fragments_old[:, np.newaxis, :], n_ecc_bins, axis=1)
     except Exception as e:
         print("Error in Evolve Bins")
         print(f"Exception caught: {e}")
@@ -322,6 +347,8 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
         frag_mass.append(debris[2])
 
     frag_properties = np.array([frag_a, frag_mass, frag_e]).T
+
+    print(frag_properties)
 
     binE_alt = scen_properties.R0_rad_km  # We add 1 for bin edges
 
@@ -482,10 +509,26 @@ class SpeciesCollisionPair:
         - first columns are the collision‐sink terms for each species pair
         - next columns are the debris‐source terms
         """
-        # --- 2) Prepare phi and n_f symbols ---
-        # phi_mat = Matrix(self.phi)                      # shape: (n_shells × num_pairs)
-        # n_f_syms = symbols(f'n_f0:{n_shells}')          # for subs later
 
+        # # Fragment generation equations
+        # M1 = self.species1.mass
+        # M2 = self.species2.mass
+        # LC = scen_properties.LC
+        
+        # nf = zeros(len(scen_properties.v_imp2), 1)
+
+        # for i, dv in enumerate(scen_properties.v_imp2):
+        #     if self.catastrophic[i]:
+        #         # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
+        #         n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
+        #         nf[i] = n_f_catastrophic
+        #     else:
+        #         # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
+        #         n_f_damaging = 0.1 * LC**(-S(1.71)) * (min(M1, M2) * dv**2)**(S(0.75))
+        #         nf[i] = n_f_damaging
+
+        # self.nf = nf.transpose() 
+        
         # --- 3) Pre‐allocate the collision‐sink block (n_shells × num_pairs) ---
         num_pairs = self.gamma.shape[1]
         sink_block = Matrix.zeros(n_shells, num_pairs)

@@ -52,19 +52,20 @@ class SpeciesPairClass:
         M2 = species2.mass
         LC = scen_properties.LC
         
-        nf = zeros(len(scen_properties.v_imp2), 1)
+        # This should be coming from evolve bins
+        # nf = zeros(len(scen_properties.v_imp2), 1)
 
-        for i, dv in enumerate(scen_properties.v_imp2):
-            if self.catastrophic[i]:
-                # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
-                n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
-                nf[i] = n_f_catastrophic
-            else:
-                # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
-                n_f_damaging = 0.1 * LC**(-S(1.71)) * (min(M1, M2) * dv**2)**(S(0.75))
-                nf[i] = n_f_damaging
+        # for i, dv in enumerate(scen_properties.v_imp2):
+        #     if self.catastrophic[i]:
+        #         # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
+        #         n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
+        #         nf[i] = n_f_catastrophic
+        #     else:
+        #         # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
+        #         n_f_damaging = 0.1 * LC**(-S(1.71)) * (min(M1, M2) * dv**2)**(S(0.75))
+        #         nf[i] = n_f_damaging
 
-        self.nf = nf.transpose() 
+        # self.nf = nf.transpose() 
             
         self.gammas = gammas
         self.source_sinks = source_sinks
@@ -77,8 +78,6 @@ class SpeciesPairClass:
 
         if scen_properties.fragment_spreading:
             product_sym = species1.sym.multiply_elementwise(species2.sym).T
-
-
 
         # Go through each gamma (which modifies collision for things like collision avoidance, or fragmentation into 
         # derelicsts, etc.) We increment the eqs matrix with the gamma * phi * species1 * species2.
@@ -139,8 +138,8 @@ class SpeciesPairClass:
             else:
                 eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 
-            for j, val in enumerate(self.nf):
-                eq = eq.subs(n_f[j], val)
+            # for j, val in enumerate(self.nf):
+            #     eq = eq.subs(n_f[j], val)
 
             self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
             

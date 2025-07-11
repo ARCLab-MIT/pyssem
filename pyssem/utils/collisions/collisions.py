@@ -374,44 +374,16 @@ def process_species_pair(args):
         if scen_properties.fragment_spreading:
             try:
                 results = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
-
-                if s1.elliptical or s2.elliptical:
-                    if s1.elliptical and s2.elliptical:
-                        # Both are elliptical, take the product of the time_per_shells values
-                        time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
-                    elif s1.elliptical:
-                        time_factor = s1.time_per_shells[dv_index][dv_index]
-                    else:
-                        # Only s2 is elliptical, use its time_per_shells value
-                        time_factor = s2.time_per_shells[dv_index][dv_index]
-                    
-                    frags_made[dv_index, :] = results[0] * time_factor
-                    alt_nums = results[3] * time_factor
-
-                else:
-                    frags_made[dv_index, :] = results[0]
-                    alt_nums = results[3]
+                frags_made[dv_index, :] = results[0] # nums is the number of fragments related to the shell of dv_index (same shell)
+                alt_nums = results[3] # Is the additional term from the spreading of the collision (all other shells)
             except IndexError as ie:
-                alt_nums  = None
+                alt_nums = None
                 continue
             except ValueError as e:
                 continue
         else:
             results = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks)
-            # Check if s1 or s2 is elliptical
-            if s1.elliptical or s2.elliptical:
-                if s1.elliptical and s2.elliptical:
-                    # Both are elliptical, take the product of the time_per_shells values
-                    time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
-                elif s1.elliptical:
-                    time_factor = s1.time_per_shells[dv_index][dv_index]
-                else:
-                    # Only s2 is elliptical, use its time_per_shells value
-                    time_factor = s2.time_per_shells[dv_index][dv_index]
-                
-                frags_made[dv_index, :] = results[0] * time_factor
-            else:
-                frags_made[dv_index, :] = results[0]
+            frags_made[dv_index, :] = results[0]
 
     for i, species in enumerate(debris_species):
         frags_made_sym = Matrix(frags_made[:, i]) 

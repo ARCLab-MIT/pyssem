@@ -35,7 +35,7 @@
       "T.loc[(T['obj_type'] == 2) &  (T['obj_type'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'Su'",
       "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1) & (T['const_name'].notna()), 'species_class'] = 'S'",
       "T.loc[(T['obj_type'] == 2) & (T['mass'] <= 20) & (T['phase'] == 2), 'species_class'] = 'Sns'",
-      "T.loc[(T['obj_type'] >= 3) & (T['mass'] >= 0.03, 'species_class'] = 'N'",
+      "T.loc[(T['obj_type'] >= 3) & (T['mass'] >= 0.03), 'species_class'] = 'N'",
       "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
   ],
   "species": [
