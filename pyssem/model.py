@@ -243,6 +243,9 @@ class Model:
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
+            
+            # CSI Index
+            # self.scenario_properties.cum_CSI()
 
             # save the scenario properties to a pickle file
             with open('test_3_species.pkl', 'wb') as f:

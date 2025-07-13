@@ -123,10 +123,9 @@ class SpeciesProperties:
                 self.beta = None
             if self.beta is None:
                 print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
-        
+                
         # Orbital Lifetime
         self.orbital_lifetimes = None
-
     def copy(self):
         """
         Create a direct copy of a species object.
