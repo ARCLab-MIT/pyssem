@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import json
-# import imageio
+import imageio
 from ..simulation.scen_properties import ScenarioProperties
 
 class Plots:
@@ -99,7 +99,6 @@ class Plots:
         plt.xlim(0, max(self.output.t))
         plt.legend()
         plt.tight_layout()
-        plt.grid(True)
         plt.savefig(f'figures/{self.simulation_name}/total_objects_over_time.png')
         plt.close()
 
