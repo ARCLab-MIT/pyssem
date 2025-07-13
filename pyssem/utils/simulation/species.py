@@ -351,8 +351,8 @@ class Species:
                 #     species.launch_func = launch_func_lambda_fun   
                 if species.launch_func == 'launch_lambda_sym':
                     species.launch_func = launch_lambda_sym
-                elif species.launch_func == 'launch_lambda_sym_null':
-                    species.launch_func = launch_lambda_sym_null
+                elif species.launch_func == 'launch_func_null':
+                    species.launch_func = launch_func_null
                 else:
                     species.launch_func = launch_func_lambda_fun 
 

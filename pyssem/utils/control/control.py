@@ -5,7 +5,6 @@ from scipy.special import erfinv
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import re
-import json
 
 #==========================================================================
 # Functions used to create symbolic variables for the controller
@@ -113,448 +112,218 @@ def deltat_f1(t,const, active_species_indices, N_shell):
 # Criticality/Capacity Metrics
 #==========================================================================
 
-# def cum_CSI_orig(obj, baseline):
-#     # Maya's code
+def cum_CSI_orig(obj, baseline):
+    N_shell = baseline.n_shells  # Number of shells
+    R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
+    num_species = baseline.species_length  # Number of species
+    re = baseline.re
 
-#     N_shell = baseline.n_shells  # Number of shells
-#     R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
-#     num_species = baseline.species_length  # Number of species
-#     re = baseline.re
+    # Reference values for normalization
+    M0 = 10000
+    D0 = 5e-8  # Arbitrarily chosen, may need revision
+    life0 = 1468
+    A0 = 1
 
-#     # Reference values for normalization
-#     M0 = 10000
-#     D0 = 5e-8  # Arbitrarily chosen, may need revision
-#     life0 = 1468
-#     A0 = 1
-
-#     # Cumulative CSI variables
-#     num_species = len(baseline.species_names)
-#     cum_CSI_total = 0
-#     csi_per_shell = np.zeros(N_shell)
-#     csi_per_species = np.zeros(num_species)
-#     csi_per_species_per_shell = np.zeros((num_species, N_shell))
-
-#     species_mass = []
-#     species_area = []
-#     total_objects_per_shell = np.zeros(N_shell)
-#     total_mass_per_shell = np.zeros(N_shell)
-#     total_area_per_shell = np.zeros(N_shell)
-#     total_objects_per_species = np.zeros(len(baseline.species_names))
-#     total_mass_per_species = np.zeros(len(baseline.species_names))
-#     total_area_per_species = np.zeros(len(baseline.species_names))
-    
-#     # Store species mass and area in lists by index
-#     for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
-#         for species_properties in species_list:
-#             species_mass.append(species_properties.mass)
-#             species_area.append(species_properties.A)
-
-#     total_objects_per_shell = [0] * N_shell
-#     total_mass_per_shell = [0] * N_shell
-#     total_area_per_shell = [0] * N_shell
-
-#     for shell_index in range(N_shell):
-#         for species_index in range(num_species):
-#             idx = shell_index + species_index * N_shell  # Corrected indexing
-#             total_objects_per_shell[shell_index] += obj[idx]
-#             total_mass_per_shell[shell_index] += obj[idx] * species_mass[species_index]
-#             total_area_per_shell[shell_index] += obj[idx] * species_area[species_index]
-
-#     D = [0] * N_shell
-#     lifetime = [0] * N_shell
-
-#     # Calculate and sum CSI for each shell for total CSI
-#     for shell_index in range(N_shell):
-#         h = (R02[shell_index] + R02[shell_index + 1]) / 2
-#         lifetime[shell_index] = 10 ** (14.18 * (h ** 0.1831) - 42.94)
-#         M = total_mass_per_shell[shell_index]
-#         r_inner = re + R02[shell_index]
-#         r_outer = re + R02[shell_index + 1]
-#         volume_outer = (4 / 3) * np.pi * (r_outer**3)
-#         volume_inner = (4 / 3) * np.pi * (r_inner**3)
-#         V = volume_outer - volume_inner
-#         D[shell_index] = M / V
-#         #weighted_area = total_area_per_shell[shell_index] / total_objects_per_shell[shell_index]
-#         csi_per_shell[shell_index] = M / M0 * D[shell_index] / D0 * lifetime[shell_index] / life0
-#         cum_CSI_total += csi_per_shell[shell_index]  # Accumulate CSI for this shell
-#         #cum_CSI_total += M / M0 * D / D0 * lifetime / life0 * weighted_area / A0
-
-#     # Initialize storage arrays
-#     total_objects_per_species = [0] * num_species
-#     total_mass_per_species = [0] * num_species
-#     total_area_per_species = [0] * num_species
-
-#     # Calculate CSI for each species
-#     for species_index in range(num_species):
-#         for shell_index in range(N_shell):
-#             idx = shell_index + species_index * N_shell  # Correct species-shell indexing
-
-#             # Species-specific mass, area, and object count in this shell
-#             num_objects = obj[idx]
-#             mass = num_objects * species_mass[species_index]
-#             area = num_objects * species_area[species_index]
-
-#             csi_per_species_per_shell[species_index, shell_index] = (mass / M0) * (D[shell_index]/D0) * (lifetime[shell_index] / life0)
-
-#             # Accumulate total per species
-#             total_objects_per_species[species_index] += num_objects
-#             total_mass_per_species[species_index] += mass
-#             total_area_per_species[species_index] += area
-
-#             csi_per_species[species_index] += csi_per_species_per_shell[species_index, shell_index]  # Accumulate CSI for this species 
-    
-#     return csi_per_species, csi_per_shell, csi_per_species_per_shell, cum_CSI_total
-
-# def cum_CSI_old(obj, baseline):
-#     # Gio's edit from Maya's code
-#     N_shell = baseline.n_shells  # Number of shells
-#     R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
-#     num_species = len(baseline.species_names)  # Number of species
-#     re = baseline.re
-
-#     # Reference values for normalization
-#     M0 = 10000
-#     D0 = 5e-8
-#     life0 = 1468
-
-#     # Initialize output array
-#     csi_per_species_per_shell = np.zeros((num_species, N_shell))
-
-#     # Extract species mass and area directly as NumPy arrays
-#     species_mass = np.array([prop.mass for species_list in baseline.species_cells.values() for prop in species_list])
-
-#     # Reshape the object counts for efficient vectorized calculation
-#     obj_matrix = obj.reshape(num_species, N_shell)
-
-#     # Calculate total mass per shell using vectorized operations
-#     total_mass_per_shell = np.sum(obj_matrix * species_mass[:, None], axis=0)
-
-#     D = np.zeros(N_shell)
-#     lifetime = np.zeros(N_shell)
-
-#     # Vectorized calculation of D and lifetime
-#     h = (R02[:-1] + R02[1:]) / 2  # Use slicing for vectorized addition
-#     # lifetime[:] = 10 ** (14.18 * (h ** 0.1831) - 42.94) # maya
-#     lifetime[:] = np.exp(14.18 * (h ** 0.1831) - 42.94)
-#     r_inner = re + R02[:-1]
-#     r_outer = re + R02[1:]
-#     volume_outer = (4 / 3) * np.pi * (r_outer**3)
-#     volume_inner = (4 / 3) * np.pi * (r_inner**3)
-#     V = volume_outer - volume_inner
-#     V = np.array(baseline.V)
-#     D[:] = total_mass_per_shell / V
-
-#     # Calculate CSI for each species per shell using vectorized operations
-#     mass_matrix = obj_matrix * species_mass[:, None]
-#     csi_per_species_per_shell[:] = (mass_matrix / M0) * (D / D0) * (lifetime / life0) # * (1/(1+0.6))         
-
-#     return csi_per_species_per_shell.flatten()
-
-def cum_CSI(obj, baseline):
-    # Validated by Gio on 06/27/25 based on the matlab mocat-3 notebook
-
-    # --- Extract baseline parameters ---
-    N_shell = baseline.n_shells
-    R02 = baseline.R0_km
+    # Cumulative CSI variables
     num_species = len(baseline.species_names)
-    V_per_shell = np.array(baseline.V)
+    cum_CSI_total = 0
+    csi_per_shell = np.zeros(N_shell)
+    csi_per_species = np.zeros(num_species)
+    csi_per_species_per_shell = np.zeros((num_species, N_shell))
 
-    # --- Parameters from the new model in `cum_CSI_new` ---
-    k = 0.6
-    cos_i_av = 2 / np.pi  # Average value of cos(i)
-    Gamma_av = (1 - cos_i_av) / 2
-    
-    # New inclination-based physics factor
-    inclination_factor = (1 + k * Gamma_av)
-
-    # --- Reference values from the new model ---
-    M_ref = 10000  # kg
-    life_h_ref = 1468  # years, corresponds to lifetime at 1000 km
-
-    # initial_populations = baseline.x0.T.values.flatten()
-    # D_ref = np.max(np.sum(initial_populations, axis=0) / V_per_shell)
-    initial_populations_flat = np.array(baseline.x0)
-    initial_populations_matrix = initial_populations_flat.reshape(num_species, N_shell)
-    total_objects_per_shell = np.sum(initial_populations_matrix, axis=0) # Shape: (24,)
-    initial_number_density_per_shell = total_objects_per_shell / V_per_shell # Shape: (24,)
-    D_ref = np.max(initial_number_density_per_shell)
-
-    # Calculate the single, combined denominator for normalization
-    den = M_ref * D_ref * life_h_ref * (1 + k) #/ 10
-
-    # --- Vectorized Calculations ---
-    # 1. Reshape the input population counts into a (species, shell) matrix
-    obj_matrix = obj.reshape(num_species,N_shell)
-
-    # 2. Get species mass as a column vector for broadcasting
-    species_mass = np.array([prop.mass for species_list in baseline.species_cells.values() for prop in species_list])
-    species_mass_col = species_mass[:, np.newaxis] # Shape: (num_species, 1)
-
-    # 3. Calculate shell-dependent properties (lifetime and volume)
-    h = (R02[:-1] + R02[1:]) / 2
-    lifetime_per_shell = np.exp(14.18 * (h ** 0.1831) - 42.94) # Shape: (N_shell,)
-
-    # 4. Calculate Species Number Density (D_X) for each species and shell
-    # This replaces the old total mass density calculation.
-    # Broadcasting (num_species, N_shell) / (1, N_shell)
-    D_X_matrix = obj_matrix / V_per_shell
-
-    # 5. Calculate the numerator term (dum_X)
-    # Combines mass, lifetime, and the new inclination factor.
-    # Broadcasting (num_species, 1) * (1, N_shell)
-    num_term = lifetime_per_shell * inclination_factor
-    dum_X_matrix = species_mass_col * num_term
-    
-    # 6. Calculate the final CSI matrix using the formula from `cum_CSI_new`
-    csi_per_species_per_shell = (D_X_matrix * dum_X_matrix) / den
-
-    return csi_per_species_per_shell.flatten()
-
-# def cum_CSI_new(self):
-#     # From pyssem code; to use it in the jup)yter notebook, you need to call it with the baseline object: cum_CSI_new(baseline)
-#     # I think the cum_CSI above is the correct one, this one has some bugs 
-
-#     baseline = self
-#     baseline.results = {}
-#     baseline.results['times'] = baseline.output['t']
-    
-#     n_species = baseline.species_length
-#     num_shells = baseline.n_shells
-#     species_names = baseline.species_names
-#     # Initialize the data dictionary
-#     data = {"population_data": []}
-#     # Initialize population data structure
-#     population_data_dict = {species: [[0] * len( baseline.results['times']) for _ in range(num_shells)]
-#                             for species in species_names}
-#     # Populate population data
-#     for i in range(n_species):
-#         species = species_names[i]
-#         for j in range(num_shells):
-#             shell_index = i * num_shells + j
-#             population_data_dict[species][j] = baseline.output['y'][shell_index, :].tolist()
-#             shell_data = {
-#                 "species": species,
-#                 "shell": j + 1,
-#                 "populations": baseline.output['y'][shell_index, :].tolist()
-#             }
-#             data["population_data"].append(shell_data)
-#     baseline.results['population_data'] = data["population_data"]    
-
-#     k = 0.6
-#     def life(h):
-#         return np.exp(14.18 * h ** 0.1831 - 42.94)
-
-#     M_ref = 10000 # kg
-#     h_ref = 1000 # km
-#     life_h_ref = 1468 # years, it corresponds to life0 = life(1000)
-
-#     initial_populations = [data['populations'][0] for data in self.results['population_data']]
-#     V = np.array(self.V)
-#     D_ref = np.max(np.sum(initial_populations, axis=0) / V)
-    
-#     den = M_ref * D_ref * life_h_ref * (1+k) / 10
-#     #den = 2.4477e-09
-
-#     cos_i_av = 2/np.pi #average value of cosine of inclination in the range -pi/2 pi/2 calculated using integral average
-#     Gamma_av = (1-cos_i_av)/2
-
-#     rgb_c = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
-    
-#     def life(h):
-#         return np.exp(14.18 * h**0.1831 - 42.94)
-
-#     if hasattr(self, 'results'):
-#         print("Producing two visuals of CSI.")
-#         plt.figure()
-#         plt.grid(True)
-#         CSI_S_sum_array = np.zeros((len(self.results['times']), 0))
-#         CSI_D_sum_array = np.zeros((len(self.results['times']), 0))
-        
-#         unique_species = set([data['species'] for data in self.results['population_data']])
-        
-#         for i2, species in enumerate(unique_species):
-#             if i2 >= len(rgb_c):
-#                 colorset = np.random.rand(3)
-#             else:
-#                 colorset = rgb_c[i2]
-            
-#             CSI_X_mat = np.zeros((len(self.results['times']), self.n_shells))
-#             species_list = [sp for species_group in self.species.values() for sp in species_group]
-
-#             if 'S' in species or 'D' in species:
-#                 for i in range(self.n_shells):
-#                     shell_data = [data for data in self.results['population_data'] if data['species'] == species and data['shell'] == (i + 1)]
-#                     if shell_data:
-#                         life_i = life((self.R0_km[i] + self.R0_km[i + 1]) / 2)
-#                         num = life_i * (1 + k * Gamma_av)
-#                         try:
-#                             mass = next((item.mass for item in species_list if item.sym_name == species), 0)
-#                         except TypeError as e:
-#                             print(f"Error accessing species_properties for species '{species}': {e}")
-#                             print(f"species_list: {species_list}")
-#                             raise
-#                         dum_X = mass * num
-#                         D_X = np.array(shell_data[0]['populations']) / self.V[i]
-#                         CSI_X_mat[:, i] = D_X * dum_X
-                
-#                 CSI_X_mat /= den
-#                 CSI_X = np.sum(CSI_X_mat, axis=1)
-#                 plt.plot(self.results['times'], CSI_X, label=f'CSI for {species.replace("p", ".")}', linewidth=2, color=colorset)
-                
-#                 if 'S' in species and 'D' not in species:
-#                     CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
-#                 elif 'D' in species:
-#                     CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
-
-#         if CSI_S_sum_array.shape[1] > 0:
-#             CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
-#         else:
-#             CSI_S_sum = np.zeros(len(self.results['times']))
-
-#         if CSI_D_sum_array.shape[1] > 0:
-#             CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
-#         else:
-#             CSI_D_sum = np.zeros(len(self.results['times']))
-
-#         plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
-#         plt.xlabel('Time (years)')
-#         plt.ylabel('CSI')
-#         plt.title('Cumulative Space Index (CSI) per Species')
-#         plt.xlim([0, np.max(self.results['times'])])
-#         plt.legend(loc='best', frameon=False)
-#         plt.show()
-
-#         plt.figure()
-#         plt.grid(True)
-#         plt.plot(self.results['times'], CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2, color='#1f77b4')
-#         plt.plot(self.results['times'], CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2, color='#ff7f0e')
-#         plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
-#         plt.xlabel('Time (years)')
-#         plt.ylabel('Cumulative CSI')
-#         plt.xlim([0, np.max(self.results['times'])])
-#         plt.title('Cumulative Space Index (CSI) for Active and Derelict Species')
-#         plt.legend(loc='best', frameon=False)
-#         plt.show()
-#     else:
-#         raise ValueError("Simulation does not contain results. Please run the function run_model(x0) to produce simulation results required for CSI computation.")
-        
-
-def cum_umpy(obj, baseline, PMD_no_noise):
-    # From pyssem code
-
-    base_species_names = baseline.species_names
-    n_species = baseline.species_length
-    num_shells = baseline.n_shells
-    
     species_mass = []
-    orbital_lifetimes = []
+    species_area = []
+    total_objects_per_shell = np.zeros(N_shell)
+    total_mass_per_shell = np.zeros(N_shell)
+    total_area_per_shell = np.zeros(N_shell)
+    total_objects_per_species = np.zeros(len(baseline.species_names))
+    total_mass_per_species = np.zeros(len(baseline.species_names))
+    total_area_per_species = np.zeros(len(baseline.species_names))
+    
+    # Store species mass and area in lists by index
     for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
         for species_properties in species_list:
             species_mass.append(species_properties.mass)
-            orbital_lifetimes.append(species_properties.orbital_lifetimes)
-    obj = obj.reshape((n_species, num_shells))
+            species_area.append(species_properties.A)
 
-    X = 4
+    total_objects_per_shell = [0] * N_shell
+    total_mass_per_shell = [0] * N_shell
+    total_area_per_shell = [0] * N_shell
 
-    # One aggregated vector eqs (n_shells x 1) summing across species
-    # umpy_eqs = np.zeros((num_shells, 1))
-    umpy_eqs = np.zeros((n_species,num_shells))
-    for species_index in range(n_species):
-        for shell_idx in range(num_shells):
-            if not base_species_names[species_index].startswith('S'):
-                mass_i = species_mass[species_index]
-                pop_ij  = obj[species_index][shell_idx]            # population in shell i
-                life_ij = orbital_lifetimes[species_index][shell_idx]
-                umpy_factor = ((np.exp(X * (life_ij / baseline.simulation_duration)) - 1) / (np.exp(X) - 1))
-                # umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / baseline.simulation_duration
-                umpy_eqs[species_index,shell_idx] = (mass_i * pop_ij * umpy_factor) / baseline.simulation_duration
-            else:
-                # If active, just add zero
-                # umpy_eqs[shell_idx]+= 0
-                umpy_eqs[species_index,shell_idx] = 0
+    for shell_index in range(N_shell):
+        for species_index in range(num_species):
+            idx = shell_index + species_index * N_shell  # Corrected indexing
+            total_objects_per_shell[shell_index] += obj[idx]
+            total_mass_per_shell[shell_index] += obj[idx] * species_mass[species_index]
+            total_area_per_shell[shell_index] += obj[idx] * species_area[species_index]
 
-    return umpy_eqs.flatten()
+    D = [0] * N_shell
+    lifetime = [0] * N_shell
 
-# def cum_umpy_old(obj, baseline, PMD_no_noise):
-#     # Maya's code
+    # Calculate and sum CSI for each shell for total CSI
+    for shell_index in range(N_shell):
+        h = (R02[shell_index] + R02[shell_index + 1]) / 2
+        lifetime[shell_index] = 10 ** (14.18 * (h ** 0.1831) - 42.94)
+        M = total_mass_per_shell[shell_index]
+        r_inner = re + R02[shell_index]
+        r_outer = re + R02[shell_index + 1]
+        volume_outer = (4 / 3) * np.pi * (r_outer**3)
+        volume_inner = (4 / 3) * np.pi * (r_inner**3)
+        V = volume_outer - volume_inner
+        D[shell_index] = M / V
+        #weighted_area = total_area_per_shell[shell_index] / total_objects_per_shell[shell_index]
+        csi_per_shell[shell_index] = M / M0 * D[shell_index] / D0 * lifetime[shell_index] / life0
+        cum_CSI_total += csi_per_shell[shell_index]  # Accumulate CSI for this shell
+        #cum_CSI_total += M / M0 * D / D0 * lifetime / life0 * weighted_area / A0
 
-#     N_shell = baseline.n_shells  # Number of shells
-#     R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
-#     num_species = baseline.species_length  # Number of species
-#     re = baseline.re
+    # Initialize storage arrays
+    total_objects_per_species = [0] * num_species
+    total_mass_per_species = [0] * num_species
+    total_area_per_species = [0] * num_species
 
-#     # Cumulative UMPY variables
-#     num_species = len(baseline.species_names)
-#     umpy_total = 0
-#     umpy_per_shell = np.zeros(N_shell)
-#     umpy_per_species = np.zeros(num_species)
-#     umpy_per_species_per_shell = np.zeros((num_species, N_shell))
+    # Calculate CSI for each species
+    for species_index in range(num_species):
+        for shell_index in range(N_shell):
+            idx = shell_index + species_index * N_shell  # Correct species-shell indexing
 
-#     # assuming same PMD for all shells and all satellites, will have to modify otherwise
-#     umpy_pmd = np.mean(PMD_no_noise)
+            # Species-specific mass, area, and object count in this shell
+            num_objects = obj[idx]
+            mass = num_objects * species_mass[species_index]
+            area = num_objects * species_area[species_index]
 
-#     species_mass = []
-#     species_area = []
-#     total_objects_per_shell = np.zeros(N_shell)
-#     total_mass_per_shell = np.zeros(N_shell)
-#     total_area_per_shell = np.zeros(N_shell)
-#     total_objects_per_species = np.zeros(len(baseline.species_names))
-#     total_mass_per_species = np.zeros(len(baseline.species_names))
-#     total_area_per_species = np.zeros(len(baseline.species_names))
+            csi_per_species_per_shell[species_index, shell_index] = (mass / M0) * (D[shell_index]/D0) * (lifetime[shell_index] / life0)
+
+            # Accumulate total per species
+            total_objects_per_species[species_index] += num_objects
+            total_mass_per_species[species_index] += mass
+            total_area_per_species[species_index] += area
+
+            csi_per_species[species_index] += csi_per_species_per_shell[species_index, shell_index]  # Accumulate CSI for this species 
     
-#     # Store species mass and area in lists by index
-#     for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
-#         for species_properties in species_list:
-#             species_mass.append(species_properties.mass)
-#             species_area.append(species_properties.A)
+    return csi_per_species, csi_per_shell, csi_per_species_per_shell, cum_CSI_total
 
-#     total_objects_per_shell = [0] * N_shell
-#     total_mass_per_shell = [0] * N_shell
-#     total_area_per_shell = [0] * N_shell
+def cum_CSI(obj, baseline):
+    N_shell = baseline.n_shells  # Number of shells
+    R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
+    num_species = len(baseline.species_names)  # Number of species
+    re = baseline.re
 
-#     for shell_index in range(N_shell):
-#         for species_index in range(num_species):
-#             idx = shell_index + species_index * N_shell  # Corrected indexing
-#             total_objects_per_shell[shell_index] += obj[idx]
-#             total_mass_per_shell[shell_index] += obj[idx] * species_mass[species_index]
-#             total_area_per_shell[shell_index] += obj[idx] * species_area[species_index]
+    # Reference values for normalization
+    M0 = 10000
+    D0 = 5e-8
+    life0 = 1468
 
-#     lifetime = [0] * N_shell
+    # Initialize output array
+    csi_per_species_per_shell = np.zeros((num_species, N_shell))
 
-#     # Calculate and sum UMPY for each shell for total UMPY
-#     for shell_index in range(N_shell):
-#         h = (R02[shell_index] + R02[shell_index + 1]) / 2
-#         # lifetime[shell_index] = 10 ** (14.18 * (h ** 0.1831) - 42.94) # maya
-#         lifetime[shell_index] = np.exp(14.18 * (h ** 0.1831) - 42.94)
-#         M = total_mass_per_shell[shell_index]
-#         umpy_per_shell[shell_index] = (M * (1-umpy_pmd))/lifetime[shell_index]
-#         umpy_total += umpy_per_shell[shell_index]  # Accumulate CSI for this shell
+    # Extract species mass and area directly as NumPy arrays
+    species_mass = np.array([prop.mass for species_list in baseline.species_cells.values() for prop in species_list])
 
-#     # Initialize storage arrays
-#     total_objects_per_species = [0] * num_species
-#     total_mass_per_species = [0] * num_species
-#     total_area_per_species = [0] * num_species
+    # Reshape the object counts for efficient vectorized calculation
+    obj_matrix = obj.reshape(num_species, N_shell)
 
-#     # Calculate CSI for each species
-#     for species_index in range(num_species):
-#         for shell_index in range(N_shell):
-#             idx = shell_index + species_index * N_shell  # Correct species-shell indexing
+    # Calculate total mass per shell using vectorized operations
+    total_mass_per_shell = np.sum(obj_matrix * species_mass[:, None], axis=0)
 
-#             # Species-specific mass, area, and object count in this shell
-#             num_objects = obj[idx]
-#             mass = num_objects * species_mass[species_index]
-#             area = num_objects * species_area[species_index]
+    D = np.zeros(N_shell)
+    lifetime = np.zeros(N_shell)
 
-#             umpy_per_species_per_shell[species_index, shell_index] = ((mass) * (1 - umpy_pmd)) / (lifetime[shell_index])
+    # Vectorized calculation of D and lifetime
+    h = (R02[:-1] + R02[1:]) / 2  # Use slicing for vectorized addition
+    # lifetime[:] = 10 ** (14.18 * (h ** 0.1831) - 42.94) # maya
+    lifetime[:] = np.exp(14.18 * (h ** 0.1831) - 42.94)
+    r_inner = re + R02[:-1]
+    r_outer = re + R02[1:]
+    volume_outer = (4 / 3) * np.pi * (r_outer**3)
+    volume_inner = (4 / 3) * np.pi * (r_inner**3)
+    V = volume_outer - volume_inner
+    D[:] = total_mass_per_shell / V
 
-#             # Accumulate total per species
-#             total_objects_per_species[species_index] += num_objects
-#             total_mass_per_species[species_index] += mass
-#             total_area_per_species[species_index] += area
+    # Calculate CSI for each species per shell using vectorized operations
+    mass_matrix = obj_matrix * species_mass[:, None]
+    csi_per_species_per_shell[:] = (mass_matrix / M0) * (D / D0) * (lifetime / life0) # * (1/(1+0.6))         
 
-#             umpy_per_species[species_index] += umpy_per_species_per_shell[species_index, shell_index]  # Accumulate UMPY for this species
+    return csi_per_species_per_shell.flatten()
 
-#     return umpy_per_species_per_shell.flatten() # umpy_total, umpy_per_species
+def cum_umpy(obj, baseline, PMD_no_noise):
+
+    N_shell = baseline.n_shells  # Number of shells
+    R02 = baseline.R0_km  # Altitude bins (shell boundaries) in km
+    num_species = baseline.species_length  # Number of species
+    re = baseline.re
+
+    # Cumulative CSI variables
+    num_species = len(baseline.species_names)
+    umpy_total = 0
+    umpy_per_shell = np.zeros(N_shell)
+    umpy_per_species = np.zeros(num_species)
+    umpy_per_species_per_shell = np.zeros((num_species, N_shell))
+
+    # assuming same PMD for all shells and all satellites, will have to modify otherwise
+    umpy_pmd = np.mean(PMD_no_noise)
+
+    species_mass = []
+    species_area = []
+    total_objects_per_shell = np.zeros(N_shell)
+    total_mass_per_shell = np.zeros(N_shell)
+    total_area_per_shell = np.zeros(N_shell)
+    total_objects_per_species = np.zeros(len(baseline.species_names))
+    total_mass_per_species = np.zeros(len(baseline.species_names))
+    total_area_per_species = np.zeros(len(baseline.species_names))
+    
+    # Store species mass and area in lists by index
+    for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
+        for species_properties in species_list:
+            species_mass.append(species_properties.mass)
+            species_area.append(species_properties.A)
+
+    total_objects_per_shell = [0] * N_shell
+    total_mass_per_shell = [0] * N_shell
+    total_area_per_shell = [0] * N_shell
+
+    for shell_index in range(N_shell):
+        for species_index in range(num_species):
+            idx = shell_index + species_index * N_shell  # Corrected indexing
+            total_objects_per_shell[shell_index] += obj[idx]
+            total_mass_per_shell[shell_index] += obj[idx] * species_mass[species_index]
+            total_area_per_shell[shell_index] += obj[idx] * species_area[species_index]
+
+    lifetime = [0] * N_shell
+
+    # Calculate and sum UMPY for each shell for total UMPY
+    for shell_index in range(N_shell):
+        h = (R02[shell_index] + R02[shell_index + 1]) / 2
+        # lifetime[shell_index] = 10 ** (14.18 * (h ** 0.1831) - 42.94) # maya
+        lifetime[shell_index] = np.exp(14.18 * (h ** 0.1831) - 42.94)
+        M = total_mass_per_shell[shell_index]
+        umpy_per_shell[shell_index] = (M * (1-umpy_pmd))/lifetime[shell_index]
+        umpy_total += umpy_per_shell[shell_index]  # Accumulate CSI for this shell
+
+    # Initialize storage arrays
+    total_objects_per_species = [0] * num_species
+    total_mass_per_species = [0] * num_species
+    total_area_per_species = [0] * num_species
+
+    # Calculate CSI for each species
+    for species_index in range(num_species):
+        for shell_index in range(N_shell):
+            idx = shell_index + species_index * N_shell  # Correct species-shell indexing
+
+            # Species-specific mass, area, and object count in this shell
+            num_objects = obj[idx]
+            mass = num_objects * species_mass[species_index]
+            area = num_objects * species_area[species_index]
+
+            umpy_per_species_per_shell[species_index, shell_index] = ((mass) * (1 - umpy_pmd)) / (lifetime[shell_index])
+
+            # Accumulate total per species
+            total_objects_per_species[species_index] += num_objects
+            total_mass_per_species[species_index] += mass
+            total_area_per_species[species_index] += area
+
+            umpy_per_species[species_index] += umpy_per_species_per_shell[species_index, shell_index]  # Accumulate UMPY for this species
+
+    return umpy_per_species_per_shell.flatten() # umpy_total, umpy_per_species
 
 # def cum_OAR(obj, baseline):
 
@@ -773,7 +542,7 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             plt.show()
 
     if sel_risk_index != 0:
-        # Figure: Risk index all shells vs time
+        # Figure: Risk index
         plt.figure(facecolor='white',figsize=(12, 8))
         plt.grid(True)
         risk_idx_total = np.zeros_like(output.t)
@@ -818,29 +587,6 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
         plt.xticks(fontsize=sel_FontSize)
         plt.yticks(fontsize=sel_FontSize)
         plt.gca().tick_params(width=sel_LineWidthAxis)
-        plt.show()
-
-        # Figure: Surface plot of risk index over time and orbital shells
-        fig = plt.figure(facecolor='white', figsize=(12, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.grid(True)
-        ax.set_xlabel('Time', fontsize=sel_FontSize)
-        ax.set_ylabel('Orbital Shell', fontsize=sel_FontSize)
-        ax.set_zlabel('Indicator Value', fontsize=sel_FontSize)
-        if sel_risk_index == 1:
-            ax.set_title('Surface Plot of CSI for All Species', fontsize=sel_FontSize)
-        elif sel_risk_index == 2:
-            ax.set_title('Surface Plot of UMPY for All Species', fontsize=sel_FontSize)
-        risk_idx_per_species = output.risk_idx_per_species_per_shell.T
-        risk_idx_per_species = risk_idx_per_species.reshape(len(output.t), n_species, num_shells).sum(axis=1)
-        risk_idx_per_species = risk_idx_per_species.T  # Shape: [num_shells, num_times]
-        X, Y = np.meshgrid(output.t, np.arange(num_shells))
-        surf = ax.plot_surface(X, Y, risk_idx_per_species, cmap='viridis', edgecolor='none')
-        fig.colorbar(surf, shrink=0.5, aspect=10, label='Indicator Value')
-        plt.xticks(fontsize=sel_FontSize)
-        plt.yticks(fontsize=sel_FontSize)
-        ax.tick_params(axis='z', labelsize=sel_FontSize)
-        # plt.tight_layout()
         plt.show()
 
     # ADR Total vs Time
@@ -896,25 +642,6 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             ax.set_ylim(ymin, ymax)  # Set the new y-axis limits
         plt.legend(loc='best', bbox_to_anchor=(1, 1))
         plt.show()
-
-    # Each species over time for all shells
-    cols = 5  # Define the number of columns you want
-    rows = (n_species + cols - 1) // cols  # Calculate the number of rows needed
-    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
-    axes = np.atleast_2d(axes)  # Ensure axes is always 2D, even for a single row
-    for species_index in range(n_species):
-        ax = axes.flatten()[species_index]
-        species_data = output.y[species_index * num_shells:(species_index + 1) * num_shells]
-        for shell_index in range(num_shells):
-            ax.plot(output.t, species_data[shell_index], label=f'Shell {shell_index + 1}')
-        ax.set_title(f'{species_names[species_index]}')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Value')
-    # Hide any unused axes
-    for i in range(n_species, rows * cols):
-        fig.delaxes(axes.flatten()[i])
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-
     return 1
 
 #==========================================================================
