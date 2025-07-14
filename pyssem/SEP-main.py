@@ -73,7 +73,7 @@ def run_one_sep(sep_name):
 if __name__ == "__main__":
 
     # seps = ['SEP1', 'SEP2', 'SEP3H', 'SEP3M', 'SEP4', 'SEP5H', 'SEP5M', 'SEP6H', 'SEP6M']
-    seps = ['SEP2']
+    seps = ['SEP1', 'SEP2', 'SEP4', 'SEP6H']
     results_path = os.path.join(os.getcwd(), "results.txt")
 
     for sep in seps:

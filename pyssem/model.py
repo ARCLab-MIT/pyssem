@@ -136,7 +136,7 @@ class Model:
             species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            species_list.set_elliptical_orbits(self.scenario_properties)
+            # species_list.set_elliptical_orbits(self.scenario_properties)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
@@ -164,6 +164,7 @@ class Model:
             # Initial population of species and any launches
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             
+        
             return species_list
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
@@ -220,7 +221,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'SEP2.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'frag_spread_test.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]

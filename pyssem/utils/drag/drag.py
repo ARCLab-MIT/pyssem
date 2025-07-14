@@ -64,7 +64,7 @@ def densityexp(h):
     mask = h >= 1000
     p[mask] = p0 * np.exp((h0 - h[mask]) / H)
 
-    return p
+    return p / 1000 
 
 
 def densityexp_jbvalues(h):
