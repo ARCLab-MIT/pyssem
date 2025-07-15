@@ -41,10 +41,10 @@ def lam_f1(t):
 # Time and shell constant based on constant multiplier of the initial population
 def lam_f2(t, const, ref, active_species_indices, N_shell):
     out = []
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
-        out[start_idx:end_idx] = const[species_index] * ref[start_idx:end_idx]
+        out[start_idx:end_idx] = const[active_species_indices[species_index]] * ref[start_idx:end_idx]
     return out
 
 # Time and shell varying based on random multiplier of the initial population
@@ -69,10 +69,10 @@ def lam_f5(t, ref, active_species_per_shells):
 # 1. Time and shell constant 
 def pmd_f1(t,const, active_species_indices, N_shell):
     out = []
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
-        out[start_idx:end_idx] = const[species_index] * np.ones(N_shell)
+        out[start_idx:end_idx] = const[active_species_indices[species_index]] * np.ones(N_shell)
     return out
 
 # 2. Increasing over time, constant for each shell
@@ -103,10 +103,10 @@ def pmd_f3(t,lower_bound,upper_bound, active_species_indices, N_shell):
 # 1. Time and shell constant
 def deltat_f1(t,const, active_species_indices, N_shell):
     out = []
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
-        out[start_idx:end_idx] = const[species_index] * np.ones(N_shell)
+        out[start_idx:end_idx] = const[active_species_indices[species_index]] * np.ones(N_shell)
     return out
 
 #==========================================================================
@@ -584,7 +584,7 @@ def cum_umpy(obj, baseline, PMD_no_noise):
 
 def launch_rate_plot(baseline, active_species_indices, x0_lam, x0_lam_no_noise, sel_LineWidth, sel_LineWidthAxis, sel_FontSize):
     N_shell = baseline.n_shells
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
 
@@ -598,7 +598,7 @@ def launch_rate_plot(baseline, active_species_indices, x0_lam, x0_lam_no_noise, 
         plt.plot(sum(plot_x0_lam), linewidth=sel_LineWidth, label='w/ noise')
         plt.plot(sum(plot_x0_lam_no_noise), '--', linewidth=sel_LineWidth, label='w/o noise')
         plt.legend(loc='best')
-        plt.title(baseline.species_names[species_index])
+        plt.title(baseline.species_names[active_species_indices[species_index]])
         plt.show()
 
         plt.figure(facecolor='white', figsize=(10,6), layout="constrained")
@@ -612,7 +612,7 @@ def launch_rate_plot(baseline, active_species_indices, x0_lam, x0_lam_no_noise, 
                 ax.set_ylabel('Count/year', fontsize=sel_FontSize)
             if N_shell - i <= np.ceil(np.sqrt(N_shell)):
                 ax.set_xlabel('Time (years)', fontsize=sel_FontSize)
-            ax.set_title(baseline.species_names[species_index]+f", $\lambda$$_{{{i+1}}}$", fontsize=sel_FontSize)
+            ax.set_title(baseline.species_names[active_species_indices[species_index]]+f", $\lambda$$_{{{i+1}}}$", fontsize=sel_FontSize)
             ax.tick_params(width=sel_LineWidthAxis)
             plt.setp(ax.get_xticklabels(), fontsize=sel_FontSize)
             plt.setp(ax.get_yticklabels(), fontsize=sel_FontSize)
@@ -626,7 +626,7 @@ def launch_rate_plot(baseline, active_species_indices, x0_lam, x0_lam_no_noise, 
 
 def pmd_plot(baseline, active_species_indices, PMD, PMD_no_noise, sel_LineWidth, sel_LineWidthAxis, sel_FontSize):
     N_shell = baseline.n_shells
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
 
@@ -644,7 +644,7 @@ def pmd_plot(baseline, active_species_indices, PMD, PMD_no_noise, sel_LineWidth,
                 ax.set_ylabel('Percentage', fontsize=sel_FontSize)
             if N_shell - i <= np.ceil(np.sqrt(N_shell)):
                 ax.set_xlabel('Time (years)', fontsize=sel_FontSize)
-            ax.set_title(baseline.species_names[species_index]+f", PMD$_{{{i+1}}}$", fontsize=sel_FontSize)
+            ax.set_title(baseline.species_names[active_species_indices[species_index]]+f", PMD$_{{{i+1}}}$", fontsize=sel_FontSize)
             ax.tick_params(width=sel_LineWidthAxis)
             plt.setp(ax.get_xticklabels(), fontsize=sel_FontSize)
             plt.setp(ax.get_yticklabels(), fontsize=sel_FontSize)
@@ -658,7 +658,7 @@ def pmd_plot(baseline, active_species_indices, PMD, PMD_no_noise, sel_LineWidth,
 
 def deltat_plot(baseline, active_species_indices, deltat, deltat_no_noise, sel_LineWidth, sel_LineWidthAxis, sel_FontSize):
     N_shell = baseline.n_shells
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
 
@@ -676,7 +676,7 @@ def deltat_plot(baseline, active_species_indices, deltat, deltat_no_noise, sel_L
                 ax.set_ylabel('Years', fontsize=sel_FontSize)
             if N_shell - i <= np.ceil(np.sqrt(N_shell)):
                 ax.set_xlabel('Time (years)', fontsize=sel_FontSize)
-            ax.set_title(baseline.species_names[species_index]+f", $\delta$$_{{{i+1}}}$", fontsize=sel_FontSize)
+            ax.set_title(baseline.species_names[active_species_indices[species_index]]+f", $\delta$$_{{{i+1}}}$", fontsize=sel_FontSize)
             ax.tick_params(width=sel_LineWidthAxis)
             plt.setp(ax.get_xticklabels(), fontsize=sel_FontSize)
             plt.setp(ax.get_yticklabels(), fontsize=sel_FontSize)
@@ -743,7 +743,7 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
 
     if sel_pmd_control == 1:
         # Figure: PMD with and without noise
-        for species_index in range(active_species_indices):
+        for species_index in range(len(active_species_indices)):
             start_idx = species_index * num_shells
             end_idx = start_idx + num_shells
 
@@ -765,7 +765,7 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
                     ax.set_ylabel('Percentage', fontsize=sel_FontSize)
                 if num_shells - i <= np.ceil(np.sqrt(num_shells)):
                     ax.set_xlabel('Time (years)', fontsize=sel_FontSize)
-                ax.set_title(baseline.species_names[species_index]+f", PMD$_{{{i+1}}}$", fontsize=sel_FontSize)
+                ax.set_title(baseline.species_names[active_species_indices[species_index]]+f", PMD$_{{{i+1}}}$", fontsize=sel_FontSize)
                 ax.tick_params(width=sel_LineWidthAxis)
                 plt.setp(ax.get_xticklabels(), fontsize=sel_FontSize)
                 plt.setp(ax.get_yticklabels(), fontsize=sel_FontSize)
