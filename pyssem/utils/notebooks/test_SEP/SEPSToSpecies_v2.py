@@ -49,7 +49,6 @@ def assign_species(df):
     # Cubesats: 'Sns'  (mass ≤ 20 kg)
     mask = (
         (df['obj_type']     == 2) &
-        (df['phase']        == 2) &
         (df['mass']         <= 20)
     )
     df.loc[mask, 'species_class'] = 'Sns'
@@ -57,7 +56,7 @@ def assign_species(df):
     # Slotted Satellites: 'S'
     mask = (
         (df['obj_type'] == 2) &
-        (df['phase']    == 2) &
+        (df['phase'] == 2) &
         df['const_name'].notna()
     )
     df.loc[mask, 'species_class'] = 'S'
@@ -65,8 +64,7 @@ def assign_species(df):
     # Debris: 'N'
     mask = df['obj_type'] >= 3
     mask = (
-        (df['obj_type'] >= 3) &
-        (df['phase']    == 4)
+        (df['obj_type'] >= 3)
     )
     df.loc[mask, 'species_class'] = 'N'
 
