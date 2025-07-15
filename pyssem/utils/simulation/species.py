@@ -193,7 +193,9 @@ class Species:
             species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{species_properties['mass'][i]}kg"
 
             try:
-                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null" and species_props_copy.get("launch_func") != "launch_lambda_sym":
+                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null" and \
+                    species_props_copy.get("launch_func") != "launch_lambda_sym" and \
+                    species_props_copy.get("launch_func") != "launch_lambda_sym_null":
                     # Change the lambda_constant and launch_altitude to the value of the index
                     lambda_const_temp = species_props_copy.get('lambda_constant', 0)
                     launch_alt_temp = species_props_copy.get('launch_altitude', 0)
