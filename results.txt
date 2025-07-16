@@ -2,3 +2,7 @@ SEP1: Just model 534.16 seconds | Inlcuding Collisions: 579.28
 SEP2: Just model 857.53 seconds | Inlcuding Collisions: 1082.06
 SEP4: Just model 172.82 seconds | Inlcuding Collisions: 267.92
 SEP6H: Just model 5187.05 seconds | Inlcuding Collisions: 12338.92
+SEP1: Just model 545.34 seconds | Inlcuding Collisions: 590.91
+SEP2: Just model 955.53 seconds | Inlcuding Collisions: 1183.80
+SEP4: Just model 194.14 seconds | Inlcuding Collisions: 290.18
+SEP6H: Just model 190.43 seconds | Inlcuding Collisions: 318.62
