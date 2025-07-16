@@ -22,10 +22,10 @@ for term in collisions_scen.collision_terms:
     # === 3. Store for later use ===
     term.spread_distribution = spread_distribution
 
-    # === 4. Sanity check: each (shell, mass) should sum to ≈ 1.0 or 0.0 ===
-    per_bin_sums = spread_distribution.sum(axis=(2, 3))
-    print("Sanity check (each value should be ~1.0 or 0.0):")
-    print(per_bin_sums)
+    # # === 4. Sanity check: each (shell, mass) should sum to ≈ 1.0 or 0.0 ===
+    # per_bin_sums = spread_distribution.sum(axis=(2, 3))
+    # print("Sanity check (each value should be ~1.0 or 0.0):")
+    # print(per_bin_sums)
 
 # === 1. Setup ===
 x0_sum = np.sum(collisions_scen.x0, axis=2)  # shape (n_shells, n_species)
@@ -37,20 +37,6 @@ for term in collisions_scen.collision_terms:
     term.lambdified_sources = sp.lambdify(flat_vars, term.eqs_sources, modules="numpy")
     term.lambdified_sinks = sp.lambdify(flat_vars, term.eqs_sinks, modules="numpy")
 
-# === 3. Define population_rhs using summed numerical output ===
-# def population_rhs(t, x_flat):
-#     x_matrix = x_flat.reshape((n_shells, n_species))
-#     x_flat_ordered = x_matrix.flatten()
-
-#     total_dNdt = np.zeros_like(x_matrix)
-
-#     for term in collisions_scen.collision_terms:
-#         dNdt_term = term.lambdified_sources(*x_flat_ordered)
-#         total_dNdt += np.array(dNdt_term, dtype=float)  # ensure it's a NumPy array
-
-#     return total_dNdt.flatten()
-
-# tester = np.zeros_like(collisions_scen.x0)
 # === 4. Integration ===
 t_eval = np.linspace(0, 100, 1000)
 tester_over_time = np.zeros((len(t_eval), n_shells, n_species, 13))
