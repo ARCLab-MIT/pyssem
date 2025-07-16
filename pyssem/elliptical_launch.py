@@ -131,6 +131,8 @@ def population_rhs(t, x_flat):
         
 
     output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
+
+    # now we need to propagate using the dynamical equations
     return output.flatten()
 
 
