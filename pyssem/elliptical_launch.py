@@ -2,6 +2,7 @@ import sympy as sp
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
+from utils.drag.drag import densityexp
 
 import pickle 
 with open('/Users/indigobrownhall/Code/pyssem/scenario-properties-collision.pkl', 'rb') as f:
@@ -41,6 +42,32 @@ for term in collisions_scen.collision_terms:
 t_eval = np.linspace(0, 100, 1000)
 tester_over_time = np.zeros((len(t_eval), n_shells, n_species, 13))
 
+def get_dadt(a_current, e_current, p):
+        re   = p['req']
+        mu   = p['mu']
+        n0   = np.sqrt(mu) * a_current ** -1.5
+        a_minus_re = a_current - re
+        rho0 = densityexp(a_minus_re) * 1e9  # kg/km^3
+        C0   = max(0.5 * p['Bstar'] * rho0, 1e-20)
+        dt   = p['t'] - p['t_0']
+        ang  = np.arctan((np.sqrt(3)/2)*e_current) - (np.sqrt(3)/2)*e_current * n0 * a_current * C0 * dt
+        sec2 = 1.0 / np.cos(ang) ** 2
+        return -(4 / np.sqrt(3)) * (a_current**2 * n0 * C0 / e_current) * np.tan(ang) * sec2
+
+def get_dedt(a_current, e_current, p):
+    re   = p['req']
+    mu   = p['mu']
+    n0   = np.sqrt(mu) * a_current ** -1.5
+    beta = (np.sqrt(3)/2) * e_current
+    a_minus_re = a_current - re
+    rho0 = densityexp(a_minus_re) * 1e9
+    C0   = max(0.5 * p['Bstar'] * rho0, 1e-20)
+    dt   = p['t'] - p['t_0']
+    arg  = np.arctan(beta) - beta * n0 * a_current * C0 * dt
+    sec2 = 1.0 / np.cos(arg) ** 2
+    return -e_current * n0 * a_current * C0 * sec2
+
+global t_0
 
 def population_rhs(t, x_flat):
     # t, time
@@ -133,6 +160,43 @@ def population_rhs(t, x_flat):
     output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
 
     # now we need to propagate using the dynamical equations
+    t_matrix = (n_shells, n_species, n_ecc)
+
+    # set param
+    param = {
+        'req': 6378.136, 
+        'mu': 398600.0, # should already be defined
+        'Bstar': 2.2 * (1e-6 / 100.0), # this will change for each species, km^2
+        'j2': 1082.63e-6
+    }
+
+    # for each species
+    binE_ecc = collisions_scen.eccentricity_bins
+    binE_ecc = np.sort(binE_ecc)
+    Δa      = collisions_scen.sma_HMid_km[1] - collisions_scen.sma_HMid_km[0]
+    Δe      = collisions_scen.eccentricity_bins[1] - collisions_scen.eccentricity_bins[0]
+
+    # Calculate the midpoints
+    N = np.zeros_like(t_matrix)
+
+    adot = np.zeros_like(N)
+    edot = np.zeros_like(N)
+    for r in range(len(n_shells)):
+        a_val = n_shells[r]
+        for c in range(len(n_shells)):
+            e_val      = n_ecc[c]
+            adot[r, c] = get_dadt(a_val, e_val, param)
+            edot[r, c] = get_dedt(a_val, e_val, param)
+
+    binE_ecc = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+    for r in range(collisions_scen.sma_HMid_km):
+        for c in range(binE_ecc):
+            Nrc = N[r, c]
+            out_a = Nrc * adot[r, c] * dt / Δa
+            out_e = Nrc * edot[r, c] * dt / Δe
+        # propagate for 1 timestep using dadt and dedt
+
+
     return output.flatten()
 
 
