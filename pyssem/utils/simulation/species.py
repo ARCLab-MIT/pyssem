@@ -462,98 +462,45 @@ class Species:
 
         Velocity is calculated using the vis-viva equation. 
         """
+
+        if not scenario_properties.elliptical:
+            print("Non elliptical case found, skipping")
+            return 
+
         # Convert radius edges from meters to km
-        semi_major_bins_km = scenario_properties.R0 / 1000
+        scenario_properties.semi_major_bins_km = scenario_properties.R0 / 1000
 
-        for species_group in self.species.values():
-            for species in species_group:
-                species.semi_major_axis_bins = semi_major_bins_km
-                species.semi_major_axis_bins_HMid = scenario_properties.sma_HMid_km
+        # Building a vector time_in_shell[a_idx, e_idx, other_a_idx]
+        n_a_bins = len(scenario_properties.semi_major_bins_km) - 1
+        n_e_bins = len(scenario_properties.eccentricity_bins) - 1
+        scenario_properties.eccentricity_bins = np.array(scenario_properties.eccentricity_bins)
+        eccentricity_bins_HMid = 0.5 * (scenario_properties.eccentricity_bins[:-1] + scenario_properties.eccentricity_bins[1:])
 
-                species.time_in_shell = np.zeros((semi_major_bins_km, len(species.eccentricity_bins)))
+        scenario_properties.time_in_shell = np.zeros((n_a_bins, n_e_bins, n_a_bins))
 
-                # Loop through each mid point combination of species.time_in_shell
+        for a_idx in range(n_a_bins):
+            a_mid = scenario_properties.sma_HMid_km[a_idx]
 
-                # pass the a, e, semi-major axis shells to compute_time_fractions_for_orbit(a, e, shell_edges)
+            for e_idx in range(n_e_bins):
+                e_mid = eccentricity_bins_HMid[e_idx]
 
-                # this will then return the fractions of time for that a, e pair and the other a bins
+                # Compute time fraction this (a,e) orbit spends in all SMA bins
+                time_fractions = compute_time_fractions_for_orbit(
+                    a=a_mid,
+                    e=e_mid,
+                    shell_edges=scenario_properties.semi_major_bins_km  # same bins used for "other_a_idx"
+                )
 
-                # store these within the cell of the 2d matrix. 
+                # Store in the matrix
+                scenario_properties.time_in_shell[a_idx, e_idx, :] = time_fractions
 
-                for species_group in self.species.values():
-                    for species in species_group:
-                        species.semi_major_axis_bins = semi_major_bins_km
-                        species.semi_major_axis_bins_HMid = scenario_properties.sma_HMid_km
-
-                        n_a_bins = len(semi_major_bins_km) - 1
-                        n_e_bins = species.eccentricity_bins  # This should be an int
-                        species.time_in_shell = np.zeros((n_a_bins, n_e_bins))
-
-                        species.time_in_shell = np.zeros((n_a_bins, n_e_bins))
-
-                        for a_idx in range(n_a_bins):
-                            a_mid = species.semi_major_axis_bins_HMid[a_idx]
-
-                            for e_idx in range(n_e_bins):
-                                # Get eccentricity midpoint (assumes it's stored similarly to sma_HMid_km)
-                                e_mid = species.eccentricity_bins_HMid[e_idx]
-
-                                # Compute time fractions this orbit spends in each SMA bin
-                                time_fractions = compute_time_fractions_for_orbit(
-                                    a=a_mid,
-                                    e=e_mid,
-                                    shell_edges=semi_major_bins_km
-                                )
-
-                                # Store in the 2D matrix: each row is an a_bin the orbit spends time in,
-                                # and column corresponds to the (a_mid, e_mid) pair
-                                species.time_in_shell[:, e_idx] = time_fractions
-
-
-
-                if species.elliptical:
-                    n_shells = scenario_properties.n_shells
-                    n_ecc    = len(species.eccentricity_bins)
-
-                    species.ecc_distribution = np.zeros(n_ecc)
-                    species.sma_ecc_pop     = np.zeros((n_shells, n_ecc))
-                    
-                    # 3d matrix, i,j,k where i = sma bin, j = eccentricity bin, k = sma bin
-                    species.time_per_shells     = np.zeros((n_shells, n_ecc, n_shells))
-                    species.velocity_per_shells = np.zeros((n_shells, n_ecc, n_shells))
-
-                    for i_sma in range(n_shells):
-                        a_mid = scenario_properties.sma_HMid_km[i_sma]
-                        for j_ecc, e in enumerate(species.eccentricity_bins):
-                            # Time fractions for this (a_mid, e)
-                            time_fracs = compute_time_fractions_for_orbit(
-                                a_mid, e, species.semi_major_axis_bins
-                            )
-                            species.time_per_shells[i_sma, j_ecc, :] = time_fracs
-
-                            # Velocity at each shell midpoint
-                            r_mids = 0.5 * (
-                                species.semi_major_axis_bins[:-1] + 
-                                species.semi_major_axis_bins[1:]
-                            )
-                            v_array = vis_viva(a_mid, r_mids)
-                            species.velocity_per_shells[i_sma, j_ecc, :] = v_array
-                else:
-                    # Circular orbits: single eccentricity bin
-                    n_shells = scenario_properties.n_shells
-                    species.time_per_shells     = np.zeros((n_shells, 1, n_shells))
-                    species.velocity_per_shells = np.zeros((n_shells, 1, n_shells))
-
-                    for i_sma in range(n_shells):
-                        a_mid = scenario_properties.sma_HMid_km[i_sma]
-
-                        time_vec, vel_vec = self.calculate_time_and_velocity_in_shell_circular(
-                            species.semi_major_axis_bins,
-                            a_mid
-                        )
-
-                        species.time_per_shells[i_sma, 0, :]     = time_vec
-                        species.velocity_per_shells[i_sma, 0, :] = vel_vec
+                # # Velocity at each shell midpoint
+                # r_mids = 0.5 * (
+                #     semi_major_axis_bins[:-1] + 
+                #     semi_major_axis_bins[1:]
+                # )
+                # v_array = vis_viva(a_mid, r_mids)
+                # species.velocity_per_shells[i_sma, j_ecc, :] = v_array
     
     def calculate_time_and_velocity_in_shell_circular(self, R0_km, a):
         """

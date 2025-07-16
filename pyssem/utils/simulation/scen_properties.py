@@ -14,6 +14,20 @@ import os
 import multiprocessing
 from collections import defaultdict
 
+class SymbolicCollisionTerm:
+    def __init__(self, s1_idx, s2_idx, eqs_sources, eqs_sinks, fragment_spread_totals):
+        self.s1_idx = s1_idx
+        self.s2_idx = s2_idx
+        self.eqs_sources = eqs_sources     # list of sympy expressions
+        self.eqs_sinks = eqs_sinks         # list of sympy expressions
+
+        # Optionally lambdify now or later
+        self.lambdified_sources = None
+        self.lambdified_sinks = None
+
+        # This is for the distribution of the fragments across a, e
+        self.fragment_spread_totals = fragment_spread_totals
+
 class StepFunction:
     """
     A callable object that acts as a fast, piecewise constant step function
@@ -71,6 +85,7 @@ class ScenarioProperties:
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
                  fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False,
                  indicator_variables: list = None, launch_scenario: str = None, SEP_mapping: str = None,
+                 elliptical: bool = False, eccentricity_bins: list = None
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -156,6 +171,11 @@ class ScenarioProperties:
         self.all_symbolic_vars = []
         
         self.collision_pairs = [] 
+
+        # Elliptical orbits
+        self.elliptical = elliptical
+        self.eccentricity_bins = eccentricity_bins
+        self.time_in_shell = None
 
         # Parameters for simulation
         self.full_Cdot_PMD = sp.Matrix([])
@@ -446,7 +466,7 @@ class ScenarioProperties:
         self.FLM_steps = FLM_steps
 
         # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+        # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
         if not baseline:
             self.future_launch_model(FLM_steps)
@@ -618,11 +638,38 @@ class ScenarioProperties:
                 continue
         
         # Collisions
-        for i in self.collision_pairs:
-            self.full_coll += i.eqs
+        if self.elliptical:
+            self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
+            self.full_coll_sink = []    # optionally initialize here
+            self.full_coll_source = []
 
-        self.equations = sp.zeros(self.n_shells, self.species_length)      
-        self.equations = self.full_Cdot_PMD + self.full_coll
+            for i in self.collision_pairs:
+                # Accumulate global source/sink expressions
+                self.full_coll_sink += i.eqs_sinks
+                self.full_coll_source += i.eqs_sources
+
+                # Get indices of the two species from sym names
+                s1_idx = self.species_names.index(i.species1.sym_name)
+                s2_idx = self.species_names.index(i.species2.sym_name)
+
+                # Create and store the symbolic collision term
+                term = SymbolicCollisionTerm(
+                    s1_idx=s1_idx,
+                    s2_idx=s2_idx,
+                    eqs_sources=i.eqs_sources,
+                    eqs_sinks=i.eqs_sinks, 
+                    fragment_spread_totals=i.fragment_spread_totals
+                )
+
+                self.collision_terms.append(term)
+
+            self.equations = self.full_Cdot_PMD
+        else:
+            for i in self.collision_pairs:
+                self.full_coll += i.eqs
+
+                self.equations = sp.zeros(self.n_shells, self.species_length)      
+                self.equations = self.full_Cdot_PMD + self.full_coll
 
 
         # Recalculate objects based on density, as this is time varying 
@@ -677,9 +724,9 @@ class ScenarioProperties:
 
         # Lambdify the equations to be used for Scipy integration
         collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
-        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+        # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
+        # self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
             
         return
 

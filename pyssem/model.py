@@ -9,7 +9,8 @@
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
-from utils.collisions.collisions import create_collision_pairs
+# from utils.collisions.collisions import create_collision_pairs
+from utils.collisions.collisions_new import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
@@ -45,7 +46,8 @@ class Model:
                         n_shells, launch_function, integrator, density_model, LC, 
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
-                        indicator_variables=None, launch_scenario=None, SEP_mapping=None):
+                        indicator_variables=None, launch_scenario=None, SEP_mapping=None, 
+                        elliptical=False, eccentricity_bins=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -108,6 +110,8 @@ class Model:
                 indicator_variables=indicator_variables,
                 launch_scenario=launch_scenario,
                 SEP_mapping=SEP_mapping,
+                elliptical=elliptical,
+                eccentricity_bins=eccentricity_bins
             )
             
         except Exception as e:
@@ -152,10 +156,8 @@ class Model:
                 
             # Create Collision Pairs
             # self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
+            # self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
-            # with open('scenario-properties-collision.pkl', 'wb') as f:
-            #     pickle.dump(self.scenario_properties, f)
 
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -189,7 +191,12 @@ class Model:
             # self.scenario_properties.run_model_elliptical()
             
             self.scenario_properties.build_model()
-            self.scenario_properties.run_model()
+            # self.scenario_properties.run_model()
+
+            # self.scenario_properties.equations = None
+
+            with open('scenario-properties-collision.pkl', 'wb') as f:
+                pickle.dump(self.scenario_properties, f)
 
             # CSI Index
             # self.scenario_properties.cum_CSI()
@@ -244,6 +251,8 @@ if __name__ == "__main__":
         indicator_variables=scenario_props.get("indicator_variables", None),
         launch_scenario=scenario_props["launch_scenario"],
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
+        elliptical=scenario_props.get("elliptical", None),
+        eccentricity_bins=scenario_props.get("eccentricity_bins", None)
     )
 
     species = simulation_data["species"]
@@ -252,17 +261,17 @@ if __name__ == "__main__":
 
     results = model.run_model()
 
-    data = model.results_to_json()
+    # data = model.results_to_json()
 
-    # Create the figures directory if it doesn't exist
-    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
-    # Save the results to a JSON file
-    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-        json.dump(data, f, indent=4)
+    # # Create the figures directory if it doesn't exist
+    # os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+    # # Save the results to a JSON file
+    # with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+    #     json.dump(data, f, indent=4)
 
-    try:
-        plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
-    except Exception as e:
-        print(e)
-        print("No plots specified in the simulation configuration file.")
+    # try:
+    #     plot_names = simulation_data["plots"]
+    #     Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    # except Exception as e:
+    #     print(e)
+    #     print("No plots specified in the simulation configuration file.")

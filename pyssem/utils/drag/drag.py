@@ -173,7 +173,7 @@ def static_exp_dens_func(t, h, species, scen_properties):
     """
     # val = densityexp_jbvalues(h)
 
-    old = densityexp(h)
+    old = densityexp(h) / 1000
 
     return old
 

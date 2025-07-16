@@ -328,21 +328,6 @@ def SEP_traffic_model(scen_properties, file_path):
     # Calculate Apogee, Perigee, and altitude
     T = pd.read_csv(file_path)
 
-    # T['apogee'] = T['sma'] * (1 + T['ecc'])
-    # T['perigee'] = T['sma'] * (1 - T['ecc'])
-    # T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
-
-    # T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
-
-    # Convert MJD to datetime
-    # def mjd_to_datetime(mjd_series):
-    #     """
-    #     Convert a Series of MJD floats to timezone-naive datetime.datetime objects.
-    #     """
-    #     return mjd_series.apply(lambda mjd: jd_to_datetime(mjd_to_jd(mjd)))
-
-    # T_new['epoch_start_datetime'] = mjd_to_datetime(T_new['mjd_start'])
-    # T_new['epoch_end_datetime'] = mjd_to_datetime(T_new['mjd_final'])
     T['apogee'] = T['sma'] * (1 + T['ecc'])
     T['perigee'] = T['sma'] * (1 - T['ecc'])
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
@@ -352,45 +337,17 @@ def SEP_traffic_model(scen_properties, file_path):
 
     T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
-    # Mapping species gets more complicated if there are elliptical orbits.
-    elliptical_species_flag = False
-    for species_group in scen_properties.species.values():
-            for species in species_group:
-                if species.elliptical:
-                    elliptical_species_flag = True
-
-    if elliptical_species_flag:
-        # Assign elliptical sub-species
-        for species_class in T['species_class'].unique():            
+    for species_class in T['species_class'].unique():
             if species_class in scen_properties.species_cells:
-                T_obj_class = T[T['species_class'] == species_class].copy()
-                species_cells = scen_properties.species_cells[species_class]
-
-                if len(species_cells) == 1:
-                    # Only one species → assign directly
-                    T_obj_class['species'] = species_cells[0].sym_name
+                if len(scen_properties.species_cells[species_class]) == 1:
+                    T_obj_class = T[T['species_class'] == species_class].copy()
+                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                    T_new = pd.concat([T_new, T_obj_class])
                 else:
-                    # Multiple species → use row-wise logic
-                    T_obj_class['species'] = T_obj_class.apply(
-                        find_species_bin,
-                        axis=1,
-                        args=(scen_properties, species_cells)
-                    )
-
-                T_new = pd.concat([T_new, T_obj_class])
-    else:
-        # Bin altitudes
-        for species_class in T['species_class'].unique():
-                if species_class in scen_properties.species_cells:
-                    if len(scen_properties.species_cells[species_class]) == 1:
-                        T_obj_class = T[T['species_class'] == species_class].copy()
-                        T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                        T_new = pd.concat([T_new, T_obj_class])
-                    else:
-                        species_cells = scen_properties.species_cells[species_class]
-                        T_obj_class = T[T['species_class'] == species_class].copy()
-                        T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                        T_new = pd.concat([T_new, T_obj_class])
+                    species_cells = scen_properties.species_cells[species_class]
+                    T_obj_class = T[T['species_class'] == species_class].copy()
+                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                    T_new = pd.concat([T_new, T_obj_class])
 
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
 
@@ -424,18 +381,37 @@ def SEP_traffic_model(scen_properties, file_path):
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
-    # Create a pivot table, keep alt_bin
-    df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+    if scen_properties.elliptical:
+        # === 3D case: [alt_bin, species_idx, ecc_bin] ===
 
-    # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
-    x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
-    x0_summary.index.name = 'alt_bin'
+        # Bin eccentricity
+        ecc_edges = np.array(scen_properties.eccentricity_bins)
+        x0['ecc_bin'] = pd.cut(x0['ecc'], bins=ecc_edges, labels=False, include_lowest=True)
 
-    # Merge counts into summary structure
-    x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # Create empty 3D summary array
+        n_shells = scen_properties.n_shells
+        n_species = len(scen_properties.species_names)
+        n_ecc_bins = len(ecc_edges) - 1
 
-    # Fill remaining NaNs with 0
-    x0_summary.fillna(0, inplace=True)
+        x0_summary = np.zeros((n_shells, n_species, n_ecc_bins), dtype=int)
+
+        # Map species name → index
+        species_name_to_index = {name: idx for idx, name in enumerate(scen_properties.species_names)}
+
+        # Fill in the summary
+        for _, row in x0.iterrows():
+            alt_bin = row['alt_bin']
+            species_idx = species_name_to_index.get(row['species'], None)
+            ecc_bin = row['ecc_bin']
+
+            if pd.notna(ecc_bin) and species_idx is not None:
+                x0_summary[alt_bin, species_idx, int(ecc_bin)] += 1
+
+    else:
+        # === Standard 2D case: DataFrame [alt_bin, species] ===
+        df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+        x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
+        x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
 
     if scen_properties.baseline:
         return x0_summary, None

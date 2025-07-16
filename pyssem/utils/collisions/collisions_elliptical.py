@@ -1,5 +1,5 @@
 from utils.collisions.collisions import func_Am, func_dv
-from utils.collisions.NASA_SBM_frags import frag_col_SBM_vec_lc
+from utils.collisions.NASA_SBM_frags import frag_col_SBM_vec_lc2
 from utils.collisions.NASA_SBN6 import *
 import numpy as np
 from tqdm import tqdm
@@ -297,7 +297,7 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
 
     # # Lower bound (LB)
     LB = 0.1
-    SS = 60
+    # SS = 60
     true_anomaly_deg = 90
     TA = np.radians(true_anomaly_deg)
     mu = 3.9860e+05
@@ -316,7 +316,7 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
     p2 = np.array([m2, rad_2, *r2, *v2, 1.0])
 
     try:
-        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc(0, p1, p2, LB=LB)
+        debris1, debris2, isCatastrophic = frag_col_SBM_vec_lc2(0, p1, p2, LB=LB)
         # debris will now come out in the format of [a, ecco, mass]
     except Exception as e:
         print(f"Error in frag_col_SBM_vec_lc2: {e} \n for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
@@ -348,9 +348,9 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
 
     frag_properties = np.array([frag_a, frag_mass, frag_e]).T
 
-    print(frag_properties)
+    # print(frag_properties)
 
-    binE_alt = scen_properties.R0_rad_km  # We add 1 for bin edges
+    binE_alt = scen_properties.semi_major_bins_km  # We add 1 for bin edges
 
     # return hist
     hist3d, _ = np.histogramdd(
@@ -359,7 +359,7 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
     )
 
     # normalize per your SS factor
-    hist3d /= (SS * 3)
+    # hist3d /= (SS * 3)
     
     return hist3d
 
