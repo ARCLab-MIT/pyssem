@@ -497,7 +497,7 @@ class ScenarioProperties:
         
         print('Using launch file:', launch_file_path)
 
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+        [x0, FLM_steps] = ADEPT_traffic_model(self, launch_file_path)
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0

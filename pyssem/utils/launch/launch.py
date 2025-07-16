@@ -553,9 +553,9 @@ def ADEPT_traffic_model(scen_properties, file_path):
     # fill NaN with 0
     x0_summary.fillna(0, inplace=True)
 
-    if baseline:
-        # No need to calculate the launch model
-        return x0_summary, None
+    # if baseline:
+    #     # No need to calculate the launch model
+    #     return x0_summary, None
 
     # Future Launch Model
     flm_steps = pd.DataFrame()

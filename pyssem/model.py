@@ -1,14 +1,14 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.drag.drag import calculate_orbital_lifetimes
-from .utils.plotting.plotting import results_to_json, Plots
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.drag.drag import calculate_orbital_lifetimes
+# from .utils.plotting.plotting import results_to_json, Plots
 # if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.drag.drag import calculate_orbital_lifetimes
-# from utils.plotting.plotting import results_to_json, Plots
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.drag.drag import calculate_orbital_lifetimes
+from utils.plotting.plotting import results_to_json, Plots
 import numpy as np
 from datetime import datetime
 import json
@@ -241,7 +241,8 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+            # self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+            self.scenario_properties.initial_pop_and_launch2(baseline=self.scenario_properties.baseline)
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
             
