@@ -5,7 +5,7 @@ from scipy.integrate import solve_ivp
 from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
-from ..launch.launch import ADEPT_traffic_model, SEP_traffic_model
+from ..launch.launch import ADEPT_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
 from ..indicators.indicators import *
 import pandas as pd
@@ -40,7 +40,7 @@ class ScenarioProperties:
                  max_altitude: float, n_shells: int, launch_function: str,
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
                  fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False,
-                 indicator_variables: list = None, launch_scenario: str = None, SEP_mapping: str = None,
+                 indicator_variables: list = None
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -70,7 +70,6 @@ class ScenarioProperties:
         self.integrator = integrator
         self.LC = LC
         self.v_imp = v_imp
-        self.SEP_mapping = SEP_mapping
         
         # Set the density model to be time dependent or not, JB2008 is time dependent
         self.time_dep_density = False
@@ -153,9 +152,6 @@ class ScenarioProperties:
 
         # Progress bar for the final integration
         self.progress_bar = None
-
-        # Launch Scenario
-        self.launch_scenario = launch_scenario
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
@@ -531,6 +527,7 @@ class ScenarioProperties:
         # self.equations = self.full_Cdot_PMD + self.full_coll
         self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
 
+        
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: # static density
@@ -698,6 +695,60 @@ class ScenarioProperties:
   
     #     return
 
+        # Dont add drag if time dependent density, this will be added during integration due to time dependent density
+        if self.time_dep_density:
+            self.full_drag = self.drag_term_upper + self.drag_term_cur
+
+        # Lambdify the equations to be used for Scipy integration
+        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+  
+        return
+    
+    def lambdify_equations(self):
+        """
+            Convert the Sympy symbolic equations to lambda functions, this allows for a quicker integration for SciPy.
+
+            Returns: equations, full_lambda_flattened
+        """
+
+        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+
+        # Convert the equations to lambda functions
+        if self.parallel_processing:
+            equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
+        else:
+            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+
+        return equations
+
+    def lambdify_launch(self, full_lambda=None):
+        """ 
+            Convert the Numpy launch rates to Scipy lambdified functions for integration.
+        
+        """
+        # Launch rates
+        full_lambda_flattened = []
+
+        if full_lambda is None:
+            for i in range(len(self.full_lambda)):
+                if self.full_lambda[i] is not None:
+                    full_lambda_flattened.extend(self.full_lambda[i])
+                else:
+                    # Append None to the list, length of scenario_properties.n_shells
+                    full_lambda_flattened.extend([None]*self.n_shells)
+        else:
+            for i in range(len(full_lambda)):
+                if full_lambda[i] is not None:
+                    full_lambda_flattened.extend(full_lambda[i])
+                else:
+                    # Append None to the list, length of scenario_properties.n_shells
+                    full_lambda_flattened.extend([None]*self.n_shells)
+
+        return full_lambda_flattened
+    
     def run_model(self):
         """
             Convert the Sympy symbolic equations to lambda functions, this allows for a quicker integration for SciPy.

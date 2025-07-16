@@ -1,8 +1,7 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
-# from .utils.drag.drag import calculate_orbital_lifetimes
-# from .utils.plotting.plotting import results_to_json, Plots
+# from .utils.plotting.plotting import Plots, results_to_json
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
@@ -43,7 +42,7 @@ class Model:
                         n_shells, launch_function, integrator, density_model, LC, 
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
-                        indicator_variables=None, launch_scenario=None, SEP_mapping=None):
+                        indicator_variables=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -103,9 +102,7 @@ class Model:
                 fragment_spreading=fragment_spreading,
                 parallel_processing=parallel_processing,
                 baseline=baseline,
-                indicator_variables=indicator_variables,
-                launch_scenario=launch_scenario,
-                SEP_mapping=SEP_mapping,
+                indicator_variables=indicator_variables
             )
             
         except Exception as e:
@@ -208,21 +205,10 @@ class Model:
             self.scenario_properties.configure_active_satellite_loss(fringe_species)
         except Exception as e:
             raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
-    
-    def opus_umpy_calculation(self, state_matrix):
-        """
-        This will calculate the UMPY (Undisposed Mass Per Year metric). 
-        """
-        # First check that current self has 'umpy' within indicator_variables
-        if 'umpy' not in self.scenario_properties.indicator_variables:
-            raise ValueError("Indicator variable 'umpy' not found in the scenario properties. Please configure it in the MOCAT json.")
-
-        try:
-            umpy = self.scenario_properties.calculate_umpy_for_opus(state_matrix)
-            return umpy
-        except Exception as e:
-            raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
         
+
+
+
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
@@ -238,7 +224,8 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline) # Initial population is considered but not launch
             self.scenario_properties.build_model()
             self.scenario_properties.run_model()
 
@@ -320,7 +307,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'geo.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'example_sim.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -351,6 +338,15 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    model.calculate_collisions()
+    model.opus_active_loss_setup("Su")
 
-    model.calculate_collisions()
+    # model.build_model()
+
+    # model.run_model()
+
+    # try:
+    #     plot_names = simulation_data["plots"]
+    #     Plots(model.scenario_properties, plot_names)
+    # except Exception as e:
+    #     print(e)
+        # print("No plots specified in the simulation configuration file.")
