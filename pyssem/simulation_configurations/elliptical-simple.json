@@ -11,7 +11,7 @@
     "steps": 100,                            
     "min_altitude": 200,                   
     "max_altitude": 1200,                   
-    "n_shells": 5,                         
+    "n_shells": 10,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
