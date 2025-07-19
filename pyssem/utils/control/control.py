@@ -579,6 +579,136 @@ def cum_umpy(obj, baseline, PMD_no_noise):
 #     return oar
 
 #==========================================================================
+# NMPC - cost function options
+#==========================================================================
+
+def myCostFunction(x, u, r):
+    """
+    Custom cost function for nonlinear MPC.
+    """
+    J = np.sum((x - r)**2)
+
+    return J 
+
+def myCostFunction_CSI(m, x, baseline):
+    """
+    Calculates the CSI risk index symbolically using Gekko functions.
+
+    This function separates one-time pre-computations from the symbolic
+    part that depends on the Gekko state variable 'x'.
+    """
+    # ======================================================================
+    #  Part 1: One-Time Pre-computation of Constants (using NumPy)
+    #  This is efficient as it's done only once when the model is built.
+    # ======================================================================
+
+    N_shell = baseline.n_shells
+    R02 = baseline.R0_km
+    num_species = len(baseline.species_names)
+    V_per_shell = np.array(baseline.V)
+
+    k = 0.6
+    cos_i_av = 2 / np.pi
+    Gamma_av = (1 - cos_i_av) / 2
+    inclination_factor = (1 + k * Gamma_av)
+
+    M_ref = 10000.0
+    life_h_ref = 1468.0
+
+    initial_populations_flat = np.array(baseline.x0)
+    initial_populations_matrix = initial_populations_flat.reshape(num_species, N_shell)
+    total_objects_per_shell = np.sum(initial_populations_matrix, axis=0)
+    initial_number_density_per_shell = total_objects_per_shell / V_per_shell
+    D_ref = np.max(initial_number_density_per_shell)
+
+    den = M_ref * D_ref * life_h_ref * (1 + k)
+
+    species_mass = np.array([prop.mass for sl in baseline.species_cells.values() for prop in sl])
+    species_mass_col = species_mass[:, np.newaxis]
+
+    h = (R02[:-1] + R02[1:]) / 2
+    lifetime_per_shell = np.exp(14.18 * (h ** 0.1831) - 42.94)
+
+    num_term = lifetime_per_shell * inclination_factor
+    dum_X_matrix = species_mass_col * num_term  # This is a constant matrix
+
+    # ======================================================================
+    #  Part 2: Symbolic Calculation (using Gekko)
+    #  This part uses the pre-computed constants and the Gekko variable 'x'.
+    # ======================================================================
+    
+    csi_list = []
+
+    for i in range(num_species):
+        for j in range(N_shell):
+            # Get the symbolic population variable for this state
+            pop_ij = x[i * N_shell + j]
+
+            # Calculate symbolic Species Number Density (D_X_ij)
+            # This is a Gekko expression because pop_ij is a Gekko variable.
+            D_X_ij = pop_ij / V_per_shell[j]
+
+            # Get the pre-computed constant value for this species/shell
+            dum_X_ij = dum_X_matrix[i, j]
+
+            # Calculate the final symbolic CSI expression for this element
+            csi_calculation = (D_X_ij * dum_X_ij) / den
+
+            # Create the Gekko Intermediate variable and add it to our list
+            csi_var = m.Intermediate(csi_calculation)
+            csi_list.append(csi_var)
+
+    return csi_list
+    
+def myCostFunction_UMPY(m, x, baseline):
+    """
+    Calculates the risk index symbolically using Gekko functions.
+    This version correctly creates Intermediate variables.
+    """
+    n_species = baseline.species_length
+    num_shells = baseline.n_shells
+
+    # --- Step 1: Initialize an empty Python list to store the variables ---
+    risk_idx_list = []
+
+    # Extract parameters (these are constants, so this is fine)
+    species_mass = []
+    orbital_lifetimes = []
+    for species_list in baseline.species_cells.values():
+        for props in species_list:
+            species_mass.append(props.mass)
+            orbital_lifetimes.append(props.orbital_lifetimes)
+    
+    X = 4.0
+
+    # --- Step 2: Loop to build the list of Intermediate variables ---
+    for i in range(n_species):
+        for j in range(num_shells):
+            if not baseline.species_names[i].startswith('S'):
+                mass_i = species_mass[i]
+                pop_ij = x[i * num_shells + j] # Assuming x is a flat Gekko array
+                life_ij = orbital_lifetimes[i][j]
+                
+                umpy_factor = (m.exp(X * (life_ij / baseline.simulation_duration)) - 1) / (m.exp(X) - 1)
+                
+                # --- Step 3: Define the expression and create the Intermediate ---
+                #    The entire calculation is the 'equation' argument.
+                risk_calculation = (mass_i * pop_ij * umpy_factor) / baseline.simulation_duration
+                
+                # Create the intermediate and add it to our list
+                risk_var = m.Intermediate(risk_calculation)
+                risk_idx_list.append(risk_var)
+
+            else:
+                # For 'S' species, the risk is zero.
+                # Create an Intermediate with a constant value of 0.
+                risk_var = m.Intermediate(0)
+                risk_idx_list.append(risk_var)
+
+    # --- Step 4: Return the completed list of Gekko variables ---
+    return risk_idx_list
+
+#==========================================================================
 # Launch rate - plot
 #==========================================================================
 
