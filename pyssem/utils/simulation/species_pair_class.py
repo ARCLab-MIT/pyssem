@@ -3,7 +3,7 @@ from sympy import symbols, Matrix, pi, S, Expr, zeros
 import numpy as np
 
 class SpeciesPairClass:
-    def __init__(self, species1, species2, gammas, source_sinks, scen_properties, fragment_spread_totals, fragsMadeDV=None):
+    def __init__(self, species1, species2, gammas, source_sinks, scen_properties, fragsMadeDV=None):
         """
         This makes the species pair class associated with a collision between species1
         and species2. It will then create equations for the collision probability modifiers
@@ -24,8 +24,6 @@ class SpeciesPairClass:
             scen_properties (ScenarioProperties): The scenario properties object
         """
 
-
-        self.fragment_spread_totals = fragment_spread_totals
         self.fragments = fragsMadeDV
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")

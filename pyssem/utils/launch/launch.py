@@ -383,7 +383,6 @@ def SEP_traffic_model(scen_properties, file_path):
 
     if scen_properties.elliptical:
         # === 3D case: [alt_bin, species_idx, ecc_bin] ===
-
         # Bin eccentricity
         ecc_edges = np.array(scen_properties.eccentricity_bins)
         x0['ecc_bin'] = pd.cut(x0['ecc'], bins=ecc_edges, labels=False, include_lowest=True)

@@ -156,7 +156,6 @@ class Model:
                 
             # Create Collision Pairs
             # self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
-            # self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
@@ -191,9 +190,13 @@ class Model:
             # self.scenario_properties.run_model_elliptical()
             
             self.scenario_properties.build_model()
-            # self.scenario_properties.run_model()
+            self.scenario_properties.run_model()
 
-            # self.scenario_properties.equations = None
+            self.scenario_properties.equations = None
+            self.scenario_properties.lambdify_equations = None
+            self.scenario_properties.lambdify_launch = None
+            self.scenario_properties.collision_terms = None
+            self.scenario_properties.full_Cdot_PMD = None
 
             with open('scenario-properties-collision.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
@@ -259,7 +262,21 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
+    import time
+
+    # === TIME THE EXECUTION ===
+    start = time.time()
     results = model.run_model()
+    end = time.time()
+
+    elapsed_sec = end - start
+    print(f"Model run completed in {elapsed_sec:.2f} seconds")
+
+    # === WRITE TIME TO TEXT FILE ===
+    with open("model_runtime.txt", "w") as f:
+        f.write(f"Model run time: {elapsed_sec:.2f} seconds\n")
+
+    print("Runtime saved to model_runtime.txt")
 
     # data = model.results_to_json()
 

@@ -95,12 +95,11 @@ def process_species_pair(args):
         dtype=np.float64
     )
     # This will tell you the number of fragments in each debris bin
-    for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
-
+    for shell in range(n_shells):
         dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. This can change later. 
 
         # First need a representative semi-major axis
-        sma1 = scen_properties.sma_HMid_km[dv_index]
+        sma1 = scen_properties.sma_HMid_km[shell]
         sma2 = sma1
         e1 = 0.01
         e2 = 0.02
@@ -108,19 +107,21 @@ def process_species_pair(args):
         try:
             # Result is summed over: bins=[binE_sma, binE_mass, binE_ecc]
             result_3d = evolve_bins(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
-                                        binE_mass, binE_ecc, dv_index, n_shells=scen_properties.n_shells)
+                                        binE_mass, binE_ecc, shell, n_shells=scen_properties.n_shells)
 
             # To get just mass, sum everything on the second axis. 
             mass_distribution = np.sum(result_3d, axis=(0, 2))
 
-            fragment_spread_totals[dv_index, :, :, :] = np.transpose(result_3d, (1, 0, 2))
+            transpose = np.transpose(result_3d, (1, 0, 2))  # Transpose to [mass_bin, sma_bin, ecc_bin]
 
+            fragment_spread_totals[shell, :, :, :] = transpose
+
+            assert np.sum(mass_distribution) == np.sum(transpose), "Mass distribution should match the total fragments produced."
         except:
             print(f"no fragments produced for {m1, m2}")
             continue
 
-        # results = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks)
-        frags_made[dv_index, :] = mass_distribution
+        frags_made[shell, :] = mass_distribution
 
     for i, species in enumerate(debris_species):
         frags_made_sym = Matrix(frags_made[:, i]) 
