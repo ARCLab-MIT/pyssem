@@ -1045,6 +1045,57 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
         fig.delaxes(axes.flatten()[i])
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
+
+    # --- HEATMAPS FOR EACH SPECIES OVER TIME AND ORBITAL SHELLS ---
+    cols = 3  # Define the number of columns for the subplot grid
+    rows = (n_species + cols - 1) // cols  # Calculate rows needed
+
+    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=(5 * cols, 4 * rows), facecolor='white', constrained_layout=True)
+    axs = np.atleast_2d(axs)  # Ensure axs is always a 2D array for consistent indexing
+
+    for i, species_name in enumerate(species_names):
+        row_idx = i // cols
+        col_idx = i % cols
+        ax = axs[row_idx, col_idx]
+
+        # Extract the data for the current species across all shells
+        start_idx = i * num_shells
+        end_idx = start_idx + num_shells
+        data_per_species = output.y[start_idx:end_idx, :]
+
+        # Create the heatmap using imshow
+        # extent=[left, right, bottom, top] defines the data coordinates of the image
+        im = ax.imshow(data_per_species, 
+                       aspect='auto', 
+                       origin='lower',
+                       extent=[output.t[0], output.t[-1], 0, num_shells],
+                       interpolation='nearest',
+                       cmap='viridis')
+        
+        # Add a colorbar for the heatmap
+        fig.colorbar(im, ax=ax, label='Count')
+
+        # Set labels and title
+        ax.set_xlabel('Time (years)', fontsize=sel_FontSize)
+        ax.set_ylabel('Altitude (km)', fontsize=sel_FontSize)
+        ax.set_title(species_name, fontsize=sel_FontSize)
+
+        # Configure ticks for better readability
+        ax.set_xticks(np.linspace(output.t[0], output.t[-1], num=5, dtype=int))
+        
+        # Set y-axis ticks to show shell indices and label them with actual altitudes
+        # This makes the plot much more informative
+        tick_step = max(1, num_shells // 5) # Show about 5-6 ticks
+        ax.set_yticks(np.arange(0.5, num_shells, tick_step)) # Center ticks in the cells
+        ax.set_yticklabels([f'{alt:.0f}' for alt in orbital_shell_labels[::tick_step]])
+        
+        ax.tick_params(axis='both', which='major', labelsize=sel_FontSize)
+
+    # Hide any unused subplots if the number of species doesn't perfectly fill the grid
+    for i in range(n_species, rows * cols):
+        fig.delaxes(axs.flatten()[i])
+    plt.show()
+
     return 1
 
 #==========================================================================
