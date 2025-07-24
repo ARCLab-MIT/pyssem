@@ -107,7 +107,7 @@ def process_species_pair(args):
         try:
             # Result is summed over: bins=[binE_sma, binE_mass, binE_ecc]
             result_3d = evolve_bins(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
-                                        binE_mass, binE_ecc, shell, n_shells=scen_properties.n_shells)
+                                        binE_mass, binE_ecc, shell, n_shells=scen_properties.n_shells, RBflag=RBflag)
 
             # To get just mass, sum everything on the second axis. 
             mass_distribution = np.sum(result_3d, axis=(0, 2))

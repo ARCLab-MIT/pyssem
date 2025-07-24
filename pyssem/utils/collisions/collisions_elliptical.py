@@ -285,7 +285,7 @@ def process_elliptical_collision_pair(args):
     return collision_pair
 
 @profile
-def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_mass, binE_ecc, collision_index, n_shells=0):
+def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_mass, binE_ecc, collision_index, n_shells=0, RBflag=0):
     # param = {
     #     'req': 6.3781e+03,
     #     'mu': 3.9860e+05,
@@ -312,7 +312,11 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
     r2 = r1  # collision point is same
 
     # Define input vectors
-    p1 = np.array([m1, rad_1, *r1, *v1, 1.0])
+    # rocket bodies will always be the larger object, so if rbflag is set, object_type ==5
+    if RBflag == 1:
+        p1 = np.array([m1, rad_1, *r1, *v1, 5.0])
+    else:
+        p1 = np.array([m1, rad_1, *r1, *v1, 0.0])
     p2 = np.array([m2, rad_2, *r2, *v2, 1.0])
 
     try:

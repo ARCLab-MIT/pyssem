@@ -497,24 +497,24 @@ class ScenarioProperties:
 
 
         # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: 
-            # Take the shell altitudes, this will be n_shells + 1
-            rho = self.density_model(0, self.R0_km, self.species, self)
-            rho_reshape = rho.reshape(-1, 1) # Convert to column vector
-            rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
-            rho_mat = sp.Matrix(rho_mat)
+        # if not self.time_dep_density: 
+        #     # Take the shell altitudes, this will be n_shells + 1
+        #     rho = self.density_model(0, self.R0_km, self.species, self)
+        #     rho_reshape = rho.reshape(-1, 1) # Convert to column vector
+        #     rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
+        #     rho_mat = sp.Matrix(rho_mat)
             
-            # Second to last row
-            upper_rho = rho_mat[1:, :]
+        #     # Second to last row
+        #     upper_rho = rho_mat[1:, :]
             
-            # First to penultimate row (mimics rho_mat(1:end-1, :))
-            current_rho = rho_mat[:-1, :]
+        #     # First to penultimate row (mimics rho_mat(1:end-1, :))
+        #     current_rho = rho_mat[:-1, :]
 
-            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
-            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
-            self.full_drag = drag_upper_with_density + drag_cur_with_density
-            self.equations += self.full_drag
-            self.sym_drag = True 
+        #     drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
+        #     drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
+        #     self.full_drag = drag_upper_with_density + drag_cur_with_density
+        #     self.equations += self.full_drag
+        #     self.sym_drag = True 
 
         # Make Integrated Indicator Variables if passed
         if hasattr(self, 'integrated_indicator_var_list'):
@@ -721,7 +721,7 @@ class ScenarioProperties:
                 Shape: (n_alt_shells, n_species)
         """
 
-        effective_altitude_matrix = np.zeros((self.n_alt_shells, self.species_length))
+        self.effective_altitude_matrix = np.zeros((self.n_alt_shells, self.species_length))
 
         # Reshape the population matrix to match the time in shell matrix
         for species in range(self.species_length):
@@ -733,14 +733,18 @@ class ScenarioProperties:
                         n_pop = population_matrix_sma_ecc[sma, species, ecc]
                         n_effective_a_e = n_pop * tis
                         n_effective += n_effective_a_e
-                        effective_altitude_matrix[alt_shell, species] += n_effective_a_e
+                        self.effective_altitude_matrix[alt_shell, species] += n_effective_a_e
 
                 self.effective_altitude_matrix[alt_shell, species] = n_effective
         
-        return effective_altitude_matrix
+        return self.effective_altitude_matrix
 
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
                       species_to_mass_bin, years, adot, edot, Δa, Δe):
+
+        dt = years * (t - self.t_0)
+        self.t_0 = t
+
         #############################
         # Reshape the population (3d) into sma, species, ecc
         #############################
@@ -777,27 +781,20 @@ class ScenarioProperties:
         
         total_dNdt_alt = np.zeros((n_alt_shells, n_species))
         total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
-        # #############################
-        # # Now it is in altitude space, we can remove objects due to post mission disosal
-        # #############################
-        # try:
-        #     flattened = self.effective_altitude_matrix.flatten()
-        #     val = np.array([eq(*flattened) for eq in self.full_Cdot_PMD])
-        #     self.effective_altitude_matrix += val.reshape((n_alt_shells, n_species))
-        # except Exception as e:
-        #         print(f"Error in post mission disposal: {e}")
-        #         raise ValueError("Post mission disposal equations are not defined correctly. Please check your equations.")
-        # === PMD Sink: Apply only to ecc=0 ===
 
 
-        #############################
-        # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
-        #############################    
+        # #############################
+        # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
+        # # #############################    
         x_flat_ordered = self.effective_altitude_matrix.flatten()
         # collision pair in altitude space 
         for term in self.collision_terms:
             dNdt_term = term.lambdified_sources(*x_flat_ordered)
             total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_alt_shells x n_species
+
+            rb_index = 10  # assuming 10 is rocket body
+            if np.sum(total_dNdt_alt[:, rb_index]) > 0:
+                print("⚠️ Rocket body source term is non-zero!")
 
             # multiply the growth rate for each species by the distribution of that species in a,e space
             for shell in range(n_alt_shells):
@@ -835,7 +832,6 @@ class ScenarioProperties:
             
         output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
 
-
         # so we no have the change of the points, we need to multiply each species sma and ecc by this matrix of change
         # Loop over species and compute finite-difference transport using rates (no dt)
         dN_all_species = np.zeros_like(x_matrix) 
@@ -846,8 +842,8 @@ class ScenarioProperties:
             for sma in range(n_sma_bins - 1, -1, -1):
                 for ecc in range(n_ecc_bins - 1, -1, -1):
                     Nrc = N_sma_ecc[sma, ecc]
-                    out_a = Nrc * adot[sma, ecc] / Δa
-                    out_e = Nrc * edot[sma, ecc] / Δe
+                    out_a = Nrc * adot[sma, ecc] / Δa * dt
+                    out_e = Nrc * edot[sma, ecc] / Δe * dt
 
                     total_out = out_a + out_e
                     if abs(total_out) > Nrc and Nrc > 0:
@@ -868,42 +864,44 @@ class ScenarioProperties:
         dN_all_species = dN_all_species + output
 
         #############################
-        # Post Mission Disposal of Existing Population
+        # Post Mission Disposal of Existing Population, this should be from the circular population of x_flat
         #############################    
-        flattened = self.effective_altitude_matrix.flatten()
-        val = np.array([eq(*flattened) for eq in self.full_Cdot_PMD])
-        val_reshaped = val.reshape((n_alt_shells, n_species))  # shape: (alt_shell, species)
 
-        # Apply sink only to ecc=0
+        circular_population = x_matrix[:, :, 1]  # Only ecc=0
+        flattened_circular = circular_population.T.flatten()
+
+        # Evaluate PMD equations
+        val = np.array([eq(*flattened_circular) for eq in self.equations])
+        val_reshaped = val.reshape((n_species, n_sma_bins)).T  # shape: (sma, species)
+
+        # Subtract PMD from the circular bin only (ecc=0)
         for species in range(n_species):
-            for shell in range(n_alt_shells):
-                total_pmd = val_reshaped[shell, species]
-
+            for sma in range(n_sma_bins):
+                total_pmd = val_reshaped[sma, species]
                 if total_pmd == 0:
                     continue
-                
-                # remove from the same sma shell and ecc=0
-                dN_all_species[shell, species, 0] += total_pmd
 
+                dN_all_species[sma, species, 1] += total_pmd  # Add negative value (sink)
 
         ############################
         # Add the change in population due to launches
         ############################    
         if launch_funcs is not None and self.baseline is False:
-            t_launch = t / years  # convert to years for launch functions
-            launch_rates = np.array([func(t_launch) for func in launch_funcs])
+            launch_rates = np.array([func(t) for func in launch_funcs])
 
             # launch rates will be a 1d array of length n_sma_bins * n_species
-            launch_rates = launch_rates.reshape((n_sma_bins, n_species)) 
+            launch_rates_reshape = launch_rates.reshape((n_species, n_sma_bins)).T
+
+            # dN_all_specxies[sma, species, 0] += launch_rates
 
             # assumption that all launches will be in the first eccentricity bin
             for sma in range(n_sma_bins):
-                for species in range(n_species):
-                    launch = launch_rates[sma, species] #* dt / years # launch rate is in years
-                    dN_all_species[sma, species, 0] += launch
+                for species in range(n_species): 
+                    launch = launch_rates_reshape[sma, species] #* dt #/ years # launch rate is in years
+                    dN_all_species[sma, species, 1] += launch
 
         
-        print(f"Amount removed due to PMD: {np.sum(val)} Amount added due to launches: {np.sum(launch_rates)}")
+        # print(f"Amount removed due to PMD: {np.sum(val)} Amount added due to launches: {np.sum(launch_rates)}")
         print(t)
         return dN_all_species.flatten()
     
