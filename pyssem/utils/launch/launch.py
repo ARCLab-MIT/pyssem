@@ -379,13 +379,16 @@ def SEP_traffic_model(scen_properties, file_path):
 
     # x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
-    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+    # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
     if scen_properties.elliptical:
         # === 3D case: [alt_bin, species_idx, ecc_bin] ===
         # Bin eccentricity
         ecc_edges = np.array(scen_properties.eccentricity_bins)
         x0['ecc_bin'] = pd.cut(x0['ecc'], bins=ecc_edges, labels=False, include_lowest=True)
+
+        # Also do it to do T_new for launch
+        T_new['ecc_bin'] = pd.cut(T_new['ecc'], bins=ecc_edges, labels=False, include_lowest=True)
 
         # Create empty 3D summary array
         n_shells = scen_properties.n_shells
@@ -437,12 +440,24 @@ def SEP_traffic_model(scen_properties, file_path):
             continue
 
         # Group by shell and species to get total counts for the entire year
-        yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+        # yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+        if scen_properties.elliptical:
+            yearly_counts = launches_this_year.groupby(['alt_bin', 'ecc_bin', 'species']).size()
+            yearly_counts = yearly_counts.unstack(fill_value=0)
+
+            all_alt_ecc_bins = pd.MultiIndex.from_product(
+                [range(scen_properties.n_shells), range(len(ecc_edges) - 1)],
+                names=['alt_bin', 'ecc_bin']
+            )
+            yearly_counts = yearly_counts.reindex(all_alt_ecc_bins, fill_value=0)
+
+        else:
+            yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+            yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
 
         # --- START OF THE FIX ---
         # Ensure the yearly_counts DataFrame has a row for every possible shell.
         # This is the step that was missing from my previous version.
-        yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
         # --- END OF THE FIX ---
 
         # Find which simulation time steps fall within this calendar year
@@ -461,20 +476,6 @@ def SEP_traffic_model(scen_properties, file_path):
         step_counts['epoch_start_date'] = relevant_start_times[0]
 
         flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
-        # num_sub_steps = len(relevant_start_times)
-
-        # if num_sub_steps == 0:
-        #     continue
-
-        # # Create records for these time steps
-        # for start_time in relevant_start_times:
-        #     # Pro-rate the yearly counts to get the count for this smaller time step
-        #     step_counts = yearly_counts / num_sub_steps
-            
-        #     step_counts = step_counts.reset_index()
-        #     step_counts['epoch_start_date'] = start_time
-            
-        #     flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
 
     # Final re-ordering and cleanup
     # Ensure all species columns from the scenario are present, even if they had no launches
@@ -484,7 +485,11 @@ def SEP_traffic_model(scen_properties, file_path):
             flm_steps[col] = 0
 
     # Ensure consistent column order
-    final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
+    if scen_properties.elliptical:
+        final_cols = ['epoch_start_date', 'alt_bin', 'ecc_bin'] + all_species_columns
+    else:
+        final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
+
     flm_steps = flm_steps[final_cols]
 
     return x0_summary, flm_steps

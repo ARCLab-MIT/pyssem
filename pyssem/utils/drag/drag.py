@@ -10,10 +10,10 @@ def densityexp(h):
     Calculates atmospheric density based on altitude using a exponential model.
 
     Args:
-        h (np.array): Height of orbital shells in km.
+        h (np.array): Height of orbital shells in m.
 
     Returns:
-        np.ndarray: Atmospheric density in kg/km^3.
+        np.ndarray: Atmospheric density in kg/m^3
     """
     
     # Convert h to a numpy array for vectorized operations
@@ -173,7 +173,7 @@ def static_exp_dens_func(t, h, species, scen_properties):
     """
     # val = densityexp_jbvalues(h)
 
-    old = densityexp(h) / 1000
+    old = densityexp(h) 
 
     return old
 
