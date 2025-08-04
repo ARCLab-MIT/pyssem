@@ -769,7 +769,7 @@ class ScenarioProperties:
         return self.effective_altitude_matrix
 
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
-                      species_to_mass_bin, years, adot, edot, Δa, Δe, active_species_bool):
+                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, drag_affected_bool, all_species_list):
 
         # dt = years * (t - self.t_0)
         # self.t_0 = t
@@ -780,90 +780,93 @@ class ScenarioProperties:
         x_matrix = x_flat.reshape((n_sma_bins, n_species, n_ecc_bins))  # shape: (sma_shells, species, ecc)
         time_in_shell = self.time_in_shell  # shape: (alt_shells, sma_shells, ecc)
 
-        # #############################
-        # # We need to loop over each species, then for each sma and ecc pairing, calculate the number of objects in each altitude bin. 
-        # #  This is the effective_altitude_matrix, as the population is essentially split across the shells based on their time in shell.
-        # # Secondly, keep track of which a e bins, for each species, are contributing to each shell. Used in the sink equations. (normalised_species_distribution_in_sma_e_space)
-        # #############################
-        # self.effective_altitude_matrix = np.zeros((n_alt_shells, n_species))
-        # normalised_species_distribution_in_sma_e_space = np.zeros((n_alt_shells, n_species, n_sma_bins, n_ecc_bins))
-        # # for each species, in each shell, trying to find the ae that contribute to those bins. 
-        # try:
-        #     for species in range(n_species):
-        #         for alt_shell in range(n_alt_shells):
-        #             n_effective = 0
-        #             for sma in range(n_sma_bins):
-        #                 for ecc in range(n_ecc_bins):
-        #                     tis = time_in_shell[alt_shell, ecc, sma]
-        #                     n_pop = x_matrix[sma, species, ecc]
-        #                     n_effective_a_e = n_pop * tis
-        #                     n_effective = n_effective + n_effective_a_e
-        #                     normalised_species_distribution_in_sma_e_space[alt_shell, species, sma, ecc] = n_effective_a_e
+        #############################
+        # We need to loop over each species, then for each sma and ecc pairing, calculate the number of objects in each altitude bin. 
+        #  This is the effective_altitude_matrix, as the population is essentially split across the shells based on their time in shell.
+        # Secondly, keep track of which a e bins, for each species, are contributing to each shell. Used in the sink equations. (normalised_species_distribution_in_sma_e_space)
+        #############################
+        self.effective_altitude_matrix = np.zeros((n_alt_shells, n_species))
+        normalised_species_distribution_in_sma_e_space = np.zeros((n_alt_shells, n_species, n_sma_bins, n_ecc_bins))
+        # for each species, in each shell, trying to find the ae that contribute to those bins. 
+        try:
+            for species in range(n_species):
+                for alt_shell in range(n_alt_shells):
+                    n_effective = 0
+                    for sma in range(n_sma_bins):
+                        for ecc in range(n_ecc_bins):
+                            tis = time_in_shell[alt_shell, ecc, sma]
+                            n_pop = x_matrix[sma, species, ecc]
+                            n_effective_a_e = n_pop * tis
+                            n_effective = n_effective + n_effective_a_e
+                            normalised_species_distribution_in_sma_e_space[alt_shell, species, sma, ecc] = n_effective_a_e
 
-        #             normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
-        #             # convert any nans to 0
-        #             normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = np.nan_to_num(normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :])
-        #             self.effective_altitude_matrix[alt_shell, species] = n_effective
-        # except Exception as e:
-        #     print(f"Error in calculating effective altitude matrix: {e}")
-        #     raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
+                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
+                    # convert any nans to 0
+                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = np.nan_to_num(normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :])
+                    self.effective_altitude_matrix[alt_shell, species] = n_effective
+        except Exception as e:
+            print(f"Error in calculating effective altitude matrix: {e}")
+            raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
         
-        # total_dNdt_alt = np.zeros((n_alt_shells, n_species))
-        # total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
+        total_dNdt_alt = np.zeros((n_alt_shells, n_species))
+        total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
 
-
-        # # #############################
-        # # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
-        # # # #############################    
-        # x_flat_ordered = self.effective_altitude_matrix.flatten()
-        # # collision pair in altitude space 
-        # for term in self.collision_terms:
-        #     dNdt_term = term.lambdified_sources(*x_flat_ordered)
-        #     total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_alt_shells x n_species
-
-        #     # multiply the growth rate for each species by the distribution of that species in a,e space
-        #     for shell in range(n_alt_shells):
-        #         for species in range(n_species):
-        #             # Get the mass bin index (skip if not a debris species)
-        #             mass_bin = species_to_mass_bin.get(species, None)
-        #             if mass_bin is None:
-        #                 # Add this slice to total_dNdt_sma_ecc as zeros - as no growth fragments
-        #                 continue
-
-        #             sma_ecc_distribution = term.spread_distribution[shell, mass_bin, :, :] # this should be to equal to on
-        #             species_frag = total_dNdt_alt[shell, species] # get the column of the debris species
-        #             if np.sum(sma_ecc_distribution) == 0 and np.sum(species_frag) != 0:
-        #                 print("fragments made but no distribution in sma_ecc space")
-        #             frag_spread_sma_ecc = species_frag * sma_ecc_distribution
-        #             total_dNdt_sma_ecc_sources[:, species, :] = total_dNdt_sma_ecc_sources[:, species, :] + frag_spread_sma_ecc
 
         # #############################
-        # # Now we need to calculate the sink equations, which are the same as the source equations
-        # # but multiplied by the time in shell.
-        # #############################
-        # dNdt_sink_sma_ecc = np.zeros((n_sma_bins, n_species, n_ecc_bins)) 
-        # for term in self.collision_terms: # for each species pair
-        #     dNdt_term = term.lambdified_sinks(*x_flat_ordered) # n_shells x n_species
+        # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
+        # # #############################    
+        x_flat_ordered = self.effective_altitude_matrix.flatten()
+        # collision pair in altitude space 
+        for term in self.collision_terms:
+            dNdt_term = term.lambdified_sources(*x_flat_ordered)
+            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_alt_shells x n_species
+
+            # multiply the growth rate for each species by the distribution of that species in a,e space
+            for shell in range(n_alt_shells):
+                for species in range(n_species):
+                    # Get the mass bin index (skip if not a debris species)
+                    mass_bin = species_to_mass_bin.get(species, None)
+                    if mass_bin is None:
+                        # Add this slice to total_dNdt_sma_ecc as zeros - as no growth fragments
+                        continue
+
+                    sma_ecc_distribution = term.spread_distribution[shell, mass_bin, :, :] # this should be to equal to on
+                    species_frag = total_dNdt_alt[shell, species] # get the column of the debris species
+                    if np.sum(sma_ecc_distribution) == 0 and np.sum(species_frag) != 0:
+                        print("fragments made but no distribution in sma_ecc space")
+                    frag_spread_sma_ecc = species_frag * sma_ecc_distribution
+                    total_dNdt_sma_ecc_sources[:, species, :] = total_dNdt_sma_ecc_sources[:, species, :] + frag_spread_sma_ecc
+
+        #############################
+        # Now we need to calculate the sink equations, which are the same as the source equations
+        # but multiplied by the time in shell.
+        #############################
+        dNdt_sink_sma_ecc = np.zeros((n_sma_bins, n_species, n_ecc_bins)) 
+        for term in self.collision_terms: # for each species pair
+            dNdt_term = term.lambdified_sinks(*x_flat_ordered) # n_shells x n_species
             
-        #     for species in range(n_species): # for each species essentially find where the fragments came from (using effective pop)
-        #         for shell in range(n_alt_shells):
-        #             frag = dNdt_term[shell, species]
-        #             norm_a_e = normalised_species_distribution_in_sma_e_space[shell, species, :, :]
-        #             frag_sink_sma_ecc = frag * norm_a_e
-        #             dNdt_sink_sma_ecc[:, species, :] = dNdt_sink_sma_ecc[:, species, :] + frag_sink_sma_ecc
-        #             # if frag_sink_sma_ecc has any nans stop
-        #             if np.isnan(dNdt_sink_sma_ecc).any():
-        #                 raise ValueError(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
+            for species in range(n_species): # for each species essentially find where the fragments came from (using effective pop)
+                for shell in range(n_alt_shells):
+                    frag = dNdt_term[shell, species]
+                    norm_a_e = normalised_species_distribution_in_sma_e_space[shell, species, :, :]
+                    frag_sink_sma_ecc = frag * norm_a_e
+                    dNdt_sink_sma_ecc[:, species, :] = dNdt_sink_sma_ecc[:, species, :] + frag_sink_sma_ecc
+                    # if frag_sink_sma_ecc has any nans stop
+                    if np.isnan(dNdt_sink_sma_ecc).any():
+                        raise ValueError(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
             
-        # output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
+        output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
 
         # so we no have the change of the points, we need to multiply each species sma and ecc by this matrix of change
         # Loop over species and compute finite-difference transport using rates (no dt)
         dN_all_species = np.zeros_like(x_matrix) 
         for species in range(n_species):
             # Only apply to species that are not drag affected
-            if active_species_bool[species] is False:
+            if drag_affected_bool[species] is False:
                 continue 
+
+            adot = adot_all_species[species]
+            edot = edot_all_species[species]
 
             N_sma_ecc = x_matrix[:, species, :]
             dN = np.zeros_like(N_sma_ecc)
@@ -890,28 +893,39 @@ class ScenarioProperties:
             dN_all_species[:, species, :] = dN
             
         # self.t_0 = t # update global variable 
-        dN_all_species = dN_all_species #+ output
+        dN_all_species = dN_all_species + output
 
         # #############################
         # # Post Mission Disposal of Existing Population, this should be from the circular population of x_flat
-        # #############################    
+        # #############################
 
-        # circular_population = x_matrix[:, :, 1]  # Only ecc=0
-        # flattened_circular = circular_population.T.flatten()
+        # First loop through the species and do their sinks
+        pmd = np.zeros_like(dN_all_species)
+        for species in range(n_species):
+            # remove the total number of satellites based on deltat
+            if all_species_list[species].active == True:
+                for sma in range(n_sma_bins):
+                    for ecc in range(n_ecc_bins):
+                        pmd[sma, species, ecc] -= (1/ all_species_list[species].deltat) * x_matrix[sma, species, ecc]
 
-        # # Evaluate PMD equations
-        # val = np.array([eq(*flattened_circular) for eq in self.equations])
-        # val_reshaped = val.reshape((n_species, n_sma_bins)).T  # shape: (sma, species)
+            # Then gain the number of derelicts based on deltat
+            if not all_species_list[species].active:
+                if all_species_list[species].pmd_linked_species:
+                    linked_sym = all_species_list[species].pmd_linked_species[0].sym_name
+                    linked_idx = next(i for i, sp in enumerate(all_species_list)
+                                    if sp.sym_name == linked_sym)
 
-        # # Subtract PMD from the circular bin only (ecc=0)
-        # for species in range(n_species):
-        #     for sma in range(n_sma_bins):
-        #         total_pmd = val_reshaped[sma, species]
-        #         if total_pmd == 0:
-        #             continue
+                    Pm      = all_species_list[linked_idx].Pm
+                    dt_link = all_species_list[linked_idx].deltat
+                    fail_rate = (1.0 - Pm) / dt_link
 
-        #         dN_all_species[sma, species, 1] += total_pmd  # Add negative value (sink)
+                    for sma in range(n_sma_bins):
+                        for ecc in range(n_ecc_bins):
+                            pop_linked = x_matrix[sma, linked_idx, ecc]
+                            pmd[sma, species, ecc] += fail_rate * pop_linked
 
+        dN_all_species += pmd
+             
         ############################
         # Add the change in population due to launches
         ############################    
@@ -1021,31 +1035,6 @@ class ScenarioProperties:
                     [(i, name) for i, name in enumerate(self.species_names) if name.startswith("N")]
                 )
             }
-            
-            # if not self.baseline:
-            #     for rate_array in self.full_lambda_flattened:
-            #         try: 
-            #             if rate_array is not None:
-            #                 clean_rate_array = np.array(rate_array)
-            #                 clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
-            #                 clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
-
-            #                 ## USE INTERPOLATION
-            #                 interp_func = interp1d(self.scen_times, clean_rate_array, 
-            #                                     kind='cubic', # 'linear', 'cubic'
-            #                                     bounds_error=False, 
-            #                                     fill_value=0)
-            #                 launch_rate_functions.append(interp_func)
-
-            #                 # USE STEP FUNCTION
-            #                 # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-            #                 # launch_rate_functions.append(step_func)
-                            
-            #             else:
-            #                 # If there are no launches, create a simple lambda that always returns 0
-            #                 launch_rate_functions.append(lambda t: 0.0)
-            #         except:
-            #             launch_rate_functions.append(lambda t: 0.0)
 
             launch_rate_functions = np.full(
                 (self.n_sma_bins, n_species, self.n_ecc_bins), 
@@ -1108,14 +1097,6 @@ class ScenarioProperties:
             # Finally lambdify the equations for integration, this will just be pmd
             # equations_flattened = [self.equations[i, j] for j in r÷
             self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
-            
-            # now we need to propagate using the dynamical equations
-            param = {
-                'req': 6378.136, 
-                'mu': 398600.0, # should already be defined
-                'Bstar': 2.2000e-08, # 2.2 * ((2.687936011/1e3)**2/ 1783),  # bstar = cd * ((radius/1e3)**2/ mass) 0.5, 148
-                'j2': 1082.63e-6
-            }
 
             # Constants
             self.t_0 = 0
@@ -1156,16 +1137,46 @@ class ScenarioProperties:
             Δa      = self.sma_HMid_km[1] - self.sma_HMid_km[0]
             Δe      = self.eccentricity_bins[1] - self.eccentricity_bins[0]
 
-            # Calculate da/dt and de/dt at each point
-            adot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
-            edot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+            adot_all_species = []
+            edot_all_species = []
 
-            for sma in range(self.n_sma_bins):
-                a_val = self.sma_HMid_km[sma]
-                for ecc in range(self.n_ecc_bins):
-                    e_val = self.binE_ecc_mid_point[ecc]
-                    adot[sma, ecc] = get_dadt(a_val, e_val, param) * years 
-                    edot[sma, ecc] = get_dedt(a_val, e_val, param) * years
+            # mean bstar
+            # bstar_vals = [9.79673e-08, 3.00907e-07,  2.86768e-08, 
+            #               1.10182e-06, 1.10182e-06, 1.10182e-06, 1.10182e-06,  3.00907e-07, 9.79673e-08, 2.86768e-08,
+            #               2.36304e-08]
+            
+            # S:     1.056e-07
+            # Su:    2.33658e-08
+            # Sns:   6.4328e-08
+            # N:     1.0208e-06
+            # B:     2.02111e-08
+            # median bstar, S, Sns (1.4328e-10), Su
+            bstar_vals = [1.056e-07, 6.4328e-08,  2.33658e-08,
+                          1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 6.4328e-06, 1.056e-07, 2.33658e-08,
+                           2.36304e-08]
+            
+            for bstar in bstar_vals:
+                # now we need to propagate using the dynamical equations
+                param = {
+                    'req': 6378.136, 
+                    'mu': 398600.0, # should already be defined
+                    'Bstar': bstar, # 2.2000e-08, # 2.2 * ((2.687936011/1e3)**2/ 1783),  # bstar = cd * ((radius/1e3)**2/ mass) 0.5, 148
+                    'j2': 1082.63e-6
+                }
+
+                # Calculate da/dt and de/dt at each point
+                adot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+                edot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+
+                for sma in range(self.n_sma_bins):
+                    a_val = self.sma_HMid_km[sma]
+                    for ecc in range(self.n_ecc_bins):
+                        e_val = self.binE_ecc_mid_point[ecc]
+                        adot[sma, ecc] = get_dadt(a_val, e_val, param) * years 
+                        edot[sma, ecc] = get_dedt(a_val, e_val, param) * years
+
+                adot_all_species.append(adot)
+                edot_all_species.append(edot)
 
 
             # create a boolean list that is the same length as species, depending on whether they are active or not
@@ -1174,13 +1185,16 @@ class ScenarioProperties:
                 for species in species_group:
                     active_species_bool.append(species.drag_effected)
 
+            # get a list of all species for pmd 
+            all_species_list = [species for category in self.species.values() for species in category]
+
             output = solve_ivp(
                 fun=self.population_rhs,
                 t_span=(self.scen_times[0], self.scen_times[-1]),
                 y0=self.x0.flatten(),
                 t_eval=self.scen_times,
                 args=(launch_rate_functions, self.n_sma_bins, n_species, self.n_ecc_bins, self.n_alt_shells,
-                      species_to_mass_bin, years, adot, edot, Δa, Δe, active_species_bool),
+                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, active_species_bool, all_species_list),
                 method="RK45"
             )
             # output = 1
