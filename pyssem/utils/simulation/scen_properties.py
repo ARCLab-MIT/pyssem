@@ -1324,8 +1324,6 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
-        self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
-
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
             drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
@@ -1349,7 +1347,7 @@ class ScenarioProperties:
             self.prev_rho = None
 
 
-            # print("Integrating equations...")
+            print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
@@ -1358,6 +1356,8 @@ class ScenarioProperties:
             self.drag_cur_lamd = None
 
         else:
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
             ## OLD
             # output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
             #                 args=(self.full_lambda_flattened, self.equations, self.scen_times),
@@ -1393,14 +1393,14 @@ class ScenarioProperties:
                             launch_rate_functions.append(lambda t: 0.0)
                     except:
                         launch_rate_functions.append(lambda t: 0.0)
-
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                                         args=(launch_rate_functions, self.equations),
                                         t_eval=self.scen_times, method=self.integrator)
-            
-        self.progress_bar.close()
-        self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+
+            # output = 1
+            self.progress_bar.close()
+            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -1436,269 +1436,11 @@ class ScenarioProperties:
                         print(f"Cannot make indicator for {indicator_var}")
                         print(Exception)
 
-            # print("Indicator variables succesfully ran")
-            # print(self.indicator_results['indicators'].keys())
+            print("Indicator variables succesfully ran")
+            print(self.indicator_results['indicators'].keys())
 
 
         return 
-    
-    def make_rate_interpolator(self, times, rates, method="pchip", extrap="hold", smooth=None, values='counts'):
-        """
-        times: 1D array of scenario times (must be increasing)
-        rates: 1D array of launch rates (may contain NaN/inf)
-        method: "pchip" (shape-preserving), "akima" (less ringing), "linear", "spline" (smoothed cubic)
-        extrap: "hold" (constant at ends), "zero" (0 outside), or "extrapolate"
-        smooth: smoothing factor for "spline" (larger -> smoother)
-        """
-        t = np.asarray(times, float)
-        y = np.asarray(rates, float)
-        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # sort + dedupe times (average duplicates)
-        order = np.argsort(t)
-        t, y = t[order], y[order]
-        ut, inv = np.unique(t, return_inverse=True)
-        if len(ut) < len(t):
-            y = np.bincount(inv, weights=y) / np.bincount(inv)
-            t = ut
-
-        n = len(t)
-        if n == 0:
-            return lambda tt: np.zeros_like(np.asarray(tt, float))
-        if n == 1:
-            c = float(max(y[0], 0.0))
-            if extrap == "zero":
-                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
-            elif extrap == "hold":
-                return lambda tt, c=c: np.asarray(tt, float)*0 + c
-            else:
-                return lambda tt, c=c: np.asarray(tt, float)*0 + c
-
-        # choose interpolator
-        if method == "pchip":
-            base = PchipInterpolator(t, y, extrapolate=(extrap == "extrapolate"))
-            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
-                tt = np.asarray(tt, float)
-                out = base(tt)
-                if extrap == "zero":
-                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
-                elif extrap == "hold":
-                    out = np.where(tt < t0, y0, out)
-                    out = np.where(tt > tn, yn, out)
-                return np.maximum(out, 0.0)   # clamp tiny negatives from numerics
-            return _f
-
-        if method == "akima":
-            base = Akima1DInterpolator(t, y)
-            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
-                tt = np.asarray(tt, float)
-                out = base(tt)
-                if extrap == "zero":
-                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
-                elif extrap == "hold":
-                    out = np.where(tt < t0, y0, out)
-                    out = np.where(tt > tn, yn, out)
-                return np.maximum(out, 0.0)
-            return _f
-
-        if method == "linear":
-            base = interp1d(t, y, kind="linear", bounds_error=False,
-                            fill_value=(y[0], y[-1]) if extrap == "hold" else 0.0, assume_sorted=True)
-            return lambda tt, base=base: np.maximum(base(tt), 0.0)
-        t = np.asarray(times, float)
-        y = np.asarray(rates, float)
-        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # sort + dedupe
-        order = np.argsort(t)
-        t, y = t[order], y[order]
-        ut, inv = np.unique(t, return_inverse=True)
-        if len(ut) < len(t):
-            y = np.bincount(inv, weights=y) / np.bincount(inv)
-            t = ut
-
-        n = len(t)
-        if n == 0:
-            return lambda tt: np.zeros_like(np.asarray(tt, float))
-        if n == 1:
-            c = float(max(y[0], 0.0))
-            if extrap == "zero":
-                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
-            elif extrap == "hold":
-                return lambda tt, c=c: np.asarray(tt, float)*0 + c
-            else:
-                return lambda tt, c=c: np.asarray(tt, float)*0 + c
-            
-        """
-        ... (your existing docstring)
-        Extra:
-        - method="bspline" uses scipy.make_interp_spline
-        - k: spline order (1..5), default 3
-        """
-        import numpy as np
-        t = np.asarray(times, float)
-        y = np.asarray(rates, float)
-        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # sort + dedupe
-        order = np.argsort(t)
-        t, y = t[order], y[order]
-        ut, inv = np.unique(t, return_inverse=True)
-        if len(ut) < len(t):
-            y = np.bincount(inv, weights=y) / np.bincount(inv)
-            t = ut
-
-        n = len(t)
-        if n == 0:
-            return lambda tt: np.zeros_like(np.asarray(tt, float))
-        if n == 1:
-            c = float(max(y[0], 0.0))
-            if extrap == "zero":
-                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
-            elif extrap == "hold":
-                return lambda tt, c=c: np.asarray(tt, float)*0 + c
-            else:
-                return lambda tt, c=c: np.asarray(tt, float)*0 + c
-
-        # === NEW: B-spline via make_interp_spline ===
-        if method == "bspline":
-            kk = int(k) if k is not None else 3
-            kk = max(1, min(5, kk))
-
-            # If counts, fit on interval midpoints with rates = counts / dt
-            if values == "counts":
-                if len(t) != len(y) + 1:
-                    raise ValueError("For method='bspline' with values='counts', 'times' must be interval EDGES (len = len(counts)+1).")
-                dt = np.diff(t)
-                t_fit = 0.5 * (t[:-1] + t[1:])          # midpoints
-                y_fit = y / dt                           # rates
-            else:
-                t_fit, y_fit = t, y
-
-            # Natural end conditions to reduce end ringing; set extrapolate only if requested
-            base = make_interp_spline(t_fit, y_fit, k=kk, bc_type="natural",
-                                    extrapolate=(extrap == "extrapolate"))
-
-            t0, tn = t_fit[0], t_fit[-1]
-            y0, yn = float(y_fit[0]), float(y_fit[-1])
-
-            def _f(tt, base=base, t0=t0, tn=tn, y0=y0, yn=yn):
-                tt = np.asarray(tt, float)
-                out = base(tt)
-                if extrap == "zero":
-                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
-                elif extrap == "hold":
-                    out = np.where(tt < t0, y0, out)
-                    out = np.where(tt > tn, yn, out)
-                return np.maximum(out, 0.0)  # clamp tiny negatives
-            return _f
-         # ---- NEW: counts -> piecewise-constant rates ----
-        if values == "counts":
-            # times are interval edges: y[k] is count in [t[k], t[k+1])
-            if n < 2:
-                raise ValueError("values='counts' requires at least 2 time edges.")
-            dt = np.diff(t)                    # length n-1
-            r = (y[:-1] / dt)                  # rates in each interval
-            t_edges = t                        # keep full edges for search
-            # build ZOH over intervals
-            def _f_counts(tt, t_edges=t_edges, r=r):
-                tt = np.asarray(tt, float)
-                k = np.searchsorted(t_edges, tt, side='right') - 1  # interval index
-                k = np.clip(k, 0, len(r)-1)
-                out = r[k]
-                if extrap == "zero":
-                    out = np.where((tt < t_edges[0]) | (tt >= t_edges[-1]), 0.0, out)
-                elif extrap == "hold":
-                    left = (tt < t_edges[0])
-                    right = (tt >= t_edges[-1])
-                    out = np.where(left, r[0], out)
-                    out = np.where(right, r[-1], out)
-                return np.maximum(out, 0.0)
-            return _f_counts
-
-        # ---- NEW: ZOH (previous) for provided rates ----
-        if method == "zoh":
-            t0, tn = t[0], t[-1]
-            y0, yn = y[0], y[-1]
-            def _f(tt, t=t, y=y, t0=t0, tn=tn, y0=y0, yn=yn):
-                tt = np.asarray(tt, float)
-                k = np.searchsorted(t, tt, side='right') - 1
-                k = np.clip(k, 0, len(y)-1)
-                out = y[k]
-                if extrap == "zero":
-                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
-                elif extrap == "hold":
-                    out = np.where(tt < t0, y0, out)
-                    out = np.where(tt > tn, yn, out)
-                return np.maximum(out, 0.0)
-            return _f
-
-        if method == "spline":
-            s = 0.0 if smooth is None else float(smooth)
-            # ext=3 -> return 0 outside; override below if "hold"
-            spl = UnivariateSpline(t, y, k=3, s=s, ext=3)
-            if extrap == "hold":
-                def _f(tt, spl=spl, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
-                    tt = np.asarray(tt, float)
-                    out = spl(tt)
-                    out = np.where(tt < t0, y0, out)
-                    out = np.where(tt > tn, yn, out)
-                    return np.maximum(out, 0.0)
-                return _f
-            return lambda tt, spl=spl: np.maximum(spl(tt), 0.0)
-
-        # default fallback
-        base = interp1d(t, y, kind="linear", bounds_error=False, fill_value=0.0, assume_sorted=True)
-        return lambda tt, base=base: np.maximum(base(tt), 0.0)
-    
-    def _zero_padded_spline(self, x, y, bc_type="natural"):
-                """
-                Build a spline f(t) that returns 0 outside [x[0], x[-1]].
-                Handles short series by reducing k automatically.
-                Dedups x by averaging y at duplicate times.
-                """
-                x = np.asarray(x, float)
-                y = np.asarray(y, float)
-
-                # sort & dedup x, average y on duplicates
-                order = np.argsort(x)
-                x = x[order]
-                y = y[order]
-                xu, inv = np.unique(x, return_inverse=True)
-                if xu.size != x.size:
-                    y_agg = np.zeros_like(xu, dtype=float)
-                    counts = np.zeros_like(xu, dtype=float)
-                    np.add.at(y_agg, inv, y)
-                    np.add.at(counts, inv, 1.0)
-                    y = y_agg / counts
-                    x = xu
-
-                # choose spline degree
-                k = int(min(3, max(1, len(x) - 1)))
-                if len(x) == 1:
-                    # constant inside the single support point
-                    v = float(y[0])
-                    t0 = t1 = float(x[0])
-                    def f(tt):
-                        tt = np.asarray(tt, float)
-                        out = np.zeros_like(tt, float)
-                        mask = (tt == t0)  # only defined at that point
-                        out[mask] = v
-                        return out
-                    return f, t0, t1
-
-                spl = make_interp_spline(x, y, k=k, bc_type=bc_type)
-                t0, t1 = float(x[0]), float(x[-1])
-
-                def f(tt):
-                    tt = np.asarray(tt, float)
-                    out = np.zeros_like(tt, float)
-                    mask = (tt >= t0) & (tt <= t1)
-                    if np.any(mask):
-                        out[mask] = spl(tt[mask])
-                    return out
-
-                return f, t0, t1
     
     def run_model_elliptical(self):
         """
