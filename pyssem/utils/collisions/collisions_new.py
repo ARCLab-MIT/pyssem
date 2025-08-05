@@ -11,7 +11,7 @@ import random
 from utils.collisions.NASA_SBN6 import *
 from utils.collisions.collisions_elliptical import evolve_bins
 
-def process_species_pair(args):
+def process_species_pair_elliptical(args):
     
     i, (s1, s2), scen_properties, debris_species, binE, LBgiven = args
     m1, m2 = s1.mass, s2.mass
@@ -96,8 +96,6 @@ def process_species_pair(args):
     )
     # This will tell you the number of fragments in each debris bin
     for shell in range(n_shells):
-        dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. This can change later. 
-
         # First need a representative semi-major axis
         sma1 = scen_properties.sma_HMid_km[shell]
         sma2 = sma1
@@ -155,7 +153,6 @@ def create_collision_pairs(scen_properties):
     """
     
     # Get the binomial coefficient of the species
-    # This returns all possible combinations of the species
     species =  [species for species_group in scen_properties.species.values() for species in species_group]
     species_cross_pairs = list(combinations(species, 2))
     species_self_pairs = [(s, s) for s in species]
@@ -169,27 +166,29 @@ def create_collision_pairs(scen_properties):
     # debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
     debris_species = [species for species in scen_properties.species['debris']]
 
-    # Calculate the Mass bin centres, edges and widths
-    binC = np.zeros(len(debris_species))
+    # Calculate the Mass bin edges
     binE = np.zeros(2 * len(debris_species))
-    binW = np.zeros(len(debris_species))
     LBgiven = scen_properties.LC
-
     for index, debris in enumerate(debris_species):
-        binC[index] = debris.mass
         binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
-        binW[index] = debris.mass_ub - debris.mass_lb
-
     binE = np.unique(binE)
 
     args = [(i, species_pair, scen_properties, debris_species, binE, LBgiven) for i, species_pair in enumerate(species_pairs)]
     
     # Use multiprocessing Pool for parallel processing
-    if scen_properties.parallel_processing:
-        with mp.Pool(processes=mp.cpu_count()) as pool:
-            results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+    if scen_properties.elliptical:
+        if scen_properties.parallel_processing:
+            with mp.Pool(processes=mp.cpu_count()) as pool:
+                results = list(tqdm(pool.imap(process_species_pair_elliptical, args), total=len(species_pairs), desc="Creating collision pairs"))
+        else:
+            results = [process_species_pair_elliptical(arg) for arg in tqdm(args, desc="Creating collision pairs")]
+
     else:
-        results = [process_species_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
+        if scen_properties.parallel_processing:
+            with mp.Pool(processes=mp.cpu_count()) as pool:
+                results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+        else:
+            results = [process_species_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
 
     # Collect results
     species_pairs_classes.extend(results)

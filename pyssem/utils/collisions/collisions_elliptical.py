@@ -361,9 +361,6 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
         frag_properties,
         bins=[binE_alt, binE_mass, binE_ecc]
     )
-
-    # normalize per your SS factor
-    # hist3d /= (SS * 3)
     
     return hist3d
 
