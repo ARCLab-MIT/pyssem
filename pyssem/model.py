@@ -6,11 +6,11 @@
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.scen_properties_old import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
 # from utils.collisions.collisions import create_collision_pairs
-from utils.collisions.collisions_merged import create_collision_pairs
+from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
@@ -155,7 +155,6 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            # self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
@@ -230,7 +229,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'SEP1.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'just_debris.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -278,17 +277,17 @@ if __name__ == "__main__":
 
     print("Runtime saved to model_runtime.txt")
 
-    # data = model.results_to_json()
+    data = model.results_to_json()
 
-    # # Create the figures directory if it doesn't exist
-    # os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
-    # # Save the results to a JSON file
-    # with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-    #     json.dump(data, f, indent=4)
+    # Create the figures directory if it doesn't exist
+    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+    # Save the results to a JSON file
+    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+        json.dump(data, f, indent=4)
 
-    # try:
-    #     plot_names = simulation_data["plots"]
-    #     Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
-    # except Exception as e:
-    #     print(e)
-    #     print("No plots specified in the simulation configuration file.")
+    try:
+        plot_names = simulation_data["plots"]
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+    except Exception as e:
+        print(e)
+        print("No plots specified in the simulation configuration file.")

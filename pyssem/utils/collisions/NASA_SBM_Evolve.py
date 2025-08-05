@@ -1,6 +1,7 @@
 import traceback
 import numpy as np
 import math
+import random
 
 def perifocal_r_and_v(a, e, nu, mu):
     r_mag = a * (1 - e**2) / (1 + e * np.cos(nu))
