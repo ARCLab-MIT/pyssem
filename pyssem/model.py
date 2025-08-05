@@ -6,11 +6,11 @@
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.scen_properties_old import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
 # from utils.collisions.collisions import create_collision_pairs
-from utils.collisions.collisions_merged import create_collision_pairs
+from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from utils.plotting.SEPDataExport import *
 from utils.plotting.EllipticalOuputsToAltitudeBins import *
@@ -294,23 +294,9 @@ if __name__ == "__main__":
     with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
         json.dump(data, f, indent=4)
 
-    # open the scenario properties pickle file
-    # with open('scenario-properties-collision.pkl', 'rb') as f:
-    #     model = pickle.load(f)
-
     try:
         plot_names = simulation_data["plots"]
-        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
-        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
-                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
-                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-                      )
-        # SEPDataExport(model, simulation_data["simulation_name"], 
-        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-        #               )
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
     except Exception as e:
-        print(e.with_traceback())
+        print(e)
         print("No plots specified in the simulation configuration file.")
-
-    # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
-    # Plots(model, plot_names, simulation_data["simulation_name"], main_path)
