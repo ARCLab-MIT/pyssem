@@ -6,11 +6,11 @@
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties_old import ScenarioProperties
+from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
 # from utils.collisions.collisions import create_collision_pairs
-from utils.collisions.collisions import create_collision_pairs
+from utils.collisions.collisions_merged import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from utils.plotting.SEPDataExport import *
 from utils.plotting.EllipticalOuputsToAltitudeBins import *
