@@ -6,11 +6,11 @@
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties_old import ScenarioProperties
+from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
 # from utils.collisions.collisions import create_collision_pairs
-from utils.collisions.collisions import create_collision_pairs
+from utils.collisions.collisions_merged import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from datetime import datetime
 import json
@@ -185,11 +185,11 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            # self.scenario_properties.build_model_elliptical()
-            # self.scenario_properties.run_model_elliptical()
+            self.scenario_properties.build_model_elliptical()
+            self.scenario_properties.run_model_elliptical()
             
-            self.scenario_properties.build_model()
-            self.scenario_properties.run_model()
+            # self.scenario_properties.build_model()
+            # self.scenario_properties.run_model()
 
             self.scenario_properties.equations = None
             self.scenario_properties.lambdify_equations = None
@@ -229,7 +229,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'just_debris.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]

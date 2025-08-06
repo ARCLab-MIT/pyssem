@@ -1,5 +1,5 @@
 {
-  "simulation_name": "SEP2",
+  "simulation_name": "SEP2-FragSpread",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -17,8 +17,8 @@
     "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
     "v_imp": 10.0,
-    "fragment_spreading": false,
-    "parallel_processing": false,
+    "fragment_spreading": true,
+    "parallel_processing": true,
     "baseline" : false,
     "launch_scenario": "SEP2"                                        
   },

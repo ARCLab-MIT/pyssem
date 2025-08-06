@@ -709,7 +709,7 @@ class ScenarioProperties:
         # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
         # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch_elliptical()
             
         return
 
@@ -1414,8 +1414,8 @@ class ScenarioProperties:
             # N:     1.0208e-06
             # B:     2.02111e-08
             # median bstar, S, Sns (1.4328e-10), Su
-            bstar_vals = [1.056e-07, 6.4328e-08,  2.33658e-08,
-                          1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 6.4328e-06, 1.056e-07, 2.33658e-08,
+            bstar_vals = [1.056e-07, 7.7000e-09,  2.33658e-08,
+                          1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 7.7000e-09, 1.056e-07, 2.33658e-08,
                            2.36304e-08]
             
             for bstar in bstar_vals:

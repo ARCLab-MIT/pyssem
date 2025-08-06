@@ -1140,10 +1140,13 @@ class ScenarioProperties:
         intrinsic_rates = np.array([eq(*N) for eq in eq_funcs])
 
         # Calculate the launch rates at the current time 't' by calling the functions
-        launch_rates = np.array([func(t) for func in launch_funcs])
+        if self.baseline:
+            dN_dt = intrinsic_rates
+        else:
+            launch_rates = np.array([func(t) for func in launch_funcs])
 
-        # The total rate of change is the sum
-        dN_dt = intrinsic_rates + launch_rates
+            # The total rate of change is the sum
+            dN_dt = intrinsic_rates + launch_rates
 
         return dN_dt
 
