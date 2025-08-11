@@ -735,7 +735,7 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
         # find difference in orbital velocity for shells
         # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
         dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
-        dv_values = func_dv(Am, 'col') / 1000 # km/s
+        dv_values = np.array(func_dv(Am, 'col')) / 1000 # km/s
         u = np.random.rand(len(dv_values)) * 2 - 1
         theta = np.random.rand(len(dv_values)) * 2 * np.pi
 

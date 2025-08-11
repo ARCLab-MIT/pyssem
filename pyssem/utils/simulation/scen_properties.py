@@ -2,7 +2,7 @@ import numpy as np
 from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, make_interp_spline
 from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
@@ -290,62 +290,124 @@ class ScenarioProperties:
         """
         elliptical = self.elliptical
         n_shells = self.n_shells
-        self.n_sma_bins, n_species, self.n_ecc_bins = self.x0.shape
 
-        for species_group in self.species.values():
-            for species in species_group:
-                if species.sym_name not in FLM_steps.columns:
+        if elliptical:
+            self.n_sma_bins, n_species, self.n_ecc_bins = self.x0.shape
+
+            for species_group in self.species.values():
+                for species in species_group:
+                    if species.sym_name not in FLM_steps.columns:
+                        if elliptical:
+                            # Flat list of n_shells * n_ecc_bins
+                            species.lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+                        else:
+                            species.lambda_funs = [0 for _ in range(n_shells)]
+                        continue
+
                     if elliptical:
-                        # Flat list of n_shells * n_ecc_bins
-                        species.lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+                        # Ensure the species column exists and is numeric (NaNs -> 0)
+                        if species.sym_name not in FLM_steps.columns:
+                            # Flat list of n_shells * n_ecc_bins with zeros
+                            species.lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+                            continue
+
+                        # Work on a copy; coerce to numeric and zero-fill NaNs/infs
+                        temp_df = FLM_steps.loc[:, ['alt_bin', 'ecc_bin', 'epoch_start_date', species.sym_name]].copy()
+                        temp_df[species.sym_name] = pd.to_numeric(temp_df[species.sym_name], errors='coerce')
+                        temp_df[species.sym_name] = temp_df[species.sym_name].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+                        # Drop rows with NaN bins and cast bins to int
+                        temp_df = temp_df.dropna(subset=['alt_bin', 'ecc_bin'])
+                        temp_df['alt_bin'] = temp_df['alt_bin'].astype(int)
+                        temp_df['ecc_bin'] = temp_df['ecc_bin'].astype(int)
+
+                        # Sortable epoch: parse to datetime if needed
+                        if not np.issubdtype(temp_df['epoch_start_date'].dtype, np.datetime64):
+                            temp_df['epoch_start_date'] = pd.to_datetime(temp_df['epoch_start_date'], errors='coerce', utc=True)
+
+                        # Flat list of length n_shells * n_ecc_bins
+                        lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+
+                        grouped = temp_df.groupby(['alt_bin', 'ecc_bin'], sort=True)
+                        for (shell, ecc_bin), group in grouped:
+                            group = group.sort_values('epoch_start_date')
+                            y = group[species.sym_name].to_numpy(dtype=float)
+                            y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+                            flat_index = int(shell) * self.n_ecc_bins + int(ecc_bin)
+                            lambda_funs[flat_index] = y if (y.size > 0 and np.any(y != 0.0)) else 0
+
+                        species.lambda_funs = lambda_funs
+
+                        # NaN-safe total
+                        total_count = float(np.nansum([np.nansum(entry) if isinstance(entry, np.ndarray) else 0.0
+                                                       for entry in lambda_funs]))
+                        if species.sym_name == 'B':
+                            nan_cells = sum(int(np.isnan(entry).any()) for entry in lambda_funs if isinstance(entry, np.ndarray))
+                            print(f"Species: {species.sym_name} Total Count: {total_count} (cells with NaNs: {nan_cells})")
+                        else:
+                            print(f"Species: {species.sym_name} Total Count: {total_count}")
                     else:
-                        species.lambda_funs = [0 for _ in range(n_shells)]
-                    continue
+                        temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+                        species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
 
-                if elliptical:
-                    temp_df = FLM_steps.loc[:, ['alt_bin', 'ecc_bin', 'epoch_start_date', species.sym_name]]
-                    grouped = temp_df.groupby(['alt_bin', 'ecc_bin'])
+                        lambda_funs = []
+                        if species.launch_altitude is not None:
+                            closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
+                        else:
+                            closest_shell = None
 
-                    # Flat list of length n_shells * n_ecc_bins
-                    lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+                        for shell in range(n_shells):
+                            if shell in species_FLM.index:
+                                y = species_FLM.loc[shell, :].values
+                            else:
+                                y = np.zeros(len(species_FLM.columns))
 
-                    for (shell, ecc_bin), group in grouped:
-                        group = group.sort_values('epoch_start_date')
-                        y = group[species.sym_name].values
+                            if closest_shell is not None and shell == closest_shell:
+                                y += species.lambda_constant
 
-                        flat_index = shell * self.n_ecc_bins + ecc_bin
-                        lambda_funs[flat_index] = y if not np.all(y == 0) else 0
+                            lambda_funs.append(y if not np.all(y == 0) else 0)
 
-                    species.lambda_funs = lambda_funs
+                        species.lambda_funs = lambda_funs
 
-                    total_count = sum(
-                        np.sum(entry) if isinstance(entry, np.ndarray) else 0
-                        for entry in lambda_funs
-                    )
-                    print(f'Species: {species.sym_name} Total Count: {total_count}')
-                else:
-                    temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+        else: # circular orbits
+            # Check for consistent time step
+            scen_times = np.array(self.scen_times)
+            if len(np.unique(np.round(np.diff(scen_times), 5))) == 1:
+                time_step = np.unique(np.round(np.diff(scen_times), 5))[0]
+            else:
+                raise ValueError("FLM to Launch Function is not set up for variable time step runs.")
+
+            for species_group in self.species.values():
+                for species in species_group:
+
+                    # Extract the species columns, with altitude and time
+                    if species.sym_name in FLM_steps.columns:
+                        temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+
+                    else:
+                        continue
+
                     species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
 
-                    lambda_funs = []
+                    # Convert spec_FLM to interpolating functions (lambdadot) for each shell
+                    # Remember indexing starts at 0 (40th shell is index 39)
+                    species.lambda_funs = []
+                    
                     if species.launch_altitude is not None:
                         closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
-                    else:
-                        closest_shell = None
 
-                    for shell in range(n_shells):
-                        if shell in species_FLM.index:
-                            y = species_FLM.loc[shell, :].values
-                        else:
-                            y = np.zeros(len(species_FLM.columns))
+                    for shell in range(self.n_shells):
+                        y = species_FLM.loc[shell, :].values / time_step  
 
-                        if closest_shell is not None and shell == closest_shell:
+                        if species.launch_altitude is not None and shell == closest_shell:
+                            # Add the lambda_constant to each value in the array y
                             y += species.lambda_constant
 
-                        lambda_funs.append(y if not np.all(y == 0) else 0)
-
-                    species.lambda_funs = lambda_funs
-
+                        if np.all(y == 0):
+                            species.lambda_funs.append(None)  
+                        else:
+                            species.lambda_funs.append(np.array(y))
     def build_indicator_variables(self):
         """
             This will create the indicator variables for the simulation. The different indicators will be provided by the user. 
@@ -841,63 +903,48 @@ class ScenarioProperties:
 
         return equations
     
-    # === 4. Integration ===
-    # def get_dadt(self, a_current, e_current, p, dt):
-    #         re   = p['req']
-    #         mu   = p['mu']
-    #         n0   = np.sqrt(mu) * a_current ** -1.5
-    #         a_minus_re = a_current - re
-    #         rho0 = densityexp(a_minus_re) * 1e9  # kg/km^3
-    #         C0   = max(0.5 * p['Bstar'] * rho0, 1e-20)
-    #         # dt   = p['t'] - p['t_0']
-    #         ang  = np.arctan((np.sqrt(3)/2)*e_current) - (np.sqrt(3)/2)*e_current * n0 * a_current * C0 * dt
-    #         sec2 = 1.0 / np.cos(ang) ** 2
-    #         return -(4 / np.sqrt(3)) * (a_current**2 * n0 * C0 / e_current) * np.tan(ang) * sec2
-
-    # def get_dedt(self, a_current, e_current, p, dt):
-    #     re   = p['req']
-    #     mu   = p['mu']
-    #     n0   = np.sqrt(mu) * a_current ** -1.5
-    #     beta = (np.sqrt(3)/2) * e_current
-    #     a_minus_re = a_current - re
-    #     rho0 = densityexp(a_minus_re) * 1e9
-    #     C0   = max(0.5 * p['Bstar'] * rho0, 1e-20)
-    #     # dt   = p['t'] - p['t_0']
-    #     arg  = np.arctan(beta) - beta * n0 * a_current * C0 * dt
-    #     sec2 = 1.0 / np.cos(arg) ** 2
-    #     return -e_current * n0 * a_current * C0 * sec2
-
     def sma_ecc_mat_to_altitude_mat(self, population_matrix_sma_ecc):
         """
-        Converts a population matrix in semi-major axis and eccentricity space to an altitude matrix.
-
-        Uses the time in shell matrix to distribute the population across altitude shells.
-        Args:
-            population_matrix_sma_ecc (np.ndarray): Population matrix in semi-major axis and eccentricity space.
-                Shape: (n_sma_bins, n_species, n_ecc_bins)  
-        Returns:
-            np.ndarray: Population matrix in altitude space.
-                Shape: (n_alt_shells, n_species)
+        Convert (sma, species, ecc) -> (alt, species), zeroing cells whose perigee altitude < 150 km.
+        population_matrix_sma_ecc shape: (n_sma_bins, n_species, n_ecc_bins)
+        time_in_shell shape:              (n_alt_shells, n_ecc_bins, n_sma_bins)
         """
+        import numpy as np
 
-        self.effective_altitude_matrix = np.zeros((self.n_alt_shells, self.species_length))
+        n_sma, n_species, n_ecc = population_matrix_sma_ecc.shape
+        assert n_sma == self.n_sma_bins and n_species == self.species_length and n_ecc == self.n_ecc_bins
 
-        # Reshape the population matrix to match the time in shell matrix
-        for species in range(self.species_length):
-            for alt_shell in range(self.n_alt_shells):
-                n_effective = 0
-                for sma in range(self.n_sma_bins):
-                    for ecc in range(self.n_ecc_bins):
-                        tis = self.time_in_shell[alt_shell, ecc, sma]
-                        n_pop = population_matrix_sma_ecc[sma, species, ecc]
-                        n_effective_a_e = n_pop * tis
-                        n_effective += n_effective_a_e
-                        self.effective_altitude_matrix[alt_shell, species] += n_effective_a_e
+        # --- Midpoints (fallback to scenario_properties if attributes live there) ---
+        try:
+            ecc_mid = np.asarray(self.binE_ecc_mid_point, dtype=float)   # (n_ecc,)
+            sma_mid = np.asarray(self.sma_HMid_km, dtype=float)          # (n_sma,)
+        except AttributeError:
+            ecc_mid = np.asarray(self.scenario_properties.binE_ecc_mid_point, dtype=float)
+            sma_mid = np.asarray(self.scenario_properties.sma_HMid_km, dtype=float)
 
-                self.effective_altitude_matrix[alt_shell, species] = n_effective
-        
-        return self.effective_altitude_matrix
+        # --- Perigee filter: keep only a(1-e) > R_earth + 150 km ---
+        R_earth_km = getattr(
+            self, "R_earth_km",
+            getattr(getattr(self, "scenario_properties", self), "R_earth_km", 6378.137)
+        )
+        perigee_altitude_threshold_km = 150.0
 
+        # Grid of (a,e) to compute r_p = a(1-e)
+        A_km, E = np.meshgrid(sma_mid, ecc_mid, indexing="ij")      # both (n_sma, n_ecc)
+        rp_km = A_km * (1.0 - E)
+        keep_mask = rp_km > (R_earth_km + perigee_altitude_threshold_km)  # True => keep
+
+        # Zero out decaying cells across all species
+        pop_filtered = population_matrix_sma_ecc * keep_mask[:, None, :]  # (n_sma, n_species, n_ecc)
+
+        # --- Map to altitude via time-in-shell weights ---
+        # time_in_shell: (alt, ecc, sma); pop_filtered: (sma, species, ecc)
+        # Result: (alt, species)
+        effective_altitude = np.einsum("aes, spe -> ap", self.time_in_shell, pop_filtered, optimize=True)
+
+        self.effective_altitude_matrix = effective_altitude
+        return effective_altitude
+    
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
                       species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, drag_affected_bool, all_species_list):
 
@@ -942,9 +989,9 @@ class ScenarioProperties:
         total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
 
 
-        # #############################
-        # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
-        # # #############################    
+        # # #############################
+        # # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
+        # # # #############################    
         x_flat_ordered = self.effective_altitude_matrix.flatten()
         # collision pair in altitude space 
         for term in self.collision_terms:
@@ -1022,8 +1069,8 @@ class ScenarioProperties:
 
             dN_all_species[:, species, :] = dN
             
-        # self.t_0 = t # update global variable 
-        dN_all_species = dN_all_species + output
+        self.t_0 = t # update global variable 
+        dN_all_species = dN_all_species #+ output
 
         # #############################
         # # Post Mission Disposal of Existing Population, this should be from the circular population of x_flat
@@ -1139,35 +1186,70 @@ class ScenarioProperties:
             time_step_duration = self.scen_times[1] - self.scen_times[0]
 
             if not self.baseline:
-                for rate_array in self.full_lambda_flattened:
-                    try: 
-                        if rate_array is not None:
-                            clean_rate_array = np.array(rate_array)
-                            clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
-                            clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
+                # for rate_array in self.full_lambda_flattened:
+                #     try: 
+                #         if rate_array is not None:
+                #             clean_rate_array = np.array(rate_array)
+                #             clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
+                #             clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
 
-                            ## USE INTERPOLATION
-                            interp_func = interp1d(self.scen_times, clean_rate_array, 
-                                                kind='cubic', # 'linear', 'cubic'
-                                                bounds_error=False, 
-                                                fill_value=0)
-                            launch_rate_functions.append(interp_func)
+                #             ## USE INTERPOLATION
+                #             interp_func = interp1d(self.scen_times, clean_rate_array, 
+                #                                 kind='cubic', # 'linear', 'cubic'
+                #                                 bounds_error=False, 
+                #                                 fill_value=0)
+                #             launch_rate_functions.append(interp_func)
 
-                            # USE STEP FUNCTION
-                            # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-                            # launch_rate_functions.append(step_func)
+                #             # USE STEP FUNCTION
+                #             # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                #             # launch_rate_functions.append(step_func)
                             
-                        else:
-                            # If there are no launches, create a simple lambda that always returns 0
-                            launch_rate_functions.append(lambda t: 0.0)
-                    except:
-                        launch_rate_functions.append(lambda t: 0.0)
+                #         else:
+                #             # If there are no launches, create a simple lambda that always returns 0
+                #             launch_rate_functions.append(lambda t: 0.0)
+
+                def _to_edges(times, n_counts):
+                    """Return time edges given centers or edges."""
+                    t = np.asarray(times, float)
+                    if len(t) == n_counts + 1:   # already edges
+                        return t
+                    if len(t) == n_counts:       # centers -> edges
+                        dt = np.diff(t)
+                        edges = np.empty(len(t) + 1)
+                        edges[1:-1] = (t[:-1] + t[1:]) / 2
+                        edges[0]     = t[0] - dt[0] / 2
+                        edges[-1]    = t[-1] + dt[-1] / 2
+                        return edges
+                    raise ValueError("scen_times must be centers (n) or edges (n+1) relative to counts.")
+
+                # --- build one callable per cell (sma, species, ecc) ---
+                flat_cells = self.full_lambda_flattened.ravel()  # object array -> iterate per bin
+
+                # infer edges once (use the length of any non-empty counts array)
+                first_arr = next((c for c in flat_cells if (c is not None and not np.isscalar(c))), None)
+                n_counts  = len(first_arr) if first_arr is not None else 0
+                t_edges   = _to_edges(self.scen_times, n_counts)
+                launch_rate_functions = []
+                for counts in flat_cells:
+                    # empty bins
+                    if (counts is None) or (np.isscalar(counts) and float(counts) == 0.0):
+                        launch_rate_functions.append(lambda tt, _z=0.0: 0.0)
+                        continue
+
+                    counts = np.asarray(counts, float).ravel()
+                    # piecewise-constant rate whose integral over each interval equals counts[k]
+                    f = self.make_rate_interpolator(
+                            t_edges, counts,
+                            method="bspline",        # ZOH branch
+                            extrap="zero",       # or "hold" if you prefer
+                            values="counts")     # counts -> rate internally
+                    launch_rate_functions.append(f)
+
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                                         args=(launch_rate_functions, self.equations),
                                         t_eval=self.scen_times, method=self.integrator)
-
-            # output = 1
+            
             self.progress_bar.close()
             self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
 
@@ -1210,6 +1292,264 @@ class ScenarioProperties:
 
 
         return 
+    
+    def make_rate_interpolator(self, times, rates, method="pchip", extrap="hold", smooth=None, values='counts'):
+        """
+        times: 1D array of scenario times (must be increasing)
+        rates: 1D array of launch rates (may contain NaN/inf)
+        method: "pchip" (shape-preserving), "akima" (less ringing), "linear", "spline" (smoothed cubic)
+        extrap: "hold" (constant at ends), "zero" (0 outside), or "extrapolate"
+        smooth: smoothing factor for "spline" (larger -> smoother)
+        """
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe times (average duplicates)
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+
+        # choose interpolator
+        if method == "pchip":
+            base = PchipInterpolator(t, y, extrapolate=(extrap == "extrapolate"))
+            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)   # clamp tiny negatives from numerics
+            return _f
+
+        if method == "akima":
+            base = Akima1DInterpolator(t, y)
+            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)
+            return _f
+
+        if method == "linear":
+            base = interp1d(t, y, kind="linear", bounds_error=False,
+                            fill_value=(y[0], y[-1]) if extrap == "hold" else 0.0, assume_sorted=True)
+            return lambda tt, base=base: np.maximum(base(tt), 0.0)
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            
+        """
+        ... (your existing docstring)
+        Extra:
+        - method="bspline" uses scipy.make_interp_spline
+        - k: spline order (1..5), default 3
+        """
+        import numpy as np
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+
+        # === NEW: B-spline via make_interp_spline ===
+        if method == "bspline":
+            kk = int(k) if k is not None else 3
+            kk = max(1, min(5, kk))
+
+            # If counts, fit on interval midpoints with rates = counts / dt
+            if values == "counts":
+                if len(t) != len(y) + 1:
+                    raise ValueError("For method='bspline' with values='counts', 'times' must be interval EDGES (len = len(counts)+1).")
+                dt = np.diff(t)
+                t_fit = 0.5 * (t[:-1] + t[1:])          # midpoints
+                y_fit = y / dt                           # rates
+            else:
+                t_fit, y_fit = t, y
+
+            # Natural end conditions to reduce end ringing; set extrapolate only if requested
+            base = make_interp_spline(t_fit, y_fit, k=kk, bc_type="natural",
+                                    extrapolate=(extrap == "extrapolate"))
+
+            t0, tn = t_fit[0], t_fit[-1]
+            y0, yn = float(y_fit[0]), float(y_fit[-1])
+
+            def _f(tt, base=base, t0=t0, tn=tn, y0=y0, yn=yn):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)  # clamp tiny negatives
+            return _f
+         # ---- NEW: counts -> piecewise-constant rates ----
+        if values == "counts":
+            # times are interval edges: y[k] is count in [t[k], t[k+1])
+            if n < 2:
+                raise ValueError("values='counts' requires at least 2 time edges.")
+            dt = np.diff(t)                    # length n-1
+            r = (y[:-1] / dt)                  # rates in each interval
+            t_edges = t                        # keep full edges for search
+            # build ZOH over intervals
+            def _f_counts(tt, t_edges=t_edges, r=r):
+                tt = np.asarray(tt, float)
+                k = np.searchsorted(t_edges, tt, side='right') - 1  # interval index
+                k = np.clip(k, 0, len(r)-1)
+                out = r[k]
+                if extrap == "zero":
+                    out = np.where((tt < t_edges[0]) | (tt >= t_edges[-1]), 0.0, out)
+                elif extrap == "hold":
+                    left = (tt < t_edges[0])
+                    right = (tt >= t_edges[-1])
+                    out = np.where(left, r[0], out)
+                    out = np.where(right, r[-1], out)
+                return np.maximum(out, 0.0)
+            return _f_counts
+
+        # ---- NEW: ZOH (previous) for provided rates ----
+        if method == "zoh":
+            t0, tn = t[0], t[-1]
+            y0, yn = y[0], y[-1]
+            def _f(tt, t=t, y=y, t0=t0, tn=tn, y0=y0, yn=yn):
+                tt = np.asarray(tt, float)
+                k = np.searchsorted(t, tt, side='right') - 1
+                k = np.clip(k, 0, len(y)-1)
+                out = y[k]
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)
+            return _f
+
+        if method == "spline":
+            s = 0.0 if smooth is None else float(smooth)
+            # ext=3 -> return 0 outside; override below if "hold"
+            spl = UnivariateSpline(t, y, k=3, s=s, ext=3)
+            if extrap == "hold":
+                def _f(tt, spl=spl, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                    tt = np.asarray(tt, float)
+                    out = spl(tt)
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                    return np.maximum(out, 0.0)
+                return _f
+            return lambda tt, spl=spl: np.maximum(spl(tt), 0.0)
+
+        # default fallback
+        base = interp1d(t, y, kind="linear", bounds_error=False, fill_value=0.0, assume_sorted=True)
+        return lambda tt, base=base: np.maximum(base(tt), 0.0)
+    
+    def _zero_padded_spline(self, x, y, bc_type="natural"):
+                """
+                Build a spline f(t) that returns 0 outside [x[0], x[-1]].
+                Handles short series by reducing k automatically.
+                Dedups x by averaging y at duplicate times.
+                """
+                x = np.asarray(x, float)
+                y = np.asarray(y, float)
+
+                # sort & dedup x, average y on duplicates
+                order = np.argsort(x)
+                x = x[order]
+                y = y[order]
+                xu, inv = np.unique(x, return_inverse=True)
+                if xu.size != x.size:
+                    y_agg = np.zeros_like(xu, dtype=float)
+                    counts = np.zeros_like(xu, dtype=float)
+                    np.add.at(y_agg, inv, y)
+                    np.add.at(counts, inv, 1.0)
+                    y = y_agg / counts
+                    x = xu
+
+                # choose spline degree
+                k = int(min(3, max(1, len(x) - 1)))
+                if len(x) == 1:
+                    # constant inside the single support point
+                    v = float(y[0])
+                    t0 = t1 = float(x[0])
+                    def f(tt):
+                        tt = np.asarray(tt, float)
+                        out = np.zeros_like(tt, float)
+                        mask = (tt == t0)  # only defined at that point
+                        out[mask] = v
+                        return out
+                    return f, t0, t1
+
+                spl = make_interp_spline(x, y, k=k, bc_type=bc_type)
+                t0, t1 = float(x[0]), float(x[-1])
+
+                def f(tt):
+                    tt = np.asarray(tt, float)
+                    out = np.zeros_like(tt, float)
+                    mask = (tt >= t0) & (tt <= t1)
+                    if np.any(mask):
+                        out[mask] = spl(tt[mask])
+                    return out
+
+                return f, t0, t1
     
     def run_model_elliptical(self):
         """
@@ -1276,11 +1616,6 @@ class ScenarioProperties:
                 if np.sum(spread_distribution) == 0 and np.sum(totals) != 0:
                     print(f"Warning: No fragments produced for term {term.name}. Check your collision parameters.")
 
-                # # # === 4. Sanity check: each (shell, mass) should sum to ≈ 1.0 or 0.0 ===
-                # per_bin_sums = spread_distribution.sum(axis=(2, 3))
-                # print("Sanity check (each value should be ~1.0 or 0.0):")
-                # print(per_bin_sums)
-
             # === 1. Setup ===
             x0_sum = np.sum(self.x0, axis=2)  # shape (n_shells, n_species)
             flat_vars = self.all_symbolic_vars
@@ -1306,6 +1641,58 @@ class ScenarioProperties:
             )
 
             
+            
+            # if not self.baseline:
+            #     for sma in range(self.n_sma_bins):
+            #         for species in range(n_species):
+            #             for ecc in range(self.n_ecc_bins):
+            #                 rate_array = self.full_lambda_flattened[sma, species, ecc]
+
+            #                 try:
+            #                     # Default: no launch
+            #                     launch_rate_functions[sma, species, ecc] = None
+
+            #                     if rate_array is None:
+            #                         continue
+
+            #                     # Case 1: Clean array directly
+            #                     if isinstance(rate_array, np.ndarray):
+            #                         flattened_array = rate_array.astype(float)
+
+            #                     # Case 2: Mixed list of array + zeros
+            #                     elif isinstance(rate_array, list):
+            #                         array_found = next((np.asarray(r).astype(float) for r in rate_array if isinstance(r, np.ndarray)), None)
+            #                         if array_found is None:
+            #                             continue
+            #                         flattened_array = array_found
+
+            #                     # Case 3: Scalar or unexpected input — skip
+            #                     else:
+            #                         continue
+
+            #                     # Clean
+            #                     flattened_array[np.isnan(flattened_array)] = 0
+            #                     flattened_array[np.isinf(flattened_array)] = 0
+
+            #                     # Validate
+            #                     if flattened_array.shape[0] != len(self.scen_times):
+            #                         continue
+            #                     if np.all(flattened_array == 0):
+            #                         continue
+
+            #                     # Interpolate
+            #                     interp_func = interp1d(
+            #                         self.scen_times,
+            #                         flattened_array,
+            #                         kind='cubic',
+            #                         bounds_error=False,
+            #                         fill_value=0
+            #                     )
+            #                     launch_rate_functions[sma, species, ecc] = interp_func
+
+            #                 except Exception as e:
+            #                     raise ValueError(f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n{rate_array}\n\n{e}")
+
             if not self.baseline:
                 for sma in range(self.n_sma_bins):
                     for species in range(n_species):
@@ -1313,50 +1700,48 @@ class ScenarioProperties:
                             rate_array = self.full_lambda_flattened[sma, species, ecc]
 
                             try:
-                                # Default: no launch
-                                launch_rate_functions[sma, species, ecc] = None
+                                launch_rate_functions[sma, species, ecc] = None  # default
 
                                 if rate_array is None:
                                     continue
 
-                                # Case 1: Clean array directly
+                                # Case 1: ndarray directly
                                 if isinstance(rate_array, np.ndarray):
                                     flattened_array = rate_array.astype(float)
 
-                                # Case 2: Mixed list of array + zeros
+                                # Case 2: mixed list of array + zeros
                                 elif isinstance(rate_array, list):
-                                    array_found = next((np.asarray(r).astype(float) for r in rate_array if isinstance(r, np.ndarray)), None)
+                                    array_found = next(
+                                        (np.asarray(r).astype(float) for r in rate_array if isinstance(r, np.ndarray)),
+                                        None
+                                    )
                                     if array_found is None:
                                         continue
                                     flattened_array = array_found
 
-                                # Case 3: Scalar or unexpected input — skip
+                                # Case 3: scalar/unexpected → skip
                                 else:
                                     continue
 
                                 # Clean
-                                flattened_array[np.isnan(flattened_array)] = 0
-                                flattened_array[np.isinf(flattened_array)] = 0
+                                flattened_array[np.isnan(flattened_array)] = 0.0
+                                flattened_array[np.isinf(flattened_array)] = 0.0
 
                                 # Validate
                                 if flattened_array.shape[0] != len(self.scen_times):
                                     continue
-                                if np.all(flattened_array == 0):
+                                if np.all(flattened_array == 0.0):
                                     continue
 
-                                # Interpolate
-                                interp_func = interp1d(
-                                    self.scen_times,
-                                    flattened_array,
-                                    kind='cubic',
-                                    bounds_error=False,
-                                    fill_value=0
-                                )
-                                launch_rate_functions[sma, species, ecc] = interp_func
+                                # === Interpolate with make_interp_spline ===
+                                spline_func, _, _ = self._zero_padded_spline(self.scen_times, flattened_array, bc_type="natural")
+                                launch_rate_functions[sma, species, ecc] = spline_func
 
                             except Exception as e:
-                                raise ValueError(f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n{rate_array}\n\n{e}")
-
+                                raise ValueError(
+                                    f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n"
+                                    f"{rate_array}\n\n{e}"
+                                )
             # Finally lambdify the equations for integration, this will just be pmd
             # equations_flattened = [self.equations[i, j] for j in r÷
             self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
@@ -1403,20 +1788,25 @@ class ScenarioProperties:
             adot_all_species = []
             edot_all_species = []
 
-            # mean bstar
-            # bstar_vals = [9.79673e-08, 3.00907e-07,  2.86768e-08, 
-            #               1.10182e-06, 1.10182e-06, 1.10182e-06, 1.10182e-06,  3.00907e-07, 9.79673e-08, 2.86768e-08,
-            #               2.36304e-08]
+            # # mean bstar
+            # # bstar_vals = [9.79673e-08, 3.00907e-07,  2.86768e-08, 
+            # #               1.10182e-06, 1.10182e-06, 1.10182e-06, 1.10182e-06,  3.00907e-07, 9.79673e-08, 2.86768e-08,
+            # #               2.36304e-08]
             
-            # S:     1.056e-07
-            # Su:    2.33658e-08
-            # Sns:   6.4328e-08
-            # N:     1.0208e-06
-            # B:     2.02111e-08
-            # median bstar, S, Sns (1.4328e-10), Su
-            bstar_vals = [1.056e-07, 7.7000e-09,  2.33658e-08,
-                          1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 7.7000e-09, 1.056e-07, 2.33658e-08,
-                           2.36304e-08]
+            # # S:     1.056e-07
+            # # Su:    2.33658e-08
+            # # Sns:   6.4328e-08
+            # # N:     1.0208e-06
+            # # B:     2.02111e-08
+            # # median bstar, S, Sns (1.4328e-10), Su
+            # bstar_vals = [1.056e-07, 1.0208e-06,  2.33658e-08,
+            #               1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06,
+            #               2.36304e-08]
+
+            bstar_vals = []
+            for species_group in self.species.values():
+                for species in species_group:
+                    bstar_vals.append(species.bstar)
             
             for bstar in bstar_vals:
                 # now we need to propagate using the dynamical equations
@@ -1460,6 +1850,7 @@ class ScenarioProperties:
                       species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, active_species_bool, all_species_list),
                 method="RK45"
             )
+
             # output = 1
             self.progress_bar.close()
             self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
@@ -1739,6 +2130,7 @@ class ScenarioProperties:
                     full_lambda_flattened.extend([None]*self.n_shells)
 
         return full_lambda_flattened
+    
 
     def lambdify_launch_elliptical(self, full_lambda=None):
         full_lambda_flattened = []

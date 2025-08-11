@@ -137,7 +137,7 @@ def process_species_pair(args):
     if scen_properties.elliptical:
         return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragment_spread_totals=fragment_spread_totals, model_type='elliptical')
     if scen_properties.fragment_spreading:
-        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, alt_nums=alt_nums, model_type='fragment_spreading')
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragsMadeDV=alt_nums, model_type='fragment_spreading')
     else:
         return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, model_type='baseline')
 

@@ -12,6 +12,8 @@ from utils.collisions.collisions_elliptical import create_elliptical_collision_p
 # from utils.collisions.collisions import create_collision_pairs
 from utils.collisions.collisions_merged import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
+from utils.plotting.SEPDataExport import *
+from utils.plotting.EllipticalOuputsToAltitudeBins import *
 from datetime import datetime
 import json
 import os
@@ -185,11 +187,12 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.build_model_elliptical()
-            self.scenario_properties.run_model_elliptical()
-            
-            # self.scenario_properties.build_model()
-            # self.scenario_properties.run_model()
+            if self.scenario_properties.elliptical:
+                self.scenario_properties.build_model_elliptical()
+                self.scenario_properties.run_model_elliptical()
+            else:
+                self.scenario_properties.build_model()
+                self.scenario_properties.run_model()
 
             self.scenario_properties.equations = None
             self.scenario_properties.lambdify_equations = None
@@ -226,6 +229,7 @@ class Model:
             return results_to_json(self)
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
+    
 
 if __name__ == "__main__":
 
@@ -287,7 +291,11 @@ if __name__ == "__main__":
 
     try:
         plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'figures/{simulation_data["simulation_name"]}'
+                      )
+        # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
     except Exception as e:
         print(e)
         print("No plots specified in the simulation configuration file.")

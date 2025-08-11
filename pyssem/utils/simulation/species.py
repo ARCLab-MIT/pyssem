@@ -76,6 +76,7 @@ class SpeciesProperties:
         self.sma_ecc_pop = np.array([])  
         self.ecc_distribution = [] # This will be the same length as the ecc_bins, it will sum to 1 and will show the distribution of eccentricities in the bins.
         self.semi_major_axis_bins_HMid = None  # Midpoint of the semi-major axis bins, used for elliptical orbits
+        self.bstar = 0
         
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
@@ -290,6 +291,7 @@ class Species:
             debris_species_template.radius = properties.radius
             debris_species_template.trackable = properties.trackable  # large debris is trackable
             debris_species_template.sym_name = f"N_{properties.mass}kg"
+            debris_species_template.bstar = properties.bstar
 
             self.species['debris'].append(debris_species_template)
 
