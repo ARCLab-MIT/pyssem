@@ -1,5 +1,5 @@
 {
-  "simulation_name": "Elliptical-just-launch-only",
+  "simulation_name": "Elliptical-circular-test",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -20,8 +20,8 @@
     "fragment_spreading": false,
     "parallel_processing": false,
     "baseline" : false,
-    "launch_scenario": "test",
-    "elliptical": true,
+    "launch_scenario": "SEP2",
+    "elliptical": false,
     "eccentricity_bins" : [0, 0.011473684210526316, 0.021947368421052632, 0.03242105263157895, 0.04289473684210526, 0.05336842105263158, 0.0638421052631579, 0.07431578947368421, 0.08478947368421053, 0.09526315789473684, 0.10573684210526316, 0.11621052631578947, 0.1266842105263158, 0.1371578947368421, 0.14763157894736842, 0.15810526315789475, 0.16857894736842105, 0.17905263157894735, 0.18952631578947368, 1]                                       
       },
   "plots": [

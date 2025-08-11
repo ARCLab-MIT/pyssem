@@ -1186,64 +1186,29 @@ class ScenarioProperties:
             time_step_duration = self.scen_times[1] - self.scen_times[0]
 
             if not self.baseline:
-                # for rate_array in self.full_lambda_flattened:
-                #     try: 
-                #         if rate_array is not None:
-                #             clean_rate_array = np.array(rate_array)
-                #             clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
-                #             clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
+                for rate_array in self.full_lambda_flattened:
+                    try: 
+                        if rate_array is not None:
+                            clean_rate_array = np.array(rate_array)
+                            clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
+                            clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
 
-                #             ## USE INTERPOLATION
-                #             interp_func = interp1d(self.scen_times, clean_rate_array, 
-                #                                 kind='cubic', # 'linear', 'cubic'
-                #                                 bounds_error=False, 
-                #                                 fill_value=0)
-                #             launch_rate_functions.append(interp_func)
+                            ## USE INTERPOLATION
+                            interp_func = interp1d(self.scen_times, clean_rate_array, 
+                                                kind='cubic', # 'linear', 'cubic'
+                                                bounds_error=False, 
+                                                fill_value=0)
+                            launch_rate_functions.append(interp_func)
 
-                #             # USE STEP FUNCTION
-                #             # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-                #             # launch_rate_functions.append(step_func)
+                            # USE STEP FUNCTION
+                            # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                            # launch_rate_functions.append(step_func)
                             
-                #         else:
-                #             # If there are no launches, create a simple lambda that always returns 0
-                #             launch_rate_functions.append(lambda t: 0.0)
-
-                def _to_edges(times, n_counts):
-                    """Return time edges given centers or edges."""
-                    t = np.asarray(times, float)
-                    if len(t) == n_counts + 1:   # already edges
-                        return t
-                    if len(t) == n_counts:       # centers -> edges
-                        dt = np.diff(t)
-                        edges = np.empty(len(t) + 1)
-                        edges[1:-1] = (t[:-1] + t[1:]) / 2
-                        edges[0]     = t[0] - dt[0] / 2
-                        edges[-1]    = t[-1] + dt[-1] / 2
-                        return edges
-                    raise ValueError("scen_times must be centers (n) or edges (n+1) relative to counts.")
-
-                # --- build one callable per cell (sma, species, ecc) ---
-                flat_cells = self.full_lambda_flattened.ravel()  # object array -> iterate per bin
-
-                # infer edges once (use the length of any non-empty counts array)
-                first_arr = next((c for c in flat_cells if (c is not None and not np.isscalar(c))), None)
-                n_counts  = len(first_arr) if first_arr is not None else 0
-                t_edges   = _to_edges(self.scen_times, n_counts)
-                launch_rate_functions = []
-                for counts in flat_cells:
-                    # empty bins
-                    if (counts is None) or (np.isscalar(counts) and float(counts) == 0.0):
-                        launch_rate_functions.append(lambda tt, _z=0.0: 0.0)
-                        continue
-
-                    counts = np.asarray(counts, float).ravel()
-                    # piecewise-constant rate whose integral over each interval equals counts[k]
-                    f = self.make_rate_interpolator(
-                            t_edges, counts,
-                            method="bspline",        # ZOH branch
-                            extrap="zero",       # or "hold" if you prefer
-                            values="counts")     # counts -> rate internally
-                    launch_rate_functions.append(f)
+                        else:
+                            # If there are no launches, create a simple lambda that always returns 0
+                            launch_rate_functions.append(lambda t: 0.0)
+                    except:
+                        launch_rate_functions.append(lambda t: 0.0)
 
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,

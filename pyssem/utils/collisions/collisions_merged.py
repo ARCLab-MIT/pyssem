@@ -116,6 +116,14 @@ def process_species_pair(args):
         #########
         for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
             dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
+            try:
+                results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
+                frags_made[dv_index, :] = results[0]
+            except IndexError as ie:
+                alt_nums = None
+                continue
+            except ValueError as e:
+                    continue
 
     
     ## Create the symbolic matrix - this should be the same for each. 
