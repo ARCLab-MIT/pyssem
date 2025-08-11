@@ -1072,7 +1072,7 @@ class ScenarioProperties:
 
             dN_all_species[:, species, :] = dN
             
-        self.t_0 = t # update global variable 
+        # self.t_0 = t # update global variable 
         dN_all_species = dN_all_species + output
 
         # #############################
@@ -1370,35 +1370,70 @@ class ScenarioProperties:
             time_step_duration = self.scen_times[1] - self.scen_times[0]
 
             if not self.baseline:
-                for rate_array in self.full_lambda_flattened:
-                    try: 
-                        if rate_array is not None:
-                            clean_rate_array = np.array(rate_array)
-                            clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
-                            clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
+                # for rate_array in self.full_lambda_flattened:
+                #     try: 
+                #         if rate_array is not None:
+                #             clean_rate_array = np.array(rate_array)
+                #             clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
+                #             clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
 
-                            ## USE INTERPOLATION
-                            interp_func = interp1d(self.scen_times, clean_rate_array, 
-                                                kind='cubic', # 'linear', 'cubic'
-                                                bounds_error=False, 
-                                                fill_value=0)
-                            launch_rate_functions.append(interp_func)
+                #             ## USE INTERPOLATION
+                #             interp_func = interp1d(self.scen_times, clean_rate_array, 
+                #                                 kind='cubic', # 'linear', 'cubic'
+                #                                 bounds_error=False, 
+                #                                 fill_value=0)
+                #             launch_rate_functions.append(interp_func)
 
-                            # USE STEP FUNCTION
-                            # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-                            # launch_rate_functions.append(step_func)
+                #             # USE STEP FUNCTION
+                #             # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                #             # launch_rate_functions.append(step_func)
                             
-                        else:
-                            # If there are no launches, create a simple lambda that always returns 0
-                            launch_rate_functions.append(lambda t: 0.0)
-                    except:
-                        launch_rate_functions.append(lambda t: 0.0)
+                #         else:
+                #             # If there are no launches, create a simple lambda that always returns 0
+                #             launch_rate_functions.append(lambda t: 0.0)
+
+                def _to_edges(times, n_counts):
+                    """Return time edges given centers or edges."""
+                    t = np.asarray(times, float)
+                    if len(t) == n_counts + 1:   # already edges
+                        return t
+                    if len(t) == n_counts:       # centers -> edges
+                        dt = np.diff(t)
+                        edges = np.empty(len(t) + 1)
+                        edges[1:-1] = (t[:-1] + t[1:]) / 2
+                        edges[0]     = t[0] - dt[0] / 2
+                        edges[-1]    = t[-1] + dt[-1] / 2
+                        return edges
+                    raise ValueError("scen_times must be centers (n) or edges (n+1) relative to counts.")
+
+                # --- build one callable per cell (sma, species, ecc) ---
+                flat_cells = self.full_lambda_flattened.ravel()  # object array -> iterate per bin
+
+                # infer edges once (use the length of any non-empty counts array)
+                first_arr = next((c for c in flat_cells if (c is not None and not np.isscalar(c))), None)
+                n_counts  = len(first_arr) if first_arr is not None else 0
+                t_edges   = _to_edges(self.scen_times, n_counts)
+                launch_rate_functions = []
+                for counts in flat_cells:
+                    # empty bins
+                    if (counts is None) or (np.isscalar(counts) and float(counts) == 0.0):
+                        launch_rate_functions.append(lambda tt, _z=0.0: 0.0)
+                        continue
+
+                    counts = np.asarray(counts, float).ravel()
+                    # piecewise-constant rate whose integral over each interval equals counts[k]
+                    f = self.make_rate_interpolator(
+                            t_edges, counts,
+                            method="bspline",        # ZOH branch
+                            extrap="zero",       # or "hold" if you prefer
+                            values="counts")     # counts -> rate internally
+                    launch_rate_functions.append(f)
+
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                                         args=(launch_rate_functions, self.equations),
                                         t_eval=self.scen_times, method=self.integrator)
-
-            # output = 1
+            
             self.progress_bar.close()
             self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
 
@@ -1441,6 +1476,264 @@ class ScenarioProperties:
 
 
         return 
+    
+    def make_rate_interpolator(self, times, rates, method="pchip", extrap="hold", smooth=None, values='counts'):
+        """
+        times: 1D array of scenario times (must be increasing)
+        rates: 1D array of launch rates (may contain NaN/inf)
+        method: "pchip" (shape-preserving), "akima" (less ringing), "linear", "spline" (smoothed cubic)
+        extrap: "hold" (constant at ends), "zero" (0 outside), or "extrapolate"
+        smooth: smoothing factor for "spline" (larger -> smoother)
+        """
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe times (average duplicates)
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+
+        # choose interpolator
+        if method == "pchip":
+            base = PchipInterpolator(t, y, extrapolate=(extrap == "extrapolate"))
+            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)   # clamp tiny negatives from numerics
+            return _f
+
+        if method == "akima":
+            base = Akima1DInterpolator(t, y)
+            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)
+            return _f
+
+        if method == "linear":
+            base = interp1d(t, y, kind="linear", bounds_error=False,
+                            fill_value=(y[0], y[-1]) if extrap == "hold" else 0.0, assume_sorted=True)
+            return lambda tt, base=base: np.maximum(base(tt), 0.0)
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            
+        """
+        ... (your existing docstring)
+        Extra:
+        - method="bspline" uses scipy.make_interp_spline
+        - k: spline order (1..5), default 3
+        """
+        import numpy as np
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+
+        # === NEW: B-spline via make_interp_spline ===
+        if method == "bspline":
+            kk = int(k) if k is not None else 3
+            kk = max(1, min(5, kk))
+
+            # If counts, fit on interval midpoints with rates = counts / dt
+            if values == "counts":
+                if len(t) != len(y) + 1:
+                    raise ValueError("For method='bspline' with values='counts', 'times' must be interval EDGES (len = len(counts)+1).")
+                dt = np.diff(t)
+                t_fit = 0.5 * (t[:-1] + t[1:])          # midpoints
+                y_fit = y / dt                           # rates
+            else:
+                t_fit, y_fit = t, y
+
+            # Natural end conditions to reduce end ringing; set extrapolate only if requested
+            base = make_interp_spline(t_fit, y_fit, k=kk, bc_type="natural",
+                                    extrapolate=(extrap == "extrapolate"))
+
+            t0, tn = t_fit[0], t_fit[-1]
+            y0, yn = float(y_fit[0]), float(y_fit[-1])
+
+            def _f(tt, base=base, t0=t0, tn=tn, y0=y0, yn=yn):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)  # clamp tiny negatives
+            return _f
+         # ---- NEW: counts -> piecewise-constant rates ----
+        if values == "counts":
+            # times are interval edges: y[k] is count in [t[k], t[k+1])
+            if n < 2:
+                raise ValueError("values='counts' requires at least 2 time edges.")
+            dt = np.diff(t)                    # length n-1
+            r = (y[:-1] / dt)                  # rates in each interval
+            t_edges = t                        # keep full edges for search
+            # build ZOH over intervals
+            def _f_counts(tt, t_edges=t_edges, r=r):
+                tt = np.asarray(tt, float)
+                k = np.searchsorted(t_edges, tt, side='right') - 1  # interval index
+                k = np.clip(k, 0, len(r)-1)
+                out = r[k]
+                if extrap == "zero":
+                    out = np.where((tt < t_edges[0]) | (tt >= t_edges[-1]), 0.0, out)
+                elif extrap == "hold":
+                    left = (tt < t_edges[0])
+                    right = (tt >= t_edges[-1])
+                    out = np.where(left, r[0], out)
+                    out = np.where(right, r[-1], out)
+                return np.maximum(out, 0.0)
+            return _f_counts
+
+        # ---- NEW: ZOH (previous) for provided rates ----
+        if method == "zoh":
+            t0, tn = t[0], t[-1]
+            y0, yn = y[0], y[-1]
+            def _f(tt, t=t, y=y, t0=t0, tn=tn, y0=y0, yn=yn):
+                tt = np.asarray(tt, float)
+                k = np.searchsorted(t, tt, side='right') - 1
+                k = np.clip(k, 0, len(y)-1)
+                out = y[k]
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)
+            return _f
+
+        if method == "spline":
+            s = 0.0 if smooth is None else float(smooth)
+            # ext=3 -> return 0 outside; override below if "hold"
+            spl = UnivariateSpline(t, y, k=3, s=s, ext=3)
+            if extrap == "hold":
+                def _f(tt, spl=spl, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                    tt = np.asarray(tt, float)
+                    out = spl(tt)
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                    return np.maximum(out, 0.0)
+                return _f
+            return lambda tt, spl=spl: np.maximum(spl(tt), 0.0)
+
+        # default fallback
+        base = interp1d(t, y, kind="linear", bounds_error=False, fill_value=0.0, assume_sorted=True)
+        return lambda tt, base=base: np.maximum(base(tt), 0.0)
+    
+    def _zero_padded_spline(self, x, y, bc_type="natural"):
+                """
+                Build a spline f(t) that returns 0 outside [x[0], x[-1]].
+                Handles short series by reducing k automatically.
+                Dedups x by averaging y at duplicate times.
+                """
+                x = np.asarray(x, float)
+                y = np.asarray(y, float)
+
+                # sort & dedup x, average y on duplicates
+                order = np.argsort(x)
+                x = x[order]
+                y = y[order]
+                xu, inv = np.unique(x, return_inverse=True)
+                if xu.size != x.size:
+                    y_agg = np.zeros_like(xu, dtype=float)
+                    counts = np.zeros_like(xu, dtype=float)
+                    np.add.at(y_agg, inv, y)
+                    np.add.at(counts, inv, 1.0)
+                    y = y_agg / counts
+                    x = xu
+
+                # choose spline degree
+                k = int(min(3, max(1, len(x) - 1)))
+                if len(x) == 1:
+                    # constant inside the single support point
+                    v = float(y[0])
+                    t0 = t1 = float(x[0])
+                    def f(tt):
+                        tt = np.asarray(tt, float)
+                        out = np.zeros_like(tt, float)
+                        mask = (tt == t0)  # only defined at that point
+                        out[mask] = v
+                        return out
+                    return f, t0, t1
+
+                spl = make_interp_spline(x, y, k=k, bc_type=bc_type)
+                t0, t1 = float(x[0]), float(x[-1])
+
+                def f(tt):
+                    tt = np.asarray(tt, float)
+                    out = np.zeros_like(tt, float)
+                    mask = (tt >= t0) & (tt <= t1)
+                    if np.any(mask):
+                        out[mask] = spl(tt[mask])
+                    return out
+
+                return f, t0, t1
     
     def run_model_elliptical(self):
         """
@@ -1530,7 +1823,6 @@ class ScenarioProperties:
                 None, 
                 dtype=object
             )
-
             if not self.baseline:
                 for sma in range(self.n_sma_bins):
                     for species in range(n_species):

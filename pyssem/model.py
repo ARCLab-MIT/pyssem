@@ -296,7 +296,11 @@ if __name__ == "__main__":
 
     try:
         plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'figures/{simulation_data["simulation_name"]}'
+                      )
+        # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
     except Exception as e:
         print(e)
         print("No plots specified in the simulation configuration file.")
