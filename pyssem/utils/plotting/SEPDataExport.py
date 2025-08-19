@@ -45,23 +45,24 @@ class SEPDataExport:
         self.large_fragments = ['N_10kg', 'N_148kg', 'N_260kg', 'N_472kg', 'N_750kg', 'N_1250kg'] #getattr(sp, 'large_fragments', [])
 
         if elliptical:
-            self.pop_time_df, self.pop_time_alt_df, self.pop_time_df_grouped, self.pop_time_alt_df_grouped = self.elliptical_to_effective_altitude_bins()
-            self.generate_heatmaps(self.pop_time_alt_df_grouped)
-        else: 
-            self.pop_time()
-            self.pop_time_alt()
-            self.generate_heatmaps()
+            # self.pop_time_df, self.pop_time_alt_df, self.pop_time_df_grouped, self.pop_time_alt_df_grouped = self.elliptical_to_effective_altitude_bins()
+            # self.generate_heatmaps(self.pop_time_alt_df_grouped)
+            self.output.y = sp.output.y_alt  # use the altitude-resolved data directly
+        # else: 
+        self.pop_time()
+        self.pop_time_alt()
+        self.generate_heatmaps()
 
-            snapshot_years = [2025, 2050, 2075, 2100, 2125]
+        snapshot_years = [2025, 2050, 2075, 2100, 2125]
 
-            self.export_snapshots(snapshot_years=snapshot_years)
+        self.export_snapshots(snapshot_years=snapshot_years)
 
-            if scenario_properties.indicator_results is not None:
-                self.plot_cumulative_collisions_by_prefix()
-                self.plot_cumulative_indicator()
-                self.plot_cumulative_pairwise_by_species()
-                self.export_pairwise_collisions_time_alt()
-        
+        if scenario_properties.indicator_results is not None:
+            self.plot_cumulative_collisions_by_prefix()
+            self.plot_cumulative_indicator()
+            self.plot_cumulative_pairwise_by_species()
+            self.export_pairwise_collisions_time_alt()
+    
         if MOCAT_MC_Path:
             if elliptical:
                 self.grouped_population_mc_comparison(self.pop_time_df_grouped)
@@ -479,6 +480,123 @@ class SEPDataExport:
             plt.close(fig)
             print(f"✅ Saved heatmap for {sp1}–{sp2} to {fname}")
     
+    # def elliptical_to_effective_altitude_bins(self):
+    #     """
+    #     Convert the raw SMA–species–eccentricity population array into
+    #     effective populations per altitude shell over time, and store
+    #     the result back into scenario_properties.output for reuse.
+
+    #     On completion, sets:
+    #     scenario_properties.output.y_alt       (shape [n_alt, n_species, n_time])
+    #     scenario_properties.output.altitudes   (1-D array of Hmid)
+
+    #     Returns:
+    #         df_pop_time:       total population per species over time
+    #         df_pop_time_alt:   altitude-resolved population per species over time
+    #         df_group_time:     grouped species population per time
+    #         df_group_time_alt: grouped species & altitude population per time
+    #     """
+
+    #     import numpy as np
+    #     import pandas as pd
+    #     import os
+
+    #     sp = self.scenario_properties
+    #     # --- Dimensions ---
+    #     n_sma_bins    = sp.n_shells
+    #     n_alt_shells  = sp.n_shells
+    #     n_species     = sp.species_length
+    #     n_ecc_bins    = len(sp.eccentricity_bins) - 1
+    #     n_time        = sp.output.y.shape[1]
+    #     times         = sp.output.t
+    #     species_names = sp.species_names
+    #     altitudes     = sp.HMid
+
+    #     # --- Unpack population data ---
+    #     y = sp.output.y
+    #     x_full = y.reshape(n_sma_bins, n_species, n_ecc_bins, n_time)
+
+    #     # --- Containers for rows ---
+    #     pop_time_rows     = []
+    #     pop_time_alt_rows = []
+
+    #     # === Collect rows ===
+    #     for t_idx, offset in enumerate(times):
+    #         year = int(self.start_year + offset)
+    #         # Build altitude_resolved for all species
+    #         for s in range(n_species):
+    #             pop_snapshot = x_full[:, s, :, t_idx]
+    #             temp_full    = np.zeros((n_sma_bins, n_species, n_ecc_bins))
+    #             temp_full[:, s, :] = pop_snapshot
+    #             alt_proj     = sp.sma_ecc_mat_to_altitude_mat(temp_full)
+    #             # altitude-resolved rows
+    #             for alt_idx, alt in enumerate(altitudes):
+    #                 pop_time_alt_rows.append({
+    #                     "Species":    species_names[s],
+    #                     "Year":       year,
+    #                     "Altitude":   alt,
+    #                     "Population": alt_proj[alt_idx, s]
+    #                 })
+    #         # total per species/year
+    #         for s in range(n_species):
+    #             total_pop = sum(r['Population'] for r in pop_time_alt_rows
+    #                             if r['Species'] == species_names[s] and r['Year'] == year)
+    #             pop_time_rows.append({
+    #                 "Species":    species_names[s],
+    #                 "Year":       year,
+    #                 "Population": total_pop
+    #             })
+
+    #     # === Create DataFrames ===
+    #     df_pop_time = pd.DataFrame(pop_time_rows)
+    #     df_pop_time = (
+    #         df_pop_time
+    #         .groupby(["Species", "Year"], as_index=False).sum()
+    #         .sort_values(["Species", "Year"]).reset_index(drop=True)
+    #     )
+    #     df_pop_time.to_csv(os.path.join(self.base_path, "pop_time.csv"), index=False)
+
+    #     df_pop_time_alt = pd.DataFrame(pop_time_alt_rows)
+    #     df_pop_time_alt = (
+    #         df_pop_time_alt
+    #         .groupby(["Species", "Year", "Altitude"], as_index=False).sum()
+    #         .sort_values(["Species", "Year", "Altitude"]).reset_index(drop=True)
+    #     )
+    #     df_pop_time_alt.to_csv(os.path.join(self.base_path, "pop_time_alt.csv"), index=False)
+
+    #     # === Define groupings ===
+    #     large_fragments = ['N_10kg','N_148kg','N_260kg','N_472kg','N_750kg','N_1250kg']
+    #     group_indices = {
+    #         'S':   [i for i, spn in enumerate(species_names) if spn == 'S'],
+    #         'Su':  [i for i, spn in enumerate(species_names) if spn == 'Su'],
+    #         'Sns': [i for i, spn in enumerate(species_names) if spn == 'Sns'],
+    #         'N':   [i for i, spn in enumerate(species_names) if spn.startswith('N') and spn not in large_fragments],
+    #         'D':   [i for i, spn in enumerate(species_names) if spn in large_fragments],
+    #         'B':   [i for i, spn in enumerate(species_names) if spn == 'B']
+    #     }
+
+    #     # === Grouped totals per year ===
+    #     group_rows = []
+    #     for group, inds in group_indices.items():
+    #         names = [species_names[i] for i in inds]
+    #         for year, sub in df_pop_time.groupby('Year'):
+    #             total = sub[sub['Species'].isin(names)]['Population'].sum()
+    #             group_rows.append({'Species': group, 'Year': year, 'Population': total})
+    #     df_group_time = pd.DataFrame(group_rows).sort_values(['Species','Year']).reset_index(drop=True)
+    #     df_group_time.to_csv(os.path.join(self.base_path, "pop_time_grouped.csv"), index=False)
+
+    #     # === Grouped altitude-resolved per year ===
+    #     group_alt_rows = []
+    #     for group, inds in group_indices.items():
+    #         names = [species_names[i] for i in inds]
+    #         sub = df_pop_time_alt[df_pop_time_alt['Species'].isin(names)]
+    #         for (year, alt), grp in sub.groupby(['Year','Altitude']):
+    #             total = grp['Population'].sum()
+    #             group_alt_rows.append({'Species': group, 'Year': year, 'Altitude': alt, 'Population': total})
+    #     df_group_time_alt = pd.DataFrame(group_alt_rows).sort_values(['Species','Year','Altitude']).reset_index(drop=True)
+    #     df_group_time_alt.to_csv(os.path.join(self.base_path, "pop_time_alt_grouped.csv"), index=False)
+
+    #     return df_pop_time, df_pop_time_alt, df_group_time, df_group_time_alt
     def elliptical_to_effective_altitude_bins(self):
         """
         Convert the raw SMA–species–eccentricity population array into
@@ -487,7 +605,7 @@ class SEPDataExport:
 
         On completion, sets:
         scenario_properties.output.y_alt       (shape [n_alt, n_species, n_time])
-        scenario_properties.output.altitudes   (1-D array of Hmid)
+        scenario_properties.output.altitudes   (1-D array of HMid)
 
         Returns:
             df_pop_time:       total population per species over time
@@ -495,104 +613,173 @@ class SEPDataExport:
             df_group_time:     grouped species population per time
             df_group_time_alt: grouped species & altitude population per time
         """
-
         import numpy as np
         import pandas as pd
         import os
 
         sp = self.scenario_properties
-        # --- Dimensions ---
+
+        # --- Dimensions / metadata ---
         n_sma_bins    = sp.n_shells
         n_alt_shells  = sp.n_shells
         n_species     = sp.species_length
         n_ecc_bins    = len(sp.eccentricity_bins) - 1
-        n_time        = sp.output.y.shape[1]
-        times         = sp.output.t
-        species_names = sp.species_names
-        altitudes     = sp.HMid
+        times         = np.asarray(sp.output.t)             # time offsets (years)
+        n_time        = int(len(times))
+        years_abs     = np.array([int(self.start_year + off) for off in times], dtype=int)
+        species_names = list(sp.species_names)
+        altitudes     = np.asarray(sp.HMid, dtype=float)
 
-        # --- Unpack population data ---
-        y = sp.output.y
-        x_full = y.reshape(n_sma_bins, n_species, n_ecc_bins, n_time)
+        # --- Midpoints for cutoff (preferred) with safe fallbacks ---
+        # Try direct on sp; if the user has nested, also try sp.scenario_properties
+        sp_nested = getattr(sp, "scenario_properties", sp)
 
-        # --- Containers for rows ---
-        pop_time_rows     = []
-        pop_time_alt_rows = []
+        ecc_centers = getattr(sp, "binE_ecc_mid_point", None)
+        if ecc_centers is None:
+            ecc_centers = getattr(sp_nested, "binE_ecc_mid_point", None)
+        if ecc_centers is None:
+            # fallback: midpoints from bin edges
+            edges = np.asarray(sp.eccentricity_bins, float)
+            ecc_centers = 0.5 * (edges[:-1] + edges[1:])
+        ecc_centers = np.asarray(ecc_centers, float)
+        if ecc_centers.shape[0] != n_ecc_bins:
+            raise ValueError(f"ecc midpoint length {len(ecc_centers)} != n_ecc_bins {n_ecc_bins}")
 
-        # === Collect rows ===
-        for t_idx, offset in enumerate(times):
-            year = int(self.start_year + offset)
-            # Build altitude_resolved for all species
-            for s in range(n_species):
-                pop_snapshot = x_full[:, s, :, t_idx]
-                temp_full    = np.zeros((n_sma_bins, n_species, n_ecc_bins))
-                temp_full[:, s, :] = pop_snapshot
-                alt_proj     = sp.sma_ecc_mat_to_altitude_mat(temp_full)
-                # altitude-resolved rows
-                for alt_idx, alt in enumerate(altitudes):
-                    pop_time_alt_rows.append({
-                        "Species":    species_names[s],
-                        "Year":       year,
-                        "Altitude":   alt,
-                        "Population": alt_proj[alt_idx, s]
-                    })
-            # total per species/year
-            for s in range(n_species):
-                total_pop = sum(r['Population'] for r in pop_time_alt_rows
-                                if r['Species'] == species_names[s] and r['Year'] == year)
-                pop_time_rows.append({
-                    "Species":    species_names[s],
-                    "Year":       year,
-                    "Population": total_pop
-                })
+        sma_centers_km = getattr(sp, "sma_HMid_km", None)
+        if sma_centers_km is None:
+            sma_centers_km = getattr(sp_nested, "sma_HMid_km", None)
+        if sma_centers_km is None:
+            # fallback: infer from apogee/perigee mids if available, else raise
+            raise ValueError("sma_HMid_km not found on scenario_properties; please provide SMA midpoints in km.")
+        sma_centers_km = np.asarray(sma_centers_km, float)
+        if sma_centers_km.shape[0] != n_sma_bins:
+            raise ValueError(f"sma midpoint length {len(sma_centers_km)} != n_sma_bins {n_sma_bins}")
 
-        # === Create DataFrames ===
-        df_pop_time = pd.DataFrame(pop_time_rows)
-        df_pop_time = (
-            df_pop_time
-            .groupby(["Species", "Year"], as_index=False).sum()
-            .sort_values(["Species", "Year"]).reset_index(drop=True)
-        )
-        df_pop_time.to_csv(os.path.join(self.base_path, "pop_time.csv"), index=False)
+        # Earth radius and cutoff
+        R_earth_km = float(getattr(sp, "R_earth_km", 6378.136))  # fallback to WGS-84 equatorial
+        H_DECAY_KM = 150.0
+        Rcut = R_earth_km + H_DECAY_KM
 
-        df_pop_time_alt = pd.DataFrame(pop_time_alt_rows)
+        # --- Unpack & reshape population (SMA × Species × ECC × Time) ---
+        y = np.asarray(sp.output.y)  # shape (n_sma*n_species*n_ecc, n_time)
+        x_full = y.reshape(n_sma_bins, n_species, n_ecc_bins, n_time)  # (SMA, Spp, ECC, T)
+
+        # --- Hard perigee cutoff AFTER the first year only (no fractional removal) ---
+        # Build midpoint keep mask: keep if a_mid*(1 - e_mid) > Rcut    (2-D: [n_sma, n_ecc])
+        A_mid, E_mid = np.meshgrid(sma_centers_km, ecc_centers, indexing="ij")  # (n_sma, n_ecc)
+        mask_keep_mid = (A_mid * (1.0 - E_mid)) > Rcut  # bool, shape (n_sma, n_ecc)
+
+        # Indices at/after 1 year (be robust to tiny FP noise)
+        t_mask = times >= (1.0 - 1e-12)
+
+        if np.any(t_mask):
+            # Promote to 4-D keep mask so it broadcasts across species & time:
+            # (n_sma, 1, n_ecc, 1)  → broadcasts to (n_sma, n_species, n_ecc, n_tmask)
+            keep4 = mask_keep_mid[:, None, :, None]
+
+            # Ensure float (or leave as-is if y is already float)
+            x_full = x_full.astype(float, copy=False)
+
+            # Multiply in-place: False→0 kills that whole SMA–ECC cell for all species at t>=1
+            x_full[:, :, :, t_mask] *= keep4
+
+        # --- Project (SMA × ECC) -> altitude shells for each time, all species at once ---
+        # y_alt has shape (n_alt, n_species, n_time)
+        y_alt = np.zeros((n_alt_shells, n_species, n_time), dtype=float)
+        for t_idx in range(n_time):
+            cube_t = x_full[:, :, :, t_idx]  # (n_sma, n_species, n_ecc)
+            # Expect: returns (n_alt, n_species)
+            alt_proj_all = sp.sma_ecc_mat_to_altitude_mat(cube_t)
+            if alt_proj_all.shape != (n_alt_shells, n_species):
+                raise ValueError(
+                    f"sma_ecc_mat_to_altitude_mat returned {alt_proj_all.shape}, "
+                    f"expected ({n_alt_shells}, {n_species})"
+                )
+            y_alt[:, :, t_idx] = alt_proj_all
+
+        # Stash into output as promised in docstring
+        sp.output.y_alt = y_alt
+        sp.output.altitudes = altitudes
+
+        # ─────────────────────────────────────────────────────────────
+        # Build tidy DataFrames (vectorized) and write CSVs
+        # ─────────────────────────────────────────────────────────────
+
+        # (1) Altitude-resolved table: Species × Year × Altitude
+        pop_TSA = np.transpose(y_alt, (2, 1, 0))  # (T, S, A)
+        pop_flat = pop_TSA.reshape(-1)            # length T*S*A
+        T, S, A = n_time, n_species, n_alt_shells
+        years_rep   = np.repeat(years_abs, S * A)
+        species_idx = np.tile(np.repeat(np.arange(S), A), T)
+        alt_idx     = np.tile(np.arange(A), T * S)
+
+        df_pop_time_alt = pd.DataFrame({
+            "Species":    np.array(species_names, dtype=object)[species_idx],
+            "Year":       years_rep,
+            "Altitude":   altitudes[alt_idx],
+            "Population": pop_flat.astype(float),
+        })
         df_pop_time_alt = (
             df_pop_time_alt
             .groupby(["Species", "Year", "Altitude"], as_index=False).sum()
-            .sort_values(["Species", "Year", "Altitude"]).reset_index(drop=True)
+            .sort_values(["Species", "Year", "Altitude"])
+            .reset_index(drop=True)
         )
         df_pop_time_alt.to_csv(os.path.join(self.base_path, "pop_time_alt.csv"), index=False)
 
-        # === Define groupings ===
-        large_fragments = ['N_10kg','N_148kg','N_260kg','N_472kg','N_750kg','N_1250kg']
-        group_indices = {
-            'S':   [i for i, spn in enumerate(species_names) if spn == 'S'],
-            'Su':  [i for i, spn in enumerate(species_names) if spn == 'Su'],
-            'Sns': [i for i, spn in enumerate(species_names) if spn == 'Sns'],
-            'N':   [i for i, spn in enumerate(species_names) if spn.startswith('N') and spn not in large_fragments],
-            'D':   [i for i, spn in enumerate(species_names) if spn in large_fragments],
-            'B':   [i for i, spn in enumerate(species_names) if spn == 'B']
-        }
+        # (2) Total per species × year (sum over altitude)
+        pop_ST = y_alt.sum(axis=0)  # (S, T)
+        df_pop_time = pd.DataFrame({
+            "Species":    np.repeat(species_names, T),
+            "Year":       np.tile(years_abs, S),
+            "Population": pop_ST.reshape(-1).astype(float),
+        })
+        df_pop_time = (
+            df_pop_time
+            .groupby(["Species", "Year"], as_index=False).sum()
+            .sort_values(["Species", "Year"])
+            .reset_index(drop=True)
+        )
+        df_pop_time.to_csv(os.path.join(self.base_path, "pop_time.csv"), index=False)
 
-        # === Grouped totals per year ===
-        group_rows = []
-        for group, inds in group_indices.items():
-            names = [species_names[i] for i in inds]
-            for year, sub in df_pop_time.groupby('Year'):
-                total = sub[sub['Species'].isin(names)]['Population'].sum()
-                group_rows.append({'Species': group, 'Year': year, 'Population': total})
-        df_group_time = pd.DataFrame(group_rows).sort_values(['Species','Year']).reset_index(drop=True)
+        # ─────────────────────────────────────────────────────────────
+        # Group rollups (S, Su, Sns, N, D, B)
+        # ─────────────────────────────────────────────────────────────
+        large_fragments = ['N_10kg','N_148kg','N_260kg','N_472kg','N_750kg','N_1250kg']
+        large_set = set(large_fragments)
+
+        def map_group(spn: str):
+            spn = spn.strip() if isinstance(spn, str) else spn
+            if spn == 'S': return 'S'
+            if spn == 'Su': return 'Su'
+            if spn == 'Sns': return 'Sns'
+            if spn == 'B': return 'B'
+            if isinstance(spn, str) and spn in large_set: return 'D'
+            if isinstance(spn, str) and spn.startswith('N') and spn not in large_set: return 'N'
+            return None
+
+        # Grouped totals per year
+        df_tmp = df_pop_time.copy()
+        df_tmp["Group"] = df_tmp["Species"].map(map_group)
+        df_tmp = df_tmp.dropna(subset=["Group"])
+        df_group_time = (
+            df_tmp.groupby(["Group", "Year"], as_index=False)["Population"].sum()
+                .rename(columns={"Group": "Species"})
+                .sort_values(["Species", "Year"])
+                .reset_index(drop=True)
+        )
         df_group_time.to_csv(os.path.join(self.base_path, "pop_time_grouped.csv"), index=False)
 
-        # === Grouped altitude-resolved per year ===
-        group_alt_rows = []
-        for group, inds in group_indices.items():
-            names = [species_names[i] for i in inds]
-            sub = df_pop_time_alt[df_pop_time_alt['Species'].isin(names)]
-            for (year, alt), grp in sub.groupby(['Year','Altitude']):
-                total = grp['Population'].sum()
-                group_alt_rows.append({'Species': group, 'Year': year, 'Altitude': alt, 'Population': total})
-        df_group_time_alt = pd.DataFrame(group_alt_rows).sort_values(['Species','Year','Altitude']).reset_index(drop=True)
+        # Grouped altitude-resolved per year
+        df_alt_tmp = df_pop_time_alt.copy()
+        df_alt_tmp["Group"] = df_alt_tmp["Species"].map(map_group)
+        df_alt_tmp = df_alt_tmp.dropna(subset=["Group"])
+        df_group_time_alt = (
+            df_alt_tmp.groupby(["Group", "Year", "Altitude"], as_index=False)["Population"].sum()
+                    .rename(columns={"Group": "Species"})
+                    .sort_values(["Species", "Year", "Altitude"])
+                    .reset_index(drop=True)
+        )
         df_group_time_alt.to_csv(os.path.join(self.base_path, "pop_time_alt_grouped.csv"), index=False)
 
         return df_pop_time, df_pop_time_alt, df_group_time, df_group_time_alt

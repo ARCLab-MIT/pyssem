@@ -77,7 +77,7 @@ def process_species_pair(args):
 
             try:
                 # Result is summed over: bins=[binE_sma, binE_mass, binE_ecc]
-                result_3d = evolve_bins_circular(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
+                result_3d = evolve_bins_elliptical(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
                                             binE_mass, binE_ecc, shell, n_shells=scen_properties.n_shells, RBflag=RBflag)
 
                 # To get just mass, sum everything on the second axis. 
@@ -88,8 +88,9 @@ def process_species_pair(args):
                 fragment_spread_totals[shell, :, :, :] = transpose
 
                 assert np.sum(mass_distribution) == np.sum(transpose), "Mass distribution should match the total fragments produced."
-            except:
+            except Exception:
                 print(f"no fragments produced for {m1, m2}")
+                print(Exception)
                 continue
 
             frags_made[shell, :] = mass_distribution 

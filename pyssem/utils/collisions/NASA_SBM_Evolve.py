@@ -59,7 +59,7 @@ def evolve_bins_elliptical(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1
         # debris will now come out in the format of [a, ecco, mass]
     except Exception as e:
         print(f"Error in frag_col_SBM_vec_lc2: {e} \n for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
-        traceback.print_exc()
+        # traceback.print_exc()
         return None
 
     # Loop through 
@@ -99,7 +99,7 @@ def evolve_bins_elliptical(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1
     
     return hist3d
 
-def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, req=6371.0, max_frag=1000, LB=0.1):
+def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, req=6371.0, max_frag=5000, LB=0.1):
     """
 
     Collision model following NASA EVOLVE 4.0 standard breakup model (2001)

@@ -1070,7 +1070,7 @@ class ScenarioProperties:
             dN_all_species[:, species, :] = dN
             
         self.t_0 = t # update global variable 
-        dN_all_species = dN_all_species #+ output
+        dN_all_species = dN_all_species + output
 
         # #############################
         # # Post Mission Disposal of Existing Population, this should be from the circular population of x_flat
@@ -1605,59 +1605,6 @@ class ScenarioProperties:
                 dtype=object
             )
 
-            
-            
-            # if not self.baseline:
-            #     for sma in range(self.n_sma_bins):
-            #         for species in range(n_species):
-            #             for ecc in range(self.n_ecc_bins):
-            #                 rate_array = self.full_lambda_flattened[sma, species, ecc]
-
-            #                 try:
-            #                     # Default: no launch
-            #                     launch_rate_functions[sma, species, ecc] = None
-
-            #                     if rate_array is None:
-            #                         continue
-
-            #                     # Case 1: Clean array directly
-            #                     if isinstance(rate_array, np.ndarray):
-            #                         flattened_array = rate_array.astype(float)
-
-            #                     # Case 2: Mixed list of array + zeros
-            #                     elif isinstance(rate_array, list):
-            #                         array_found = next((np.asarray(r).astype(float) for r in rate_array if isinstance(r, np.ndarray)), None)
-            #                         if array_found is None:
-            #                             continue
-            #                         flattened_array = array_found
-
-            #                     # Case 3: Scalar or unexpected input — skip
-            #                     else:
-            #                         continue
-
-            #                     # Clean
-            #                     flattened_array[np.isnan(flattened_array)] = 0
-            #                     flattened_array[np.isinf(flattened_array)] = 0
-
-            #                     # Validate
-            #                     if flattened_array.shape[0] != len(self.scen_times):
-            #                         continue
-            #                     if np.all(flattened_array == 0):
-            #                         continue
-
-            #                     # Interpolate
-            #                     interp_func = interp1d(
-            #                         self.scen_times,
-            #                         flattened_array,
-            #                         kind='cubic',
-            #                         bounds_error=False,
-            #                         fill_value=0
-            #                     )
-            #                     launch_rate_functions[sma, species, ecc] = interp_func
-
-            #                 except Exception as e:
-            #                     raise ValueError(f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n{rate_array}\n\n{e}")
-
             if not self.baseline:
                 for sma in range(self.n_sma_bins):
                     for species in range(n_species):
@@ -1753,21 +1700,6 @@ class ScenarioProperties:
             adot_all_species = []
             edot_all_species = []
 
-            # # mean bstar
-            # # bstar_vals = [9.79673e-08, 3.00907e-07,  2.86768e-08, 
-            # #               1.10182e-06, 1.10182e-06, 1.10182e-06, 1.10182e-06,  3.00907e-07, 9.79673e-08, 2.86768e-08,
-            # #               2.36304e-08]
-            
-            # # S:     1.056e-07
-            # # Su:    2.33658e-08
-            # # Sns:   6.4328e-08
-            # # N:     1.0208e-06
-            # # B:     2.02111e-08
-            # # median bstar, S, Sns (1.4328e-10), Su
-            # bstar_vals = [1.056e-07, 1.0208e-06,  2.33658e-08,
-            #               1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06, 1.0208e-06,
-            #               2.36304e-08]
-
             bstar_vals = []
             for species_group in self.species.values():
                 for species in species_group:
@@ -1827,38 +1759,115 @@ class ScenarioProperties:
 
         self.output = output # Save
 
-        # Indicator Variables
-        # Evaluate non-indicator variables using states
+        ###############
+        # Indicator variables rely on altitude shells to calculate the number of collisions,
+        # Therefore, project (sma,ecc) -> altitude shells (y_alt), then evaluate indicators.
+        ###############
         if hasattr(self, 'indicator_variables_list'):
             print("Evaluating post-processed indicator variables...")
+
+            # --- Dimensions ---
+            n_species = self.species_length
+            n_time    = self.output.y.shape[1]
+
+            # --- Unpack and reshape population data: (sma, species, ecc, time) ---
+            x_matrix = self.output.y.reshape(self.n_sma_bins, n_species, self.n_ecc_bins, n_time)
+
+            # --- Project to altitude shells over time ---
+            n_eff = np.zeros((self.n_shells, n_species, n_time))  # (alt/shell, species, time)
+            for s in range(n_species):
+                for t_idx, _ in enumerate(self.output.t):
+                    snap = x_matrix[:, s, :, t_idx]  # (sma, ecc)
+                    cube = np.zeros((self.n_sma_bins, n_species, self.n_ecc_bins))
+                    cube[:, s, :] = snap
+                    alt_proj = self.sma_ecc_mat_to_altitude_mat(cube)  # (alt, species)
+                    n_eff[:, s, t_idx] = alt_proj[:, s]
+
+            self.output.y_alt = n_eff  # shape: (n_alt_shells, n_species, n_time)
+
+            # --- Prepare indicator results dict ONCE (not inside loops) ---
+            if not hasattr(self, 'indicator_results') or self.indicator_results is None:
+                self.indicator_results = {}
             self.indicator_results['indicators'] = {}
 
-            for i in self.indicator_variables_list:
-                # Convert the symbolic equations into a callable function
-                for indicator_var in i:
+            # --- Sanity checks ---
+            y_alt = self.output.y_alt
+            n_shells, n_species_chk, n_time_chk = y_alt.shape
+            if n_shells != self.n_shells or n_species_chk != self.species_length:
+                raise ValueError("Shape mismatch: y_alt dims do not match self.n_shells/self.species_length.")
+            if n_time_chk != len(self.output.t):
+                raise ValueError("Time axis mismatch: len(self.output.t) != y_alt.shape[2].")
+
+            # --- Build symbol→(species_idx, shell_idx) order mapping ---
+            order_map = self._build_symbol_order_map()
+
+            # --- Evaluate each indicator with states ordered as self.all_symbolic_vars ---
+            for group in self.indicator_variables_list:
+                for indicator_var in group:
                     try:
-                        simplified_eqs = sp.simplify(indicator_var.eqs)
-                        indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+                        eq  = sp.simplify(indicator_var.eqs)
+                        fun = sp.lambdify(self.all_symbolic_vars, eq, 'numpy')
+
                         evaluated_indicator_dict = {}
 
-                        # Iterate over states (rows in y) and corresponding time steps (t)
-                        for state, t in zip(self.output.y.T, self.output.t):
-                            # Evaluate the indicator function for the current state
-                            evaluated_value = indicator_fun(*state)
-                            # Store the result in the dictionary with the corresponding time step
-                            evaluated_indicator_dict[t] = evaluated_value
+                        for t_idx, t in enumerate(self.output.t):
+                            # Build state vector matching self.all_symbolic_vars
+                            state = np.empty(len(order_map), dtype=float)
+                            for j, (sp_idx, sh_idx) in enumerate(order_map):
+                                state[j] = y_alt[sh_idx, sp_idx, t_idx]
 
-                        # Store the results for this indicator in the results dictionary
+                            evaluated_indicator_dict[t] = fun(*state)
+
                         self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
-                    except Exception:
-                        print(f"Cannot make indicator for {indicator_var}")
-                        print(Exception)
 
+                    except Exception as e:
+                        print(f"Cannot make indicator for {getattr(indicator_var, 'name', '<unnamed>')}")
+                        print(e)
+
+            # --- Make output.y match the non-elliptical plotting layout ---
+            # optional: preserve original solver array
+            self.output.y_sma_ecc = self.output.y
+
+            # species-major stacking of shells → (n_species*n_shells, n_time)
+            self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,
+                                                                n_time)
+            
             print("Indicator variables succesfully ran")
             print(self.indicator_results['indicators'].keys())
 
+        return
+    
+    def _build_symbol_order_map(self):
+                """
+                Returns a list of (species_idx, shell_idx) in the exact order of self.all_symbolic_vars.
+                shell_idx is 0-based; symbol names are assumed to end with '_<shell>' (1-based in the name).
+                """
+                species_to_idx = {name: i for i, name in enumerate(self.species_names)}
+                order_map = []
 
-        return 
+                for sym in self.all_symbolic_vars:
+                    name = str(sym)  # e.g., 'N_0.00141372kg_7' or 'S_3'
+                    base, sep, shell_str = name.rpartition('_')
+                    if sep == '' or not shell_str.isdigit():
+                        raise ValueError(f"Symbol '{name}' must end with '_<shell_index>' (1-based).")
+
+                    shell_idx = int(shell_str) - 1  # convert to 0-based
+                    if base not in species_to_idx:
+                        # strict match against species_names to avoid accidental mis-ordering
+                        raise KeyError(f"Symbol base '{base}' not found in species_names {self.species_names}.")
+
+                    species_idx = species_to_idx[base]
+                    if not (0 <= shell_idx < self.n_shells):
+                        raise IndexError(f"Shell index {shell_idx} out of range for symbol '{name}' with n_shells={self.n_shells}.")
+
+                    order_map.append((species_idx, shell_idx))
+
+                # Sanity: number of symbols must match n_shells * n_species
+                expected = self.n_shells * self.species_length
+                if len(order_map) != expected:
+                    raise ValueError(f"Symbol count {len(order_map)} != n_shells*n_species ({expected}).")
+                return order_map
+
     # def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
     def population_shell(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
         """
@@ -1902,6 +1911,10 @@ class ScenarioProperties:
         # This part can be vectorized if your `equations` list is lambdified correctly
         intrinsic_rates = np.array([eq(*N) for eq in eq_funcs])
 
+
+        if self.baseline:
+            return intrinsic_rates
+        
         # Calculate the launch rates at the current time 't' by calling the functions
         launch_rates = np.array([func(t) for func in launch_funcs])
 
