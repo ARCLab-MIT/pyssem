@@ -1,1 +1,1 @@
-Model run time: 744.20 seconds
+Model run time: 11.09 seconds
