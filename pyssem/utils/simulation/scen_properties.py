@@ -1347,7 +1347,7 @@ class ScenarioProperties:
             self.prev_rho = None
 
 
-            print("Integrating equations...")
+            # print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
@@ -1436,8 +1436,8 @@ class ScenarioProperties:
                         print(f"Cannot make indicator for {indicator_var}")
                         print(Exception)
 
-            print("Indicator variables succesfully ran")
-            print(self.indicator_results['indicators'].keys())
+            # print("Indicator variables succesfully ran")
+            # print(self.indicator_results['indicators'].keys())
 
 
         return 
