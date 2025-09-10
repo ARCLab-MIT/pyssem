@@ -312,5 +312,5 @@ if __name__ == "__main__":
         print(e.with_traceback())
         print("No plots specified in the simulation configuration file.")
 
-    # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
+    Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
     # Plots(model, plot_names, simulation_data["simulation_name"], main_path)
