@@ -12,6 +12,8 @@ from utils.collisions.collisions_elliptical import create_elliptical_collision_p
 # from utils.collisions.collisions import create_collision_pairs
 from utils.collisions.collisions_merged import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
+from utils.plotting.SEPDataExport import *
+from utils.plotting.EllipticalOuputsToAltitudeBins import *
 from datetime import datetime
 import json
 import os
@@ -137,7 +139,7 @@ class Model:
         try:
             species_list = Species()
             
-            species_list.add_species_from_json(species_json)
+            _, self.scenario_properties.pmd_debris_names = species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
             species_list.set_elliptical_orbits(self.scenario_properties)
@@ -155,7 +157,6 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            # self.scenario_properties.add_collision_pairs(create_elliptical_collision_pairs(self.scenario_properties))
             self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
 
             # Create Indicator Variables if provided
@@ -186,11 +187,12 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            # self.scenario_properties.build_model_elliptical()
-            # self.scenario_properties.run_model_elliptical()
-            
-            self.scenario_properties.build_model()
-            self.scenario_properties.run_model()
+            if self.scenario_properties.elliptical:
+                self.scenario_properties.build_model_elliptical()
+                self.scenario_properties.run_model_elliptical()
+            else:
+                self.scenario_properties.build_model()
+                self.scenario_properties.run_model()
 
             self.scenario_properties.equations = None
             self.scenario_properties.lambdify_equations = None
@@ -227,10 +229,11 @@ class Model:
             return results_to_json(self)
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
+    
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'SEP1.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -278,17 +281,36 @@ if __name__ == "__main__":
 
     print("Runtime saved to model_runtime.txt")
 
-    # data = model.results_to_json()
+    data = model.results_to_json()
 
-    # # Create the figures directory if it doesn't exist
-    # os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
-    # # Save the results to a JSON file
-    # with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-    #     json.dump(data, f, indent=4)
+    # # # Create the figures directory if it doesn't exist
+    main_path = 'figures'
+    if not os.path.exists(main_path):
+        os.makedirs(main_path)
 
-    # try:
-    #     plot_names = simulation_data["plots"]
-    #     Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
-    # except Exception as e:
-    #     print(e)
-    #     print("No plots specified in the simulation configuration file.")
+    # Create a subdirectory for the simulation name
+    os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
+    # Save the results to a JSON file
+    with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+        json.dump(data, f, indent=4)
+
+    # open the scenario properties pickle file
+    # with open('scenario-properties-collision.pkl', 'rb') as f:
+    #     model = pickle.load(f)
+
+    try:
+        plot_names = simulation_data["plots"]
+        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                      )
+        # SEPDataExport(model, simulation_data["simulation_name"], 
+        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+        #               )
+    except Exception as e:
+        print(e.with_traceback())
+        print("No plots specified in the simulation configuration file.")
+
+    # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
+    # Plots(model, plot_names, simulation_data["simulation_name"], main_path)

@@ -1,5 +1,5 @@
 {
-    "simulation_name": "SEP2-Elliptical",
+    "simulation_name": "just_debris",
     "created": "2024-07-02T21:25:24.117000+00:00",
     "description": "Testing elliptical orbits",
     "id": "e28e1156-b337-429d-85a6-f8e489960095",
@@ -11,7 +11,7 @@
         "LC": 0.1,
         "max_altitude": 2000,
         "min_altitude": 400,
-        "n_shells": 30,
+        "n_shells": 10,
         "simulation_duration": 200,
         "start_date": "03/03/2025",
         "steps": 50,
@@ -19,13 +19,7 @@
         "baseline": false,
         "fragment_spreading": false, 
         "parallel_processing": false,
-        "launch_scenario": "SEP2",
-        "indicator_variables": [
-            "active_loss_per_shell",
-            "active_loss_per_shell_percentage",
-            "active_loss_per_species",
-            "active_loss_per_species_percentage"
-        ]
+        "launch_scenario": "SEP2"
     },
     "plots": [
         "all_plots"
@@ -74,9 +68,7 @@
             "drag_effected": true,
             "launch_func": "launch_func_null",
             "pmd_func": "pmd_func_derelict",
-            "drag_func": "drag_func_exp",
-            "elliptical": true,
-            "eccentricity_bins" : [0.001, 0.01, 0.1, 0.2]
+            "drag_func": "drag_func_exp"
         },
         {
             "sym_name": "B",
@@ -94,9 +86,7 @@
             "alpha_active": 0, 
             "trackable": true,
             "pmd_func": "pmd_func_none",
-            "drag_func": "drag_func_exp",
-            "elliptical": true,
-            "eccentricity_bins" : [0.001, 0.01, 0.1, 0.2]
+            "drag_func": "drag_func_exp"
         }
     ],
     "status": "not started"

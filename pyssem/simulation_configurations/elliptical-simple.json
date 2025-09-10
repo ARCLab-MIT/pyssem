@@ -1,5 +1,5 @@
 {
-  "simulation_name": "Elliptical-Simple",
+  "simulation_name": "Elliptical-circular-test",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -9,9 +9,9 @@
     "start_date": "01/01/2025",   
     "simulation_duration": 100,              
     "steps": 100,                            
-    "min_altitude": 200,                   
+    "min_altitude": 150,                   
     "max_altitude": 2000,                   
-    "n_shells": 5,                         
+    "n_shells": 36,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
@@ -20,89 +20,79 @@
     "fragment_spreading": false,
     "parallel_processing": false,
     "baseline" : false,
-    "launch_scenario": "SEP2",
+    "launch_scenario": "test",
+      "indicator_variables": [
+        "active_loss_per_species_per_pair",
+        "active_loss_per_shell_percentage",
+        "active_loss_per_species",
+        "active_loss_per_species_percentage"
+      ],
     "elliptical": true,
-    "eccentricity_bins" : [0, 0.011473684210526316, 0.021947368421052632, 0.03242105263157895, 0.04289473684210526, 0.05336842105263158, 0.0638421052631579, 0.07431578947368421, 0.08478947368421053, 0.09526315789473684, 0.10573684210526316, 0.11621052631578947, 0.1266842105263158, 0.1371578947368421, 0.14763157894736842, 0.15810526315789475, 0.16857894736842105, 0.17905263157894735, 0.18952631578947368, 1]                                       
-      },
-  "plots": [
-    "all_plots"
-  ],
-  "SEP_mapping": [
-    "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'Su'",
-    "T.loc[(T['obj_type'] == 2) & (T['mass'] <= 20), 'species_class'] = 'Sns'",
-    "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1) & T['const_name'].notna(), 'species_class'] = 'S'",
-    "T.loc[(T['obj_type'] >= 3), 'species_class'] = 'N'",
-    "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
-  ],
+    "eccentricity_bins": [0.0, 0.0001, 0.00045730505192732656, 0.002091279105182546, 0.009563524997900363, 0.04373448295773111, 1]
+   },
+    "plots": [
+      "all_plots"
+    ],
+    "SEP_mapping": [
+      "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'Su'",
+      "T.loc[(T['obj_type'] == 2) & (T['mass'] <= 20) & (T['phase'] == 2), 'species_class'] = 'Sns'",
+      "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1) & T['const_name'].notna(), 'species_class'] = 'S'",
+      "T.loc[(T['obj_type'] >= 3) & (T['diam_char'] >= 0.05), 'species_class'] = 'N'",
+      "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
+    ],
   "species": [
       {
         "sym_name": "S",
         "Cd": 2.2,
-        "mass": 148,
-        "radius": 0.5,
-        "A": "Calculated based on radius",
+        "mass": 521.8210518282503,
+        "radius": 2.579769155013005,
+        "A": 20.90795536684596,
         "active": true,
         "maneuverable": true,
         "trackable": true,
         "deltat": 8,
         "Pm": 0.95,
-        "alpha": 1e-5,
-        "alpha_active": 1e-5,
-        "slotted": true, 
+        "alpha": 1e-05,
+        "alpha_active": 1e-05,
+        "bstar": 8.814803781086339e-08,
+        "slotted": true,
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_null",
         "pmd_func": "pmd_func_sat",
-        "drag_func": "drag_func_exp"     
-      },
-    {
-        "sym_name": "Sns",
-        "Cd": 2.2,
-        "mass": 10,
-        "radius": 0.105550206,
-        "A": 0.035,
-        "active": true,
-        "maneuverable": false,
-        "deltat": 3,
-        "Pm": 0,
-        "alpha": 0,
-        "alpha_active": 0,
-        "slotted" : false, 
-        "slotting_effectiveness": 0,
-        "drag_effected": false,
-        "launch_func": "launch_func_null",   
-        "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
-    },
-    {
+      },
+      {
         "sym_name": "Su",
         "Cd": 2.2,
-        "mass": 260,
-        "A": 1.6652,
-        "radius": 0.728045069,
+        "mass": 807.4104733131924,
+        "A": 3.768744547961901,
+        "radius": 1.0952756037260825,
         "active": true,
         "maneuverable": true,
         "trackable": true,
+        "bstar": 1.0268925508847137e-08,
         "deltat": 8,
         "Pm": 0.95,
-        "alpha": 1e-5,
-        "alpha_active": 1e-5,
+        "alpha": 1e-05,
+        "alpha_active": 1e-05,
         "RBflag": 0,
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"
-    },
-    {
+      },
+      {
         "sym_name": "N",
         "Cd": 2.2,
-        "mass": [0.00141372, 0.5670, 4, 6],
-        "radius": [0.01, 0.1321, 0.7, 0.9],
-        "A": "Calculated based on radius",
+        "mass": [0.08423, 3.56023, 0.21096],
+        "radius": [ 0.05622, 0.12216, 1.01420],
+        "A": [0.00993, 0.04688, 3.23145],
         "active": false,
         "maneuverable": false,
         "trackable": false,
         "deltat": null,
+        "bstar": [2.5932459532652153e-07, 2.8971227367366304e-08, 3.369878848061469e-05],
         "Pm": 0,
         "alpha": 0,
         "alpha_active": 0,
@@ -114,22 +104,39 @@
         "drag_func": "drag_func_exp"
     },
     {
-        "sym_name": "B",
-        "RBflag" : 1,
-        "Cd": 2.2,
-        "mass": 1783.94,
-        "radius": 2.687936011,
-        "A": 22.6980069221863,
-        "active": false,
-        "slotted": false,
-        "slotting_effectiveness": 1,
-        "drag_effected": true,
-        "Pm": 0,
-        "alpha": 0,
-        "alpha_active": 0, 
-        "trackable": true,
-        "pmd_func": "pmd_func_none",
-        "drag_func": "drag_func_exp"
+      "sym_name": "B",
+      "RBflag": 1,
+      "Cd": 2.2,
+      "mass": [
+        910.2678701045728,
+        3436.414977973571
+      ],
+      "radius": [
+        1.4507710991388147,
+        2.4108094999999996
+      ],
+      "A": [
+        6.612225612374411,
+        18.258944184769756
+      ],
+      "active": false,
+      "slotted": false,
+      "slotting_effectiveness": 1,
+      "drag_effected": true,
+      "bstar": [
+        1.5980896200974924e-08,
+        1.1689413957269282e-08
+      ],
+      "Pm": 0,
+      "alpha": 0,
+      "alpha_active": 0,
+      "trackable": true,
+      "pmd_func": "pmd_func_none",
+      "drag_func": "drag_func_exp",
+      "deltat": [
+        8,
+        8
+      ]
     }
   ]
 }

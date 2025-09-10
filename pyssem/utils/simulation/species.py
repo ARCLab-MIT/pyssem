@@ -76,6 +76,7 @@ class SpeciesProperties:
         self.sma_ecc_pop = np.array([])  
         self.ecc_distribution = [] # This will be the same length as the ecc_bins, it will sum to 1 and will show the distribution of eccentricities in the bins.
         self.semi_major_axis_bins_HMid = None  # Midpoint of the semi-major axis bins, used for elliptical orbits
+        self.bstar = 0
         
         # If a JSON string is provided, parse it and update the properties
         if properties_json:
@@ -218,7 +219,7 @@ class Species:
         print(f"Splitting species {species_properties['sym_name']} into {num_species} species with masses {species_properties['mass']}.")
 
         # Sort the species by mass, only if active, if debris it will be done once PMD species are added. 
-        if species_properties['active'] == True:
+        if species_properties['active'] == True or species_properties['RBflag'] == 1:
             species_list.sort(key=lambda x: x.mass)
             for i in range(len(species_list)):
                 if i == 0:
@@ -275,6 +276,7 @@ class Species:
 
         # Create Debris Species for Post Mission Disposal
         # If an object has a pmd_func that is not pmd_func_none, then a debris species will need to be created for it. 
+        pmd_debris_names = []
         for properties in self.species['active']:
             if properties.pmd_func == 'pmd_func_none':
                 # Don't create a debris species
@@ -290,15 +292,17 @@ class Species:
             debris_species_template.radius = properties.radius
             debris_species_template.trackable = properties.trackable  # large debris is trackable
             debris_species_template.sym_name = f"N_{properties.mass}kg"
+            debris_species_template.bstar = properties.bstar
 
             self.species['debris'].append(debris_species_template)
+            pmd_debris_names.append(debris_species_template.sym_name)
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
 
         # As new debris species have been added, the upper and lower mass bounds need to be updated
         self.species['debris'] = self.set_mass_bounds(self.species['debris'])
            
-        return self.species
+        return self.species, pmd_debris_names
     
     def convert_params_to_functions(self):
         """
