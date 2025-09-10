@@ -22,7 +22,8 @@ class Plots:
     :param plots: List of plots to generate. If 'all_plots' is included, all plots will be generated.
     """
 
-    def __init__(self, scenario_properties: ScenarioProperties, plots: list, simulation_name: str = None):
+    def __init__(self, scenario_properties: ScenarioProperties, plots: list, 
+                 simulation_name: str = None, main_path: str = 'figures'):
         self.scenario_properties = scenario_properties
         self.output = scenario_properties.output
         self.n_species = scenario_properties.species_length
@@ -30,9 +31,10 @@ class Plots:
         self.plots = plots
         self.species_names = scenario_properties.species_names
         self.simulation_name = simulation_name
+        self.main_path = main_path
 
         # Create the figures directory if it doesn't exist
-        os.makedirs(f'figures/{self.simulation_name}', exist_ok=True)
+        os.makedirs(f'{self.main_path}/{self.simulation_name}', exist_ok=True)
 
         if self.scenario_properties.elliptical:
             # Use the altitude-resolved data directly
@@ -60,7 +62,7 @@ class Plots:
         selected_indices = [i for i, name in enumerate(species_names)
                             if isinstance(name, str) and name and name[0] in ('S', 'N', 'B')]
 
-        out_dir = f'figures/{self.simulation_name}'
+        out_dir = f'{self.main_path}/{self.simulation_name}'
         os.makedirs(out_dir, exist_ok=True)
 
         if not selected_indices:
@@ -149,7 +151,7 @@ class Plots:
 
         plt.suptitle('Species 1 All Shells')
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.savefig(f'figures/{self.simulation_name}/species_all_shells.png')
+        plt.savefig(f'{self.main_path}/{self.simulation_name}/species_all_shells.png')
         plt.close(fig)
 
         # Plot total objects over time for each species and total
@@ -172,7 +174,7 @@ class Plots:
         plt.xlim(0, max(self.output.t))
         plt.legend()
         plt.tight_layout()
-        plt.savefig(f'figures/{self.simulation_name}/total_objects_over_time.png')
+        plt.savefig(f'{self.main_path}/{self.simulation_name}/total_objects_over_time.png')
         plt.close()
 
     def heatmaps_species(self):
@@ -210,7 +212,7 @@ class Plots:
             fig.delaxes(axs.flatten()[i])
 
         plt.tight_layout()
-        plt.savefig(f'figures/{self.simulation_name}/heatmaps_species.png')
+        plt.savefig(f'{self.main_path}/{self.simulation_name}/heatmaps_species.png')
         plt.close(fig)
 
     # def evolution_of_species_gif(self):
@@ -317,7 +319,7 @@ class Plots:
 
     #     # Create the GIF
     #     images = [imageio.imread(os.path.join(frames_dir, f'frame_{t_idx:04d}.png')) for t_idx in range(len(time_points))]
-    #     gif_path = f'figures/{self.simulation_name}/species_shells_evolution_side_by_side.gif'
+    #     gif_path = f'{self.main_path}/{self.simulation_name}/species_shells_evolution_side_by_side.gif'
     #     imageio.mimsave(gif_path, images, duration=0.5)
 
     #     # Cleanup frames
@@ -376,7 +378,7 @@ class Plots:
         # plt.yscale('log')
 
         # Save the figure
-        plt.savefig(f'figures/{self.simulation_name}/total_objects_by_species_group.png')
+        plt.savefig(f'{self.main_path}/{self.simulation_name}/total_objects_by_species_group.png')
         plt.close()
 
     def indicator_variables(self):
@@ -385,7 +387,7 @@ class Plots:
         from mpl_toolkits.mplot3d import Axes3D
 
         # Define the directory for saving indicator plots
-        indicator_dir = f'figures/{self.simulation_name}/indicator_vars'
+        indicator_dir = f'{self.main_path}/{self.simulation_name}/indicator_vars'
         os.makedirs(indicator_dir, exist_ok=True)  # Create the directory if it does not exist
 
         # Loop through all indicators in the dataset

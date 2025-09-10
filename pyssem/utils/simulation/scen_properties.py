@@ -169,6 +169,7 @@ class ScenarioProperties:
         self.debris_length = 0
         self.species_length = 0
         self.all_symbolic_vars = []
+        self.pmd_debris_names = []
         
         self.collision_pairs = [] 
 
@@ -946,11 +947,13 @@ class ScenarioProperties:
         return effective_altitude
     
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
-                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, drag_affected_bool, all_species_list):
+                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe,
+                      drag_affected_bool, all_species_list, progress_bar=True):
 
         # dt = years * (t - self.t_0)
         # self.t_0 = t
-
+        if self.progress_bar is not None and progress_bar:
+            self.progress_bar.update(t - self.progress_bar.n)
         #############################
         # Reshape the population (3d) into sma, species, ecc
         #############################
@@ -1122,8 +1125,189 @@ class ScenarioProperties:
 
         
         # print(f"Amount removed due to PMD: {np.sum(val)} Amount added due to launches: {np.sum(launch_rates)}")
-        print(t)
+        # print(t)
         return dN_all_species.flatten()
+    # def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
+    #                species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe,
+    #                drag_affected_bool, all_species_list, progress_bar=True):
+
+    #     # Optional progress bar (unchanged)
+    #     if self.progress_bar is not None and progress_bar:
+    #         self.progress_bar.update(t - self.progress_bar.n)
+
+    #     # -------------------------------
+    #     # Reshape population to (sma, species, ecc)
+    #     # -------------------------------
+    #     x_matrix = x_flat.reshape((n_sma_bins, n_species, n_ecc_bins))  # (s, p, e)
+
+    #     # -------------------------------
+    #     # One-time caches: time_in_shell permutations, mass-bin mapping, launch entries
+    #     # -------------------------------
+    #     # time_in_shell is used as time_in_shell[alt, ecc, sma] in your code
+    #     if not hasattr(self, "_T_aes") or self._T_aes.shape != (n_alt_shells, n_ecc_bins, n_sma_bins):
+    #         T = np.asarray(self.time_in_shell, dtype=float)  # expected (alt, ecc, sma)
+    #         assert T.shape == (n_alt_shells, n_ecc_bins, n_sma_bins), \
+    #             f"time_in_shell expected {(n_alt_shells, n_ecc_bins, n_sma_bins)}, got {T.shape}"
+    #         self._T_aes = T                                 # (a, e, s)
+    #         self._T_ase = np.swapaxes(T, 1, 2)              # (a, s, e)
+
+    #     if not hasattr(self, "_mass_bin_idx") or len(self._mass_bin_idx) != n_species:
+    #         mb_idx = np.full(n_species, -1, dtype=int)
+    #         debris_mask = np.zeros(n_species, dtype=float)
+    #         for p in range(n_species):
+    #             mb = species_to_mass_bin.get(p, None)
+    #             if mb is not None:
+    #                 mb_idx[p] = int(mb)
+    #                 debris_mask[p] = 1.0
+    #         # For advanced indexing we clip negatives but zero out later with the mask
+    #         self._mass_bin_idx = mb_idx
+    #         self._mass_bin_idx_clipped = np.maximum(mb_idx, 0)
+    #         self._debris_mask = debris_mask   # 1.0 for debris species, else 0.0 (shape: (p,))
+
+    #     # Cache per-term spread selection (alt, species, sma, ecc)
+    #     for term in getattr(self, "collision_terms", []):
+    #         if not hasattr(term, "_spread_by_species"):
+    #             SD = np.asarray(term.spread_distribution, dtype=float)  # (a, mass_bin, s, e)
+    #             sel = SD[:, self._mass_bin_idx_clipped, :, :]          # (a, p, s, e)
+    #             # Zero-out non-debris species via mask later (cheaper than overwriting here)
+    #             term._spread_by_species = sel
+
+    #     # Sparse list of launch entries (once per unique object of launch_funcs)
+    #     if launch_funcs is not None:
+    #         fid = id(launch_funcs)
+    #         if getattr(self, "_launch_funcs_id", None) != fid:
+    #             entries = []
+    #             # launch_funcs should be indexable [sma, species, ecc]
+    #             for s in range(n_sma_bins):
+    #                 for p in range(n_species):
+    #                     row = launch_funcs[s, p]
+    #                     # Fast skip if row is all None
+    #                     any_non_none = False
+    #                     for e in range(n_ecc_bins):
+    #                         f = row[e]
+    #                         if f is not None:
+    #                             any_non_none = True
+    #                             entries.append((s, p, e, f))
+    #                     if not any_non_none:
+    #                         continue
+    #             self._launch_entries = entries
+    #             self._launch_funcs_id = fid
+    #     else:
+    #         self._launch_entries = []
+
+    #     # -------------------------------
+    #     # Effective altitude populations (vectorized)
+    #     # n_eff (a, p) = sum_{s,e} T[a,e,s] * X[s,p,e]
+    #     # -------------------------------
+    #     n_eff = np.einsum('aes,spe->ap', self._T_aes, x_matrix, optimize=True)  # (a, p)
+    #     self.effective_altitude_matrix = n_eff
+
+    #     # Normalized (a, p, s, e) distribution for sinks: (T[a,s,e] * X[s,p,e]) / n_eff[a,p]
+    #     X_pse = np.swapaxes(x_matrix, 0, 1)           # (p, s, e)
+    #     numer = self._T_ase[:, None, :, :] * X_pse[None, :, :, :]  # (a, p, s, e)
+    #     denom = n_eff[:, :, None, None]                              # (a, p, 1, 1)
+    #     with np.errstate(divide='ignore', invalid='ignore'):
+    #         norm_apse = np.divide(numer, denom, out=np.zeros_like(numer), where=(denom != 0.0))  # (a, p, s, e)
+
+    #     # -------------------------------
+    #     # Collision SOURCES: distribute dN/dt (alt, species) into (s, p, e)
+    #     # -------------------------------
+    #     total_dNdt_sma_ecc_sources = np.zeros_like(x_matrix)  # (s, p, e)
+
+    #     # Flatten effective altitude to pass into lambdified (kept same API)
+    #     x_flat_ordered = n_eff.flatten()  # (a*p,)
+
+    #     for term in getattr(self, "collision_terms", []):
+    #         # term.lambdified_sources returns (a, p)
+    #         dNdt_alt = np.array(term.lambdified_sources(*x_flat_ordered), dtype=float)  # (a, p)
+
+    #         # Select spread per species once (a, p, s, e), then weight & sum over alt
+    #         sel = term._spread_by_species  # (a, p, s, e)
+    #         # Zero-out non-debris species using mask
+    #         weighted = sel * (dNdt_alt[:, :, None, None] * self._debris_mask[None, :, None, None])  # (a, p, s, e)
+    #         contrib_pse = weighted.sum(axis=0)  # (p, s, e)
+    #         total_dNdt_sma_ecc_sources += np.transpose(contrib_pse, (1, 0, 2))  # -> (s, p, e)
+
+    #     # -------------------------------
+    #     # Collision SINKS: redistribute (a, p) sinks back to (s, p, e) via norm_apse
+    #     # -------------------------------
+    #     dNdt_sink_sma_ecc = np.zeros_like(x_matrix)  # (s, p, e)
+
+    #     for term in getattr(self, "collision_terms", []):
+    #         dNdt_alt_sink = np.array(term.lambdified_sinks(*x_flat_ordered), dtype=float)  # (a, p)
+    #         weighted = norm_apse * dNdt_alt_sink[:, :, None, None]  # (a, p, s, e)
+    #         contrib_pse = weighted.sum(axis=0)  # (p, s, e)
+    #         dNdt_sink_sma_ecc += np.transpose(contrib_pse, (1, 0, 2))  # -> (s, p, e)
+
+    #     # Combined collision contribution (s, p, e)
+    #     output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
+
+    #     # -------------------------------
+    #     # Transport (advection) — vectorized per species (no inner loops)
+    #     # -------------------------------
+    #     dN_all_species = np.zeros_like(x_matrix)  # (s, p, e)
+
+    #     for p in range(n_species):
+    #         if not drag_affected_bool[p]:
+    #             continue
+    #         N = x_matrix[:, p, :]                          # (s, e)
+    #         adot = np.asarray(adot_all_species[p], float)  # (s, e)
+    #         edot = np.asarray(edot_all_species[p], float)  # (s, e)
+
+    #         out_a = N * adot / Δa
+    #         out_e = N * edot / Δe
+
+    #         # Cap |out_a + out_e| <= N (avoid negative populations)
+    #         total_out = out_a + out_e
+    #         # Where N>0 and |total_out|>N, scale both outflows down
+    #         with np.errstate(divide='ignore', invalid='ignore'):
+    #             scale = np.minimum(1.0, np.divide(N, np.abs(total_out), out=np.ones_like(N), where=(np.abs(total_out) > 0)))
+    #         out_a *= scale
+    #         out_e *= scale
+
+    #         dN = np.zeros_like(N)
+    #         dN += out_a + out_e
+    #         # flux to s-1
+    #         dN[1:, :] -= out_a[:-1, :]
+    #         # flux to e-1
+    #         dN[:, 1:] -= out_e[:, :-1]
+
+    #         dN_all_species[:, p, :] = dN
+
+    #     # Add collision output
+    #     dN_all_species += output
+
+    #     # -------------------------------
+    #     # PMD (vectorized per species)
+    #     # -------------------------------
+    #     # Sinks for active species
+    #     for p in range(n_species):
+    #         sp = all_species_list[p]
+    #         if sp.active:
+    #             dN_all_species[:, p, :] -= (1.0 / sp.deltat) * x_matrix[:, p, :]
+
+    #     # Gains for derelicts linked to an active species
+    #     for p in range(n_species):
+    #         sp = all_species_list[p]
+    #         if (not sp.active) and sp.pmd_linked_species:
+    #             linked_sym = sp.pmd_linked_species[0].sym_name
+    #             linked_idx = next(i for i, spp in enumerate(all_species_list) if spp.sym_name == linked_sym)
+    #             Pm = all_species_list[linked_idx].Pm
+    #             dt_link = all_species_list[linked_idx].deltat
+    #             fail_rate = (1.0 - Pm) / dt_link
+    #             dN_all_species[:, p, :] += fail_rate * x_matrix[:, linked_idx, :]
+
+    #     # -------------------------------
+    #     # Launches — evaluate only at non-empty entries
+    #     # -------------------------------
+    #     if self._launch_entries and (not self.baseline):
+    #         for s, p, e, func in self._launch_entries:
+    #             # func(t) must be scalar
+    #             dN_all_species[s, p, e] += func(t)
+
+    #     # Done
+    #     self.t_0 = t
+    #     return dN_all_species.flatten()
     
     def run_model(self):
         """
@@ -1163,7 +1347,7 @@ class ScenarioProperties:
             self.prev_rho = None
 
 
-            print("Integrating equations...")
+            # print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
@@ -1252,8 +1436,8 @@ class ScenarioProperties:
                         print(f"Cannot make indicator for {indicator_var}")
                         print(Exception)
 
-            print("Indicator variables succesfully ran")
-            print(self.indicator_results['indicators'].keys())
+            # print("Indicator variables succesfully ran")
+            # print(self.indicator_results['indicators'].keys())
 
 
         return 
@@ -1738,6 +1922,8 @@ class ScenarioProperties:
             # get a list of all species for pmd 
             all_species_list = [species for category in self.species.values() for species in category]
 
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
             output = solve_ivp(
                 fun=self.population_rhs,
                 t_span=(self.scen_times[0], self.scen_times[-1]),
@@ -1745,7 +1931,7 @@ class ScenarioProperties:
                 t_eval=self.scen_times,
                 args=(launch_rate_functions, self.n_sma_bins, n_species, self.n_ecc_bins, self.n_alt_shells,
                       species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, active_species_bool, all_species_list),
-                method="RK45"
+                method="RK45"# or any other method you prefer
             )
 
             # output = 1
@@ -1832,8 +2018,8 @@ class ScenarioProperties:
             self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,
                                                                 n_time)
             
-            print("Indicator variables succesfully ran")
-            print(self.indicator_results['indicators'].keys())
+            # print("Indicator variables succesfully ran")
+            # print(self.indicator_results['indicators'].keys())
 
         return
     
@@ -2140,7 +2326,7 @@ class ScenarioProperties:
                 np.sum(entry) if isinstance(entry, np.ndarray) else 0
                 for entry in species_lambda
             )
-            print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
+            # print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
 
         # ============================
         # Reshape for use with [sma, species, ecc]

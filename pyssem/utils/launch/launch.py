@@ -351,12 +351,6 @@ def SEP_traffic_model(scen_properties, file_path):
 
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
 
-    # T_new['epoch_start_datetime'] = T_new['year_start'].apply(
-    #         lambda y: datetime(int(y), 1, 1)
-    #     )
-    # T_new['epoch_end_datetime'] = T_new['year_final'].apply(
-    #     lambda y: datetime(int(y), 1, 1)
-    # )
     T_new['epoch_start_datetime'] = pd.to_datetime(dict(
         year=T_new['year_start'].astype(int),
         month=T_new['month_start'].astype(int),
@@ -379,7 +373,7 @@ def SEP_traffic_model(scen_properties, file_path):
 
     # x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
-    # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+    x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
     if scen_properties.elliptical:
         # === 3D case: [alt_bin, species_idx, ecc_bin] ===
