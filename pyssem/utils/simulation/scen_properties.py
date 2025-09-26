@@ -555,27 +555,50 @@ class ScenarioProperties:
         # Collisions
         if self.elliptical:
             self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
-            self.full_coll_sink = []    # optionally initialize here
-            self.full_coll_source = []
+            # Initialize as Sympy matrices to support + operator
+            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
+            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
 
-            for i in self.collision_pairs:
-                # Accumulate global source/sink expressions
-                self.full_coll_sink += i.eqs_sinks
-                self.full_coll_source += i.eqs_sources
+            # Determine debris insertion range
+            debris_species = [spc for spc in self.species['debris']]
+            if len(debris_species) > 0:
+                first_deb_name = debris_species[0].sym_name
+                deb_start_idx = next((j for j, spc in enumerate([spc for grp in self.species.values() for spc in grp])
+                                      if spc.sym_name == first_deb_name), None)
+                deb_len = len(debris_species)
+            else:
+                deb_start_idx, deb_len = None, 0
 
-                # Get indices of the two species from sym names
-                s1_idx = self.species_names.index(i.species1.sym_name)
-                s2_idx = self.species_names.index(i.species2.sym_name)
+            for cp in self.collision_pairs:
+                # indices of the two active species
+                s1_idx = self.species_names.index(cp.species1.sym_name)
+                s2_idx = self.species_names.index(cp.species2.sym_name)
 
-                # Create and store the symbolic collision term
+                # cp.eqs is an (n_shells x species_length) matrix
+                eqs = cp.eqs
+
+                # Build sinks matrix with contributions only in active species columns
+                sinks = sp.zeros(self.n_shells, self.species_length)
+                sinks[:, s1_idx] = eqs[:, s1_idx]
+                sinks[:, s2_idx] = eqs[:, s2_idx]
+
+                # Build sources matrix in debris columns
+                sources = sp.zeros(self.n_shells, self.species_length)
+                if deb_len > 0 and deb_start_idx is not None:
+                    sources[:, deb_start_idx:deb_start_idx + deb_len] = eqs[:, deb_start_idx:deb_start_idx + deb_len]
+
+                # Accumulate
+                self.full_coll_sink = self.full_coll_sink + sinks
+                self.full_coll_source = self.full_coll_source + sources
+
+                # Store term for RHS use
                 term = SymbolicCollisionTerm(
                     s1_idx=s1_idx,
                     s2_idx=s2_idx,
-                    eqs_sources=i.eqs_sources,
-                    eqs_sinks=i.eqs_sinks, 
-                    fragment_spread_totals=i.fragment_spread_totals
+                    eqs_sources=sources,
+                    eqs_sinks=sinks,
+                    fragment_spread_totals=getattr(cp, 'fragments_sd', None)
                 )
-
                 self.collision_terms.append(term)
 
             self.equations = self.full_Cdot_PMD
@@ -638,10 +661,14 @@ class ScenarioProperties:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
 
         # Lambdify the equations to be used for Scipy integration
-        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
         # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
+        if self.baseline:
+            self.store_equations = self.equations
+            self.equations = self.lambdify_equations()
+        else:
+            self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
             
         return
 
@@ -965,25 +992,26 @@ class ScenarioProperties:
         #  This is the effective_altitude_matrix, as the population is essentially split across the shells based on their time in shell.
         # Secondly, keep track of which a e bins, for each species, are contributing to each shell. Used in the sink equations. (normalised_species_distribution_in_sma_e_space)
         #############################
-        self.effective_altitude_matrix = np.zeros((n_alt_shells, n_species))
-        normalised_species_distribution_in_sma_e_space = np.zeros((n_alt_shells, n_species, n_sma_bins, n_ecc_bins))
-        # for each species, in each shell, trying to find the ae that contribute to those bins. 
+        # Vectorized computation of effective altitude matrix and normalized distribution
+        # time_in_shell shape: (n_alt_shells, n_ecc_bins, n_sma_bins)
+        # x_matrix       shape: (n_sma_bins, n_species, n_ecc_bins)
         try:
-            for species in range(n_species):
-                for alt_shell in range(n_alt_shells):
-                    n_effective = 0
-                    for sma in range(n_sma_bins):
-                        for ecc in range(n_ecc_bins):
-                            tis = time_in_shell[alt_shell, ecc, sma]
-                            n_pop = x_matrix[sma, species, ecc]
-                            n_effective_a_e = n_pop * tis
-                            n_effective = n_effective + n_effective_a_e
-                            normalised_species_distribution_in_sma_e_space[alt_shell, species, sma, ecc] = n_effective_a_e
+            # Compute numerator contributions per (alt, species, sma, ecc)
+            # Align axes: time_in_shell (a,e,s) with x_matrix (s,p,e)
+            # Expand dims for broadcasting: T[a,e,s] -> (a,1,e,s) -> (a,1,s,e)
+            # X[s,p,e] -> (1,s,p,e)
+            # Result after multiply: (a,s,p,e)
+            contributions = time_in_shell[:, None, :, :].transpose(0, 1, 3, 2) * x_matrix[None, :, :, :]
 
-                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
-                    # convert any nans to 0
-                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = np.nan_to_num(normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :])
-                    self.effective_altitude_matrix[alt_shell, species] = n_effective
+            # Effective altitude per (alt, species): sum over sma (s) and ecc (e)
+            self.effective_altitude_matrix = contributions.sum(axis=(1, 3))  # (a,p)
+
+            # Normalized distribution per (alt, species, sma, ecc)
+            denom = self.effective_altitude_matrix  # (a,p)
+            # Avoid divide-by-zero: where denom==0, keep zeros
+            with np.errstate(divide='ignore', invalid='ignore'):
+                normalised_species_distribution_in_sma_e_space = contributions / denom[:, None, :, None]
+                normalised_species_distribution_in_sma_e_space = np.nan_to_num(normalised_species_distribution_in_sma_e_space)
         except Exception as e:
             print(f"Error in calculating effective altitude matrix: {e}")
             raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
@@ -1128,7 +1156,6 @@ class ScenarioProperties:
         # print(t)
         return dN_all_species.flatten()
     
-    
     def run_model(self):
         """
         For each species, integrate the equations of population change for each shell and species.
@@ -1166,7 +1193,6 @@ class ScenarioProperties:
             self.prev_t = -1  # Initialize to an invalid time
             self.prev_rho = None
 
-
             # print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
@@ -1197,15 +1223,15 @@ class ScenarioProperties:
                             clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
 
                             ## USE INTERPOLATION
-                            interp_func = interp1d(self.scen_times, clean_rate_array, 
-                                                kind='cubic', # 'linear', 'cubic'
-                                                bounds_error=False, 
-                                                fill_value=0)
-                            launch_rate_functions.append(interp_func)
+                            # interp_func = interp1d(self.scen_times, clean_rate_array, 
+                            #                     kind='cubic', # 'linear', 'cubic'
+                            #                     bounds_error=False, 
+                            #                     fill_value=0)
+                            # launch_rate_functions.append(interp_func)
 
                             # USE STEP FUNCTION
-                            # step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-                            # launch_rate_functions.append(step_func)
+                            step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                            launch_rate_functions.append(step_func)
                             
                         else:
                             # If there are no launches, create a simple lambda that always returns 0
@@ -1213,6 +1239,7 @@ class ScenarioProperties:
                     except:
                         launch_rate_functions.append(lambda t: 0.0)
 
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                                         args=(launch_rate_functions, self.equations),

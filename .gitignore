@@ -169,3 +169,5 @@ pyssem/utils/launch/data/
 /grid_search_new/
 /species_kmeans_results
 /test_results/
+/indigo-thesis/
+/indigo-thesis/*

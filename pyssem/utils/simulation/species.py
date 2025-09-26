@@ -497,14 +497,6 @@ class Species:
 
                 # Store in the matrix
                 scenario_properties.time_in_shell[a_idx, e_idx, :] = time_fractions
-
-                # # Velocity at each shell midpoint
-                # r_mids = 0.5 * (
-                #     semi_major_axis_bins[:-1] + 
-                #     semi_major_axis_bins[1:]
-                # )
-                # v_array = vis_viva(a_mid, r_mids)
-                # species.velocity_per_shells[i_sma, j_ecc, :] = v_array
     
     def calculate_time_and_velocity_in_shell_circular(self, R0_km, a):
         """

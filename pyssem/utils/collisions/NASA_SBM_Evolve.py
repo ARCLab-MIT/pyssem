@@ -733,8 +733,10 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
         nShell = len(np.diff(R02))
 
         # find difference in orbital velocity for shells
-        # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
-        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
+        # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+        # print(f"DEBUG: dDV = {dDV:.6f} km/s")
+        # print(f"DEBUG: R02 range: {R02[0]:.1f} to {R02[-1]:.1f} km")
         dv_values = np.array(func_dv(Am, 'col')) / 1000 # km/s
         u = np.random.rand(len(dv_values)) * 2 - 1
         theta = np.random.rand(len(dv_values)) * 2 * np.pi
@@ -743,7 +745,9 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
         p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
         dv_vec = p * dv_values[:, np.newaxis]
 
-        hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
+        # hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
+        # this should be the length of the bins
+        hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell) * dDV / 1000, binEd])
         altNums = hc / (SS * 3)
 
         if altNums is None:
@@ -751,6 +755,28 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
             print(SS)  # Check if SS is not zero
             print(hc.shape)  # Check if hc has the expected shape
             print(SS * 3)  # Ensure that the denominator is not zero
+
+        # plot bar chart of hc and save in a local folder, there will be multiple so give unique name
+        # import matplotlib.pyplot as plt
+        # from datetime import datetime
+        
+        # # Create velocity bin centers for x-axis
+        # velocity_bins = np.arange(-nShell, nShell) * dDV / 1000  # km/s
+        # velocity_bin_centers = (velocity_bins[:-1] + velocity_bins[1:]) / 2
+        
+        # # Sum across mass bins to get total fragments per velocity bin
+        # hc_summed = np.sum(hc, axis=1)
+        
+        # plt.figure(figsize=(12, 6))
+        # plt.bar(velocity_bin_centers, hc_summed, width=dDV/1000*0.8)
+        # plt.xlabel('Velocity Change (km/s)')
+        # plt.ylabel('Number of Fragments')
+        # plt.title('Fragment Distribution by Velocity Change')
+        # plt.axvline(x=0, color='red', linestyle='--', label='Collision Shell (0 km/s)')
+        # plt.legend()
+        # plt.grid(True, alpha=0.3)
+        # plt.savefig(f'hc_histogram_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png', dpi=300, bbox_inches='tight')
+        # plt.close()
 
     return nums, isCatastrophic, binOut, altNums
 

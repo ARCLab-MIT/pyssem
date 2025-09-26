@@ -1,5 +1,5 @@
 {
-  "simulation_name": "Elliptical-circular-test",
+  "simulation_name": "Cursor-Test",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -11,7 +11,7 @@
     "steps": 100,                            
     "min_altitude": 150,                   
     "max_altitude": 2000,                   
-    "n_shells": 20,                         
+    "n_shells": 40,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
@@ -19,16 +19,16 @@
     "v_imp": 10.0,
     "fragment_spreading": false,
     "parallel_processing": false,
-    "baseline" : true,
-    "launch_scenario": "SEP1",
+    "baseline" : false,
+    "launch_scenario": "test",
     "indicator_variables": [
       "active_loss_per_species_per_pair",
       "active_loss_per_shell_percentage",
       "active_loss_per_species",
       "active_loss_per_species_percentage"
     ],
-    "elliptical": true,
-    "eccentricity_bins":  [0.0, 0.0001, 0.00023269181687763618, 0.0005414548164181542, 0.001259921049894874, 0.0029317331822241717, 0.006821903207721965, 0.015874010519682003, 0.036937523489595184, 0.08595059451754268, 1]
+    "elliptical": false,
+    "eccentricity_bins":  [0.0, 0.0001, 0.00023269181687763618, 0.0005414548164181542, 1]
    },
     "plots": [
       "all_plots"
@@ -42,46 +42,51 @@
     ],
   "species": [
       {
-        "sym_name": "S",
-        "Cd": 2.2,
-        "mass": 521.8210518282503,
-        "radius": 2.579769155013005,
-        "A": 20.90795536684596,
-        "active": true,
-        "maneuverable": true,
-        "trackable": true,
-        "deltat": 8,
-        "Pm": 0.95,
-        "alpha": 1e-05,
-        "alpha_active": 1e-05,
-        "bstar": 8.814803781086339e-08,
-        "slotted": true,
-        "slotting_effectiveness": 1.0,
-        "drag_effected": false,
-        "launch_func": "launch_func_null",
-        "pmd_func": "pmd_func_null",
-        "drag_func": "drag_func_exp"
-      },
-      {
-        "sym_name": "N",
-        "Cd": 2.2,
-        "mass": [3.56023, 0.21096],
-        "radius": [0.12216, 1.01420],
-        "A": [0.04688, 3.23145],
-        "active": false,
-        "maneuverable": false,
-        "trackable": false,
-        "deltat": null,
-        "bstar": [2.8971227367366304e-08, 3.369878848061469e-05],
-        "Pm": 0,
-        "alpha": 0,
-        "alpha_active": 0,
-        "RBflag": 0,
-        "slotting_effectiveness": 1,
-        "drag_effected": true,
-        "launch_func": "launch_func_null",
-        "pmd_func": "pmd_func_derelict",
-        "drag_func": "drag_func_exp"
+      "sym_name": "S",
+      "Cd": 2.2,
+      "mass": 521.8210518282503,
+      "radius": 2.579769155013005,
+      "A": 20.90795536684596,
+      "active": true,
+      "maneuverable": false,
+      "trackable": false,
+      "deltat": 8,
+      "Pm": 0.95,
+      "alpha": 1e-05,
+      "alpha_active": 1e-05,
+      "bstar": 8.814803781086339e-08,
+      "slotted": false,
+      "slotting_effectiveness": 1.0,
+      "drag_effected": true,
+      "launch_func": "launch_func_null",
+      "pmd_func": "pmd_func_sat",
+      "drag_func": "drag_func_exp"
+    },
+    {
+      "sym_name": "N",
+      "Cd": 2.2,
+      "mass":
+        0.0368740016992353,
+      "radius":
+        0.1150089468988954,
+      "A":
+        0.04155402782292379,
+      "active": false,
+      "maneuverable": false,
+      "trackable": false,
+      "deltat": [
+        null
+      ],
+      "bstar": 2.4792226771614054e-06,
+      "Pm": 0,
+      "alpha": 0,
+      "alpha_active": 0,
+      "RBflag": 0,
+      "slotting_effectiveness": 1,
+      "drag_effected": true,
+      "launch_func": "launch_func_null",
+      "pmd_func": "pmd_func_derelict",
+      "drag_func": "drag_func_exp"
     }
   ]
 }

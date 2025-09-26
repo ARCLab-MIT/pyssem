@@ -48,8 +48,10 @@ def process_species_pair(args):
 
     # Calculate the number of fragments made for each debris species
     frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-    alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
-
+    # alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
+    # Alt nums is now a 3D array, the first dimension is the collision shells, the second dimension is the debris species, 
+    # and the third dimension is where the fragments end up. 
+    alt_nums = np.zeros((scen_properties.n_shells, len(debris_species), scen_properties.n_shells))
 
     if scen_properties.elliptical:
         #########
@@ -99,17 +101,39 @@ def process_species_pair(args):
         #########
         # Fragment spreading
         #########
+        # Initialize a 3D matrix: [source_shell, debris_species, destination_shell]
+        alt_nums_3d = np.zeros((scen_properties.n_shells, len(debris_species), scen_properties.n_shells))
+        
         for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits
             dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
             try:
                 results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
                 frags_made[dv_index, :] = results[0] # nums is the number of fragments related to the shell of dv_index (same shell)
-                alt_nums = results[3] # Is the additional term from the spreading of the collision (all other shells)
+                
+                # results[3]
+                velocity_fragment_data = results[3]  # Shape: (n_shells * 2 - 1, debris_species)
+                
+                # Map velocity bins to destination shells
+                # The middle bin represents the collision shell
+                # Bins below middle represent shells below collision shell
+                # Bins above middle represent shells above collision shell
+                
+                n_velocity_bins = velocity_fragment_data.shape[0]
+                middle_bin_idx = n_velocity_bins // 2  # Middle bin index
+                
+                for vel_bin_idx in range(n_velocity_bins):
+                    # Calculate destination shell index
+                    dest_shell_offset = vel_bin_idx - middle_bin_idx
+                    dest_shell = dv_index + dest_shell_offset
+                    
+                    # Only include valid shell indices
+                    if 0 <= dest_shell < scen_properties.n_shells:
+                        alt_nums_3d[dv_index, :, dest_shell] += velocity_fragment_data[vel_bin_idx, :]
+                        
             except IndexError as ie:
-                alt_nums = None
                 continue
             except ValueError as e:
-                    continue
+                continue
     
     else:
         #########
@@ -146,7 +170,7 @@ def process_species_pair(args):
     if scen_properties.elliptical:
         return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragment_spread_totals=fragment_spread_totals, model_type='elliptical')
     if scen_properties.fragment_spreading:
-        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragsMadeDV=alt_nums, model_type='fragment_spreading')
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragsMadeDV_3d=alt_nums_3d, model_type='fragment_spreading')
     else:
         return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, model_type='baseline')
 
