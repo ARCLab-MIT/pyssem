@@ -1,10 +1,10 @@
-from utils.collisions.collisions import func_Am, func_dv
-from utils.collisions.NASA_SBM_frags import frag_col_SBM_vec_lc2
-from utils.collisions.NASA_SBN6 import *
+from .collisions import func_Am, func_dv
+from .NASA_SBM_frags import frag_col_SBM_vec_lc2
+from .NASA_SBN6 import *
 import numpy as np
 from tqdm import tqdm
-from utils.collisions.cartesian_to_kep import cart_2_kep, kep_2_cart
-from utils.collisions.collisions import SpeciesPairClass
+from .cartesian_to_kep import cart_2_kep, kep_2_cart
+from .collisions import SpeciesPairClass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from sympy import symbols, Matrix, pi, S, Expr, zeros
 import matplotlib.pyplot as plt
@@ -12,7 +12,6 @@ import re
 from itertools import combinations
 import math
 import traceback
-from line_profiler import profile
 import os
 import pickle
 from utils.collisions.collisions import evolve_bins as evolve_bins_old
@@ -211,7 +210,6 @@ def rotate_vector_45_deg_in_plane(v):
     ])
     return rot_matrix @ v
 
-@profile
 def process_elliptical_collision_pair(args):
     i, collision_pair, scen_properties, debris_species, binE_mass, binE_ecc, LBgiven = args
 
@@ -284,7 +282,6 @@ def process_elliptical_collision_pair(args):
 
     return collision_pair
 
-@profile
 def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_mass, binE_ecc, collision_index, n_shells=0, RBflag=0):
     # param = {
     #     'req': 6.3781e+03,
@@ -325,6 +322,11 @@ def evolve_bins(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1, e2, binE_
     except Exception as e:
         print(f"Error in frag_col_SBM_vec_lc2: {e} \n for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
         traceback.print_exc()
+        return None
+
+    # Check if debris1 and debris2 are None (function failed)
+    if debris1 is None or debris2 is None:
+        print(f"frag_col_SBM_vec_lc2 returned None for m1={m1}, m2={m2}, r1={rad_1}, r2={rad_2}, sma1={sma1}, sma2={sma2}, e1={e1}, e2={e2}")
         return None
 
     # Loop through 

@@ -938,6 +938,8 @@ class ScenarioProperties:
                             launch_rate_functions.append(lambda t: 0.0)
                     except:
                         launch_rate_functions.append(lambda t: 0.0)
+
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
                                         args=(launch_rate_functions, self.equations),
