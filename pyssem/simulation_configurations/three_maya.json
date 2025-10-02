@@ -28,7 +28,8 @@
   },
   "plots": [
     "total_objects_over_time",
-    "heatmaps_species"
+    "heatmaps_species",
+    "collision_plots"
   ],
   "SEP_mapping": [
     "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'Su'",

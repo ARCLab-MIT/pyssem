@@ -445,6 +445,112 @@ class Plots:
             print(f"Saved indicator plot: {file_path}")
         pass
 
+    def collision_plots(self):
+        """
+        Create collision plots including 3D visualizations and save them in a collision folder.
+        """
+        print("Generating collision plots...")
+        from mpl_toolkits.mplot3d import Axes3D
+        
+        # Create collision directory
+        collision_dir = f'{self.main_path}/{self.simulation_name}/collisions'
+        os.makedirs(collision_dir, exist_ok=True)
+        
+        # Check if we have collision data from species pairs
+        if hasattr(self.scenario_properties, 'collision_pairs') and self.scenario_properties.collision_pairs:
+            self._create_3d_collision_plots(collision_dir)
+        
+        # Check if we have indicator variables for collisions
+        if (hasattr(self.scenario_properties, 'indicator_results') and 
+            self.scenario_properties.indicator_results is not None):
+            self._create_collision_indicator_plots(collision_dir)
+        
+        print(f"Collision plots saved to: {collision_dir}")
+    
+    def _create_3d_collision_plots(self, collision_dir):
+        """
+        Create 3D collision plots from collision pair data.
+        """
+        try:
+            # Get collision data from species pairs
+            for i, pair in enumerate(self.scenario_properties.collision_pairs):
+                if hasattr(pair, 'fragsMadeDV_3d') and pair.fragsMadeDV_3d is not None:
+                    # Create 3D plot of fragment distribution
+                    fig = plt.figure(figsize=(12, 10))
+                    ax = fig.add_subplot(111, projection='3d')
+                    
+                    # Get the 3D data: [source_shell, debris_species, destination_shell]
+                    data_3d = pair.fragsMadeDV_3d
+                    
+                    # Create coordinates for 3D scatter plot
+                    source_shells, debris_species, dest_shells = np.where(data_3d > 0)
+                    fragment_counts = data_3d[source_shells, debris_species, dest_shells]
+                    
+                    # Create 3D scatter plot
+                    scatter = ax.scatter(source_shells, debris_species, dest_shells, 
+                                       c=fragment_counts, s=fragment_counts*10, 
+                                       cmap='viridis', alpha=0.6)
+                    
+                    ax.set_xlabel('Source Shell')
+                    ax.set_ylabel('Debris Species')
+                    ax.set_zlabel('Destination Shell')
+                    ax.set_title(f'3D Fragment Distribution - Collision Pair {i+1}\n'
+                               f'{pair.s1.sym_name} vs {pair.s2.sym_name}')
+                    
+                    # Add colorbar
+                    plt.colorbar(scatter, label='Fragment Count', shrink=0.8)
+                    
+                    # Save plot
+                    filename = f'3d_collision_pair_{i+1}_{pair.s1.sym_name}_vs_{pair.s2.sym_name}.png'
+                    filepath = os.path.join(collision_dir, filename)
+                    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    
+                    print(f"Saved 3D collision plot: {filename}")
+                    
+        except Exception as e:
+            print(f"Error creating 3D collision plots: {e}")
+    
+    def _create_collision_indicator_plots(self, collision_dir):
+        """
+        Create collision plots from indicator variables.
+        """
+        try:
+            indicators = self.scenario_properties.indicator_results.get('indicators', {})
+            
+            for indicator_name, time_data in indicators.items():
+                if 'collision' in indicator_name.lower():
+                    # Extract time and data
+                    times = np.array(list(time_data.keys()))
+                    
+                    # Create time series plot
+                    fig, ax = plt.subplots(figsize=(12, 8))
+                    
+                    for time in times[::max(1, len(times)//10)]:  # Sample times
+                        data_matrix = time_data[time]
+                        if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                            # Sum across one dimension for plotting
+                            total_collisions = np.sum(data_matrix, axis=0)
+                            ax.plot(range(len(total_collisions)), total_collisions, 
+                                   alpha=0.7, label=f'Time {time:.1f}')
+                    
+                    ax.set_xlabel('Shell/Species Index')
+                    ax.set_ylabel('Collision Count')
+                    ax.set_title(f'Collision Evolution: {indicator_name}')
+                    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                    ax.grid(True, alpha=0.3)
+                    
+                    # Save plot
+                    filename = f'collision_evolution_{indicator_name.replace(" ", "_")}.png'
+                    filepath = os.path.join(collision_dir, filename)
+                    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    
+                    print(f"Saved collision indicator plot: {filename}")
+                    
+        except Exception as e:
+            print(f"Error creating collision indicator plots: {e}")
+
     def all_plots(self):
         """
         Run all plot functions, irrespective of the plots list.
