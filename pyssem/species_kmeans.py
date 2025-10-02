@@ -78,6 +78,35 @@ def bstar_from_area_mass(area_m2, mass_kg):
     # per your formula: bstar = 2.2 * (area * 1e-6 / mass)
     return 2.2 * (area_m2 * 1e-6 / np.maximum(mass_kg, 1e-12))
 
+# ---------- Elbow (knee) detection for k selection ----------
+def select_elbow_k(k_list, inertia_list):
+    """
+    Pick k at the 'elbow' using the max distance to the line between first and last points.
+    Falls back to argmin(inertia) if fewer than 3 points.
+    """
+    ks = np.asarray(k_list, dtype=float)
+    sses = np.asarray(inertia_list, dtype=float)
+    if ks.size == 0:
+        raise ValueError("select_elbow_k received an empty k_list.")
+    if ks.size < 3:
+        return int(ks[np.argmin(sses)])
+
+    # Normalize both axes to [0,1] to make distance scale-invariant
+    x = (ks - ks.min()) / (ks.max() - ks.min() + 1e-12)
+    y = (sses - sses.min()) / (sses.max() - sses.min() + 1e-12)
+
+    # Compute perpendicular distance from each point to the line through endpoints
+    x1, y1 = x[0], y[0]
+    x2, y2 = x[-1], y[-1]
+    denom = np.hypot(x2 - x1, y2 - y1) + 1e-12
+    # Line in Ax + By + C = 0 form
+    A = y2 - y1
+    B = -(x2 - x1)
+    C = (x2 - x1) * y1 - (y2 - y1) * x1
+    dists = np.abs(A * x + B * y + C) / denom
+
+    idx = int(np.argmax(dists))
+    return int(k_list[idx])
 # ---------- load & prepare ----------
 T = pd.read_csv(PATH)
 T['apogee']  = T['sma'] * (1 + T['ecc'])
@@ -196,6 +225,83 @@ if not centers_df.empty:
     summary.to_csv(summary_csv, index=False)
     print(f"🧾 wrote {summary_csv}")
 
+# ---------- Debris (N) elbow plot (left) and best-k radius–mass clusters (right) ----------
+try:
+    df_N = assigned_df[assigned_df['species_class'] == 'N'].copy()
+    if df_N.empty:
+        print("[N elbow] No debris rows found; skipping debris elbow plot.")
+    else:
+        # Remove outliers in the same way as above
+        n0 = len(df_N)
+        df_N = remove_outliers_iqr(df_N, cols=("radius", "mass"), k=IQR_K)
+        n1 = len(df_N)
+        print(f"[N elbow] removed {n0-n1} outliers via IQR (k={IQR_K}). Remaining: {n1}")
+
+        # Prepare features
+        X_raw = df_N[['radius', 'mass']].to_numpy(float)
+        scaler_N = StandardScaler().fit(X_raw)
+        Xn = scaler_N.transform(X_raw)
+
+        # Range of k for elbow search
+        k_max = int(min(10, len(df_N)))  # cap at 10 and not more than number of samples
+        if k_max < 1:
+            print("[N elbow] Not enough samples for KMeans; skipping.")
+        else:
+            k_values = []
+            inertias = []
+            for k in range(1, k_max + 1):
+                try:
+                    km_tmp = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init="auto").fit(Xn)
+                    k_values.append(k)
+                    inertias.append(float(km_tmp.inertia_))
+                except Exception as _e:
+                    # In rare cases, KMeans may fail for certain k; skip that k
+                    print(f"[N elbow] KMeans failed for k={k}: {_e}")
+                    continue
+
+            if len(k_values) == 0:
+                print("[N elbow] No successful KMeans fits; skipping plot.")
+            else:
+                # Choose best k using elbow method
+                best_k = select_elbow_k(k_values, inertias)
+                print(f"[N elbow] Selected k={best_k} via elbow method.")
+
+                # Fit final model with best_k
+                km_best = KMeans(n_clusters=best_k, random_state=RANDOM_STATE, n_init="auto").fit(Xn)
+                labels_best = km_best.labels_
+                centers_best_unscaled = scaler_N.inverse_transform(km_best.cluster_centers_)
+
+                # Make side-by-side figure (no titles as requested)
+                fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+                # Left: elbow curve
+                axes[0].plot(k_values, inertias, marker="o")
+                axes[0].set_xlabel("Number of clusters (k)")
+                axes[0].set_ylabel("Inertia (within-cluster SSE)")
+                axes[0].grid(alpha=0.3)
+                # mark chosen k
+                try:
+                    axes[0].axvline(best_k, linestyle="--", alpha=0.6)
+                except Exception:
+                    pass
+
+                # Right: radius vs mass coloured by best-k labels
+                axes[1].scatter(df_N['radius'], df_N['mass'], c=labels_best, cmap='tab10', s=16, alpha=0.35)
+                axes[1].scatter(centers_best_unscaled[:, 0], centers_best_unscaled[:, 1],
+                                marker='X', s=150, edgecolor='k', linewidths=0.5, c='red')
+                axes[1].set_xlabel("Radius (m)")
+                axes[1].set_ylabel("Mass (kg)")
+                axes[1].grid(alpha=0.3)
+
+                plt.tight_layout()
+                debris_dir = OUT_DIR / "species_N"
+                debris_dir.mkdir(parents=True, exist_ok=True)
+                out_png = debris_dir / "N_elbow_and_radius_mass.png"
+                plt.savefig(out_png, dpi=180)
+                plt.close()
+                print(f"  ⬇️ saved debris elbow+clusters → {out_png}")
+except Exception as e:
+    print(f"[N elbow] WARNING: {type(e).__name__}: {e}")
 # ---------- eccentricity bin search (N, B) ----------
 # Goal: for species N and B, find the number of eccentricity bins (1..10) and
 # binning scheme (linear vs log) that best represent the distribution of ecc.

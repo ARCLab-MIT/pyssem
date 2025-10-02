@@ -1268,8 +1268,9 @@ def frag_col_SBM_vec_lc2(ep, p1_in, p2_in, req=6371.0, max_frag=1000, LB=0.1):
     # scale directions by dv to get dv_vec
     try:
         dv_vec = p * dv[:, None]                 # shape (N, 3)
-    except Exception:
-        return  # if inside a function, bail out on error
+    except Exception as e:
+        print(f"Error in dv_vec calculation: {e}")
+        return None, None, False  # return empty debris and non-catastrophic flag
     
     # --- handle the non-catastrophic remnant append ---
     if not isCatastrophic:

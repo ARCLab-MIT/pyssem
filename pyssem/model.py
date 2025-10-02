@@ -157,8 +157,8 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
+            collision_pairs = create_collision_pairs(self.scenario_properties)
+            self.scenario_properties.add_collision_pairs(collision_pairs)
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 self.scenario_properties.build_indicator_variables()     
@@ -200,16 +200,9 @@ class Model:
             self.scenario_properties.collision_terms = None
             self.scenario_properties.full_Cdot_PMD = None
 
-            with open('scenario-properties-collision.pkl', 'wb') as f:
+            with open('scenario-properties-baseline.pkl', 'wb') as f:
                 pickle.dump(self.scenario_properties, f)
 
-            # CSI Index
-            # self.scenario_properties.cum_CSI()
-
-            # save self as a pickle file - first drop the launch as it can't be pickled
-            self.scenario_properties.coll_eqs_lambd = None
-            self.scenario_properties.equations = None
-        
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
     
@@ -233,7 +226,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-simple.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -265,25 +258,11 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    import time
-
-    # === TIME THE EXECUTION ===
-    start = time.time()
-    results = model.run_model()
-    end = time.time()
-
-    elapsed_sec = end - start
-    print(f"Model run completed in {elapsed_sec:.2f} seconds")
-
-    # === WRITE TIME TO TEXT FILE ===
-    with open("model_runtime.txt", "w") as f:
-        f.write(f"Model run time: {elapsed_sec:.2f} seconds\n")
-
-    print("Runtime saved to model_runtime.txt")
+    model.run_model()
 
     data = model.results_to_json()
 
-    # # # Create the figures directory if it doesn't exist
+    # # # # Create the figures directory if it doesn't exist
     main_path = 'figures'
     if not os.path.exists(main_path):
         os.makedirs(main_path)
@@ -296,7 +275,24 @@ if __name__ == "__main__":
 
     try:
         plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                      )
+        # SEPDataExport(model, simulation_data["simulation_name"], 
+        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+        #               )
     except Exception as e:
-        print(e)
+        import traceback
+        print(f"Error in SEPDataExport: {e}")
+        print(traceback.format_exc())
         print("No plots specified in the simulation configuration file.")
+
+    plot_names = simulation_data["plots"]
+    # Only run plots if the list is not empty
+    if plot_names:
+        # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
+        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    else:
+        print("No plots specified - skipping plotting phase.")

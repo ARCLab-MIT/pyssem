@@ -1,5 +1,5 @@
 {
-  "simulation_name": "Simple",
+  "simulation_name": "Simple-frag-spread",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -7,11 +7,11 @@
   "modified": "2024-01-01T12:00:00Z",
   "scenario_properties": {
     "start_date": "01/01/2025",   
-    "simulation_duration": 100,              
-    "steps": 100,                            
+    "simulation_duration": 50,              
+    "steps": 50,                            
     "min_altitude": 200,                   
     "max_altitude": 1200,                   
-    "n_shells": 10,                         
+    "n_shells": 40,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
@@ -19,8 +19,12 @@
     "v_imp": 10.0,
     "fragment_spreading": false,
     "parallel_processing": false,
-    "baseline" : false,
-    "launch_scenario": "SEP2"                                               
+    "baseline" : true,
+    "launch_scenario": "SEP2",
+    "indicator_variables": [
+      "collisions_per_species_altitude",
+      "collisions_per_species_altitude_per_pair"
+    ]   
   },
   "plots": [
     "all_plots"
@@ -34,7 +38,7 @@
       {
         "sym_name": "S",
         "Cd": 2.2,
-        "mass": 148,
+        "mass": 4,
         "radius": 0.5,
         "A": "Calculated based on radius",
         "active": true,
@@ -49,15 +53,15 @@
         "slotting_effectiveness": 1.0,
         "drag_effected": false,
         "launch_func": "launch_func_null",
-        "pmd_func": "pmd_func_none",
+        "pmd_func": "pmd_func_sat",
         "drag_func": "drag_func_exp"     
       },
     {
         "sym_name": "N",
         "Cd": 2.2,
-        "mass": [0.5670, 4],
-        "radius": [0.1321, 0.5],
-        "A": "Calculated based on radius",
+        "mass": [0.0582454648526077, 148],
+        "radius": [0.05875773, 0.5],
+        "A": [0.010846257488371536, 0.035],
         "active": false,
         "maneuverable": false,
         "trackable": false,
