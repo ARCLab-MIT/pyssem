@@ -59,38 +59,16 @@ class SEPDataExport:
         self.export_snapshots(snapshot_years=snapshot_years)
 
         if scenario_properties.indicator_results is not None:
-            try:
-                self.plot_cumulative_collisions_by_prefix()
-            except (ValueError, KeyError) as e:
-                print(f"⚠️  Skipping cumulative collisions by prefix plot: {e}")
-            
-            try:
-                self.plot_cumulative_indicator()
-            except (ValueError, KeyError) as e:
-                print(f"⚠️  Skipping cumulative indicator plot: {e}")
-            
-            try:
-                self.plot_cumulative_pairwise_by_species()
-            except (ValueError, KeyError) as e:
-                print(f"⚠️  Skipping cumulative pairwise by species plot: {e}")
-            
+            self.plot_cumulative_collisions_by_prefix()
+            self.plot_cumulative_indicator()
+            self.plot_cumulative_pairwise_by_species()
+            # self.export_pairwise_collisions_time_alt()
             # Export altitude-specific collision data
-            try:
-                self.export_cumulative_collisions_by_altitude()
-            except Exception as e:
-                print(f"⚠️  Skipping collision altitude export: {e}")
-            
+            self.export_cumulative_collisions_by_altitude()
             # Create 3D collision heatmaps
-            try:
-                self.create_3d_collision_heatmaps()
-            except Exception as e:
-                print(f"⚠️  Skipping 3D collision heatmaps: {e}")
-            
+            self.create_3d_collision_heatmaps()
             # Create enhanced collision visualizations
-            try:
-                self.create_enhanced_collision_plots()
-            except Exception as e:
-                print(f"⚠️  Skipping enhanced collision plots: {e}")
+            self.create_enhanced_collision_plots()
         
         self.compute_metrics()
         self.plot_altitude_heatmap_comparison()
@@ -301,15 +279,8 @@ class SEPDataExport:
         import os, numpy as np, matplotlib.pyplot as plt
 
         inds = self.scenario_properties.indicator_results['indicators']
-        if not inds:
-            raise ValueError("No indicators available to plot")
-        
         if indicator_name is None:
             indicator_name = list(inds.keys())[-1]
-        
-        if indicator_name not in inds:
-            raise ValueError(f"Indicator '{indicator_name}' not found in available indicators: {list(inds.keys())}")
-            
         data = inds[indicator_name]
 
         times = np.array(list(data.keys()))
@@ -328,29 +299,48 @@ class SEPDataExport:
         out = os.path.join(self.base_path, f"cumulative_indicator_{indicator_name}.png")
         fig.savefig(out, dpi=300)
         plt.close(fig)
-        # print(f"✅ Saved cumulative indicator plot to {out}")
+        
+        # Save CSV data
+        csv_data = {
+            'Time': times,
+            'Cumulative_Value': cum,
+            'Annual_Value': total
+        }
+        df = pd.DataFrame(csv_data)
+        csv_out = os.path.join(self.base_path, f"cumulative_indicator_{indicator_name}.csv")
+        df.to_csv(csv_out, index=False)
+        # print(f"✅ Saved cumulative indicator CSV to {csv_out}")
 
         return cum
 
     def plot_cumulative_collisions_by_prefix(self) -> tuple[np.ndarray, dict]:
         # Try new collision indicator method first
-        inds = {
+        inds_new = {
             n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
-            if 'collisions_per_species_altitude' in n and 'per_pair' not in n
+            if 'collisions_per_altitude' in n and 'percentage' not in n and 'pair' not in n
         }
         
         # Fallback to old method if new indicators not found
-        if not inds:
-            inds = {
+        if not inds_new:
+            inds_new = {
                 n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
                 if n.endswith('aggregate_collisions') and n != 'active_aggregate_collisions'
             }
-        sum_by = {'N': None, 'S': None, 'B': None}
+        
+        
+        sum_by = {}
         times = None
-        for name, data_dict in inds.items():
-            prefix = name.split('_')[0]
+        
+        for name, data_dict in inds_new.items():
+            # Extract prefix based on indicator type
+            if 'collisions_per_altitude' in name:
+                prefix = name.replace('_collisions_per_altitude', '')
+            else:
+                prefix = name.split('_')[0]
+                
+            # Initialize prefix if not seen before
             if prefix not in sum_by:
-                continue
+                sum_by[prefix] = None
             arr = np.vstack([np.squeeze(v) for v in data_dict.values()])
             tsum = arr.sum(axis=1)
             if times is None:
@@ -359,8 +349,9 @@ class SEPDataExport:
                 sum_by[prefix] = tsum.copy()
             else:
                 sum_by[prefix] = sum_by[prefix] + tsum
+                
         if times is None:
-            raise ValueError("No aggregate_collisions indicators found.")
+            raise ValueError("No collision indicators found.")
         total = None
         for arr in sum_by.values():
             if arr is None:
@@ -386,54 +377,70 @@ class SEPDataExport:
         fig.savefig(out, dpi=300)
         plt.close(fig)
         
-        # Export CSV data
-        try:
-            # Create DataFrame with collision data
-            years = times + self.start_year
-            csv_data = {
-                'Time': times,
-                'Year': years,
-                'Total_Cumulative_Collisions': total_cum
-            }
-            
-            # Add each species prefix
-            for prefix, cumulative_data in cum_by.items():
-                if cumulative_data is not None:
-                    csv_data[f'{prefix}_Cumulative_Collisions'] = cumulative_data
-            
-            df = pd.DataFrame(csv_data)
-            csv_path = os.path.join(self.base_path, "cumulative_collisions_by_prefix.csv")
-            df.to_csv(csv_path, index=False)
-            print(f"✅ Exported cumulative collisions by prefix to {csv_path}")
-            
-        except Exception as e:
-            print(f"⚠️  Error exporting CSV for cumulative collisions by prefix: {e}")
+        # Save CSV data
+        csv_data = {'Time': times, 'Total_Collisions': total_cum}
+        for p, c in cum_by.items():
+            csv_data[f'{p}_Collisions'] = c
         
-        # print(f"Saved cumulative collisions by prefix to {out}")
+        df = pd.DataFrame(csv_data)
+        csv_out = os.path.join(self.base_path, "cumulative_collisions_by_prefix.csv")
+        df.to_csv(csv_out, index=False)
+        # print(f"Saved cumulative collisions by prefix CSV to {csv_out}")
+        
         return total_cum, cum_by
 
     def plot_cumulative_pairwise_by_species(self) -> dict:
         """
         Sum all 'pair_collisions' by starting‐species prefix (N, S, Su, Sns, B)
         and plot their cumulative collisions over time.
+        Uses new collision indicator methods for better accuracy.
         Returns the dict of cumulative arrays.
         """
         import os
         import numpy as np
         import matplotlib.pyplot as plt
 
-        inds = {
+        # Try new collision indicator method first - look for pairwise collision indicators
+        inds_new = {
             n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
-            if 'pair_collisions' in n
+            if 'collisions_' in n and '_per_altitude' in n and 'percentage' not in n and not n.endswith('_collisions_per_altitude')
         }
-        prefixes = ['N', 'S', 'Su', 'B']
+        
+        # Fallback to old method if new indicators not found
+        if not inds_new:
+            inds_new = {
+                n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
+                if 'pair_collisions' in n
+            }
+        
+        
         times = None
         cum_by = {}
-
-        for pref in prefixes:
-            agg = None
-            for name, data_dict in inds.items():
+        
+        # Get all available prefixes from the indicators
+        available_prefixes = set()
+        for name in inds_new.keys():
+            if 'collisions_' in name and '_per_altitude' in name and not name.endswith('_collisions_per_altitude'):
+                # Extract from pattern like "collisions_S_Sns_per_altitude" -> "S"
+                base = name.replace('collisions_', '').split('_per_altitude')[0].split('_')[0]
+            elif 'collisions_per_altitude_per_pair' in name:
+                base = name.replace('_collisions_per_altitude_per_pair', '').split('__')[0]
+            else:
                 base = name.replace('_pair_collisions', '').split('__')[0]
+            available_prefixes.add(base)
+        
+        for pref in available_prefixes:
+            agg = None
+            for name, data_dict in inds_new.items():
+                # Extract base name based on indicator type
+                if 'collisions_' in name and '_per_altitude' in name and not name.endswith('_collisions_per_altitude'):
+                    # Extract from pattern like "collisions_S_Sns_per_altitude" -> "S"
+                    base = name.replace('collisions_', '').split('_per_altitude')[0].split('_')[0]
+                elif 'collisions_per_altitude_per_pair' in name:
+                    base = name.replace('_collisions_per_altitude_per_pair', '').split('__')[0]
+                else:
+                    base = name.replace('_pair_collisions', '').split('__')[0]
+                    
                 if not base.startswith(pref):
                     continue
                 arr = np.vstack([np.squeeze(v) for v in data_dict.values()])
@@ -446,7 +453,8 @@ class SEPDataExport:
                 cum_by[pref] = np.cumsum(agg)
 
         if not cum_by:
-            raise ValueError("No pairwise collision indicators found.")
+            print("Warning: No pairwise collision indicators found. Skipping pairwise collision plot.")
+            return {}
 
         fig, ax = plt.subplots(figsize=(12, 6))
         for p, c in cum_by.items():
@@ -461,7 +469,17 @@ class SEPDataExport:
         out = os.path.join(self.base_path, "cumulative_pairwise_by_species.png")
         fig.savefig(out, dpi=300)
         plt.close(fig)
-        # print(f"Saved cumulative pairwise by species to {out}")
+        
+        # Save CSV data
+        csv_data = {'Time': times}
+        for p, c in cum_by.items():
+            csv_data[f'{p}_Cumulative_Collisions'] = c
+        
+        df = pd.DataFrame(csv_data)
+        csv_out = os.path.join(self.base_path, "cumulative_pairwise_by_species.csv")
+        df.to_csv(csv_out, index=False)
+        # print(f"Saved cumulative pairwise by species CSV to {csv_out}")
+        
         return cum_by
 
     def export_pairwise_collisions_time_alt(self) -> pd.DataFrame:
@@ -550,7 +568,268 @@ class SEPDataExport:
             fig.savefig(fname, dpi=300)
             plt.close(fig)
             # print(f"✅ Saved heatmap for {sp1}–{sp2} to {fname}")
+        
+        return df
     
+    def export_cumulative_collisions_by_altitude(self) -> dict:
+        """
+        Export cumulative collisions by altitude shell in a single comprehensive CSV file.
+        Creates one CSV file with all collision data by altitude and collision type.
+        """
+        import os
+        import numpy as np
+        import pandas as pd
+        
+        export_results = {
+            'files_created': [],
+            'data_summaries': {}
+        }
+        
+        # Get start year for proper time mapping
+        start_year = self.start_year
+        
+        # Get all indicator data
+        inds = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Get altitude information
+        Hmid = self.Hmid  # Altitude midpoints
+        
+        # Collect all collision data in one comprehensive dataset
+        all_collision_data = []
+        
+        # Process aggregate collisions by species - try new method first
+        aggregate_indicators = {
+            n: d for n, d in inds.items()
+            if 'collisions_per_altitude' in n and 'percentage' not in n and 'pair' not in n
+        }
+        
+        # Fallback to old method if new indicators not found
+        if not aggregate_indicators:
+            aggregate_indicators = {
+                n: d for n, d in inds.items()
+                if n.endswith('aggregate_collisions') and n != 'active_aggregate_collisions'
+            }
+        
+        for indicator_name, data_dict in aggregate_indicators.items():
+            try:
+                # Extract species name based on indicator type
+                if 'collisions_per_altitude' in indicator_name:
+                    species_name = indicator_name.replace('_collisions_per_altitude', '')
+                else:
+                    species_name = indicator_name.split('_')[0]
+                
+                # Get time steps and convert to years
+                times = np.array(list(data_dict.keys()))
+                
+                # Get collision data for each time step and altitude
+                for i, (time_step, data) in enumerate(data_dict.items()):
+                    year = start_year + time_step
+                    values = np.squeeze(data)
+                    
+                    # Handle different data shapes
+                    if values.ndim == 0:  # Single value
+                        values = [values]
+                    elif values.ndim > 1:  # Multi-dimensional, flatten
+                        values = values.flatten()
+                    
+                    # Create row for each altitude shell
+                    for shell_idx, collision_count in enumerate(values):
+                        if shell_idx < len(Hmid):
+                            all_collision_data.append({
+                                'Year': int(year),
+                                'Time_Step': time_step,
+                                'Altitude_km': Hmid[shell_idx],
+                                'Shell_Index': shell_idx,
+                                'Collision_Type': f'{species_name}_aggregate',
+                                'Species_1': species_name,
+                                'Species_2': None,
+                                'Collisions': collision_count
+                            })
+                
+            except Exception as e:
+                print(f"Warning: Could not process aggregate altitude data for {indicator_name}: {e}")
+        
+        # Process pairwise collisions by altitude - try new method first
+        pairwise_indicators = {
+            n: d for n, d in inds.items()
+            if 'collisions_per_altitude_per_pair' in n and 'percentage' not in n
+        }
+        
+        # Fallback to old method if new indicators not found
+        if not pairwise_indicators:
+            pairwise_indicators = {
+                n: d for n, d in inds.items()
+                if 'pair_collisions' in n
+            }
+        
+        for indicator_name, data_dict in pairwise_indicators.items():
+            try:
+                # Extract species pair names based on indicator type
+                if 'collisions_per_altitude_per_pair' in indicator_name:
+                    base_name = indicator_name.replace('_collisions_per_altitude_per_pair', '')
+                else:
+                    base_name = indicator_name.replace('_pair_collisions', '')
+                    
+                if '__' in base_name:
+                    sp1, sp2 = base_name.split('__')
+                else:
+                    sp1 = base_name
+                    sp2 = base_name
+                
+                # Get time steps and convert to years
+                times = np.array(list(data_dict.keys()))
+                
+                # Get collision data for each time step and altitude
+                for i, (time_step, data) in enumerate(data_dict.items()):
+                    year = start_year + time_step
+                    values = np.squeeze(data)
+                    
+                    # Handle different data shapes
+                    if values.ndim == 0:  # Single value
+                        values = [values]
+                    elif values.ndim > 1:  # Multi-dimensional, flatten
+                        values = values.flatten()
+                    
+                    # Create row for each altitude shell
+                    for shell_idx, collision_count in enumerate(values):
+                        if shell_idx < len(Hmid):
+                            all_collision_data.append({
+                                'Year': int(year),
+                                'Time_Step': time_step,
+                                'Altitude_km': Hmid[shell_idx],
+                                'Shell_Index': shell_idx,
+                                'Collision_Type': f'{sp1}_{sp2}_pair',
+                                'Species_1': sp1,
+                                'Species_2': sp2,
+                                'Collisions': collision_count
+                            })
+                
+            except Exception as e:
+                print(f"Warning: Could not process pairwise altitude data for {indicator_name}: {e}")
+        
+        # Create comprehensive DataFrame
+        if all_collision_data:
+            df = pd.DataFrame(all_collision_data)
+            
+            # Calculate cumulative collisions by altitude and collision type
+            df['Cumulative_Collisions'] = df.groupby(['Shell_Index', 'Collision_Type'])['Collisions'].cumsum()
+            
+            # Save to single CSV
+            csv_filename = "cumulative_collisions_by_altitude.csv"
+            csv_path = os.path.join(self.base_path, csv_filename)
+            df.to_csv(csv_path, index=False)
+            
+            export_results['files_created'].append(csv_filename)
+            export_results['data_summaries']['altitude_collisions'] = {
+                'total_collisions': df['Collisions'].sum(),
+                'max_cumulative': df['Cumulative_Collisions'].max(),
+                'altitude_range': (df['Altitude_km'].min(), df['Altitude_km'].max()),
+                'year_range': (df['Year'].min(), df['Year'].max()),
+                'n_shells': len(Hmid),
+                'collision_types': df['Collision_Type'].nunique(),
+                'unique_pairs': df[['Species_1', 'Species_2']].drop_duplicates().shape[0]
+            }
+        else:
+            print("Warning: No collision data found for altitude export")
+        
+        return export_results
+    
+    def export_all_collision_data(self) -> dict:
+        """
+        Export all collision data to CSV files with proper naming.
+        Returns a dictionary with file paths and data summaries.
+        """
+        import os
+        import numpy as np
+        import pandas as pd
+        
+        export_results = {
+            'files_created': [],
+            'data_summaries': {}
+        }
+        
+        # Get all indicator data
+        inds = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # 1. Export cumulative collisions by prefix
+        try:
+            total_cum, cum_by = self.plot_cumulative_collisions_by_prefix()
+            export_results['files_created'].append("cumulative_collisions_by_prefix.csv")
+            export_results['data_summaries']['cumulative_collisions_by_prefix'] = {
+                'total_collisions': total_cum[-1] if len(total_cum) > 0 else 0,
+                'species_counts': {k: v[-1] if len(v) > 0 else 0 for k, v in cum_by.items()}
+            }
+        except Exception as e:
+            print(f"Warning: Could not export cumulative collisions by prefix: {e}")
+        
+        # 2. Export cumulative pairwise collisions by species
+        try:
+            cum_by_species = self.plot_cumulative_pairwise_by_species()
+            export_results['files_created'].append("cumulative_pairwise_by_species.csv")
+            export_results['data_summaries']['cumulative_pairwise_by_species'] = {
+                'species_counts': {k: v[-1] if len(v) > 0 else 0 for k, v in cum_by_species.items()}
+            }
+        except Exception as e:
+            print(f"Warning: Could not export cumulative pairwise by species: {e}")
+        
+        # 3. Export pairwise collisions time-altitude data
+        try:
+            pairwise_df = self.export_pairwise_collisions_time_alt()
+            export_results['files_created'].append("pairwise_collisions_time_alt.csv")
+            export_results['data_summaries']['pairwise_collisions_time_alt'] = {
+                'total_collisions': pairwise_df['Collisions'].sum(),
+                'unique_pairs': pairwise_df[['Species 1', 'Species 2']].drop_duplicates().shape[0],
+                'time_range': (pairwise_df['Year'].min(), pairwise_df['Year'].max()),
+                'altitude_range': (pairwise_df['Altitude'].min(), pairwise_df['Altitude'].max())
+            }
+        except Exception as e:
+            print(f"Warning: Could not export pairwise collisions time-altitude: {e}")
+        
+        # 3.5. Export cumulative collisions by altitude
+        try:
+            alt_results = self.export_cumulative_collisions_by_altitude()
+            export_results['files_created'].extend(alt_results['files_created'])
+            export_results['data_summaries'].update(alt_results['data_summaries'])
+        except Exception as e:
+            print(f"Warning: Could not export cumulative collisions by altitude: {e}")
+        
+        # 4. Export individual indicator data
+        for indicator_name, data in inds.items():
+            try:
+                if 'collision' in indicator_name.lower():
+                    self.plot_cumulative_indicator(indicator_name)
+                    export_results['files_created'].append(f"cumulative_indicator_{indicator_name}.csv")
+                    
+                    # Calculate summary statistics
+                    times = np.array(list(data.keys()))
+                    mat = np.array([np.squeeze(v) for v in data.values()])
+                    total = mat.sum(axis=1)
+                    cum = np.cumsum(total)
+                    
+                    export_results['data_summaries'][f'indicator_{indicator_name}'] = {
+                        'total_cumulative': cum[-1] if len(cum) > 0 else 0,
+                        'max_annual': total.max() if len(total) > 0 else 0,
+                        'time_range': (times.min(), times.max())
+                    }
+            except Exception as e:
+                print(f"Warning: Could not export indicator {indicator_name}: {e}")
+        
+        # 5. Create summary CSV with all collision data
+        summary_data = []
+        for key, summary in export_results['data_summaries'].items():
+            summary_data.append({
+                'Data_Type': key,
+                'Total_Collisions': summary.get('total_collisions', summary.get('total_cumulative', 0)),
+                'Summary': str(summary)
+            })
+        
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            summary_csv = os.path.join(self.base_path, "collision_data_summary.csv")
+            summary_df.to_csv(summary_csv, index=False)
+            export_results['files_created'].append("collision_data_summary.csv")
+        
+        return export_results
     # def elliptical_to_effective_altitude_bins(self):
     #     """
     #     Convert the raw SMA–species–eccentricity population array into
@@ -1345,206 +1624,6 @@ class SEPDataExport:
         # return DataFrames for immediate use if needed
         return df_full, df_scenario
 
-    def plot_collisions_per_species_altitude(self):
-        """
-        Plot collisions per species per altitude if the indicator variable is available.
-        """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        
-        indicators = self.scenario_properties.indicator_results.get('indicators', {})
-        
-        # Look for collisions_per_species_altitude indicator
-        collision_data = None
-        for name, data in indicators.items():
-            if 'collisions_per_species_altitude' in name and 'per_pair' not in name:
-                collision_data = data
-                break
-        
-        if collision_data is None:
-            raise ValueError("No collisions_per_species_altitude indicator found")
-        
-        # Extract data
-        times = np.array(list(collision_data.keys()))
-        
-        # Create figure
-        fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Plot data for each time step
-        for i, time in enumerate(times[::max(1, len(times)//10)]):  # Sample times to avoid overcrowding
-            data_matrix = collision_data[time]
-            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
-                # Sum across species for each altitude
-                altitude_totals = np.sum(data_matrix, axis=0)
-                ax.plot(self.Hmid, altitude_totals, alpha=0.7, label=f'Time {time:.1f}')
-        
-        ax.set_xlabel('Altitude (km)')
-        ax.set_ylabel('Collisions per Species')
-        ax.set_title('Collisions per Species by Altitude Over Time')
-        ax.grid(True, alpha=0.3)
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.tight_layout()
-        
-        # Save plot
-        out_path = os.path.join(self.base_path, 'collisions_per_species_altitude.png')
-        fig.savefig(out_path, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        
-        return out_path
-
-    def plot_collisions_per_species_altitude_per_pair(self):
-        """
-        Plot collisions per species per altitude per pair if the indicator variable is available.
-        """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        
-        indicators = self.scenario_properties.indicator_results.get('indicators', {})
-        
-        # Look for collisions_per_species_altitude_per_pair indicator
-        collision_data = None
-        for name, data in indicators.items():
-            if 'collisions_per_species_altitude_per_pair' in name:
-                collision_data = data
-                break
-        
-        if collision_data is None:
-            raise ValueError("No collisions_per_species_altitude_per_pair indicator found")
-        
-        # Extract data
-        times = np.array(list(collision_data.keys()))
-        
-        # Create figure with subplots
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        axes = axes.flatten()
-        
-        # Sample a few time points to show evolution
-        sample_times = times[::max(1, len(times)//4)][:4]
-        
-        for i, time in enumerate(sample_times):
-            ax = axes[i]
-            data_matrix = collision_data[time]
-            
-            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
-                # Create heatmap of collisions by species pairs and altitude
-                im = ax.imshow(data_matrix, aspect='auto', cmap='viridis', origin='lower')
-                ax.set_title(f'Time {time:.1f}')
-                ax.set_xlabel('Altitude Bin')
-                ax.set_ylabel('Species Pair')
-                plt.colorbar(im, ax=ax, label='Collisions')
-        
-        plt.suptitle('Collisions per Species Altitude per Pair Over Time')
-        plt.tight_layout()
-        
-        # Save plot
-        out_path = os.path.join(self.base_path, 'collisions_per_species_altitude_per_pair.png')
-        fig.savefig(out_path, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        
-        return out_path
-
-    def export_cumulative_collisions_by_altitude(self) -> dict:
-        """
-        Export cumulative collisions by altitude shell in a single comprehensive CSV file.
-        Creates one CSV file with all collision data by altitude and collision type.
-        """
-        try:
-            import os
-            import numpy as np
-            import pandas as pd
-            
-            # Get all indicator data
-            inds = self.scenario_properties.indicator_results.get('indicators', {})
-            
-            # Process aggregate collisions by species
-            aggregate_indicators = {
-                n: d for n, d in inds.items()
-                if 'collisions_per_altitude' in n and 'percentage' not in n and 'pair' not in n
-            }
-            
-            # Fallback to old method if new indicators not found
-            if not aggregate_indicators:
-                aggregate_indicators = {
-                    n: d for n, d in inds.items()
-                    if n.endswith('aggregate_collisions') and n != 'active_aggregate_collisions'
-                }
-            
-            if not aggregate_indicators:
-                print("⚠️  No collision indicators found for CSV export")
-                return {'status': 'no_data'}
-            
-            # Create comprehensive collision data
-            all_collision_data = []
-            
-            for indicator_name, data_dict in aggregate_indicators.items():
-                # Extract species name
-                species = indicator_name.split('_')[0] if '_' in indicator_name else indicator_name
-                
-                # Get time steps and convert to years
-                times = np.array(list(data_dict.keys()))
-                years = times + self.start_year
-                
-                for time, year in zip(times, years):
-                    data_matrix = data_dict[time]
-                    
-                    # Handle different data shapes
-                    if hasattr(data_matrix, 'shape'):
-                        if len(data_matrix.shape) == 1:
-                            # 1D array - one value per altitude
-                            for alt_idx, collision_count in enumerate(data_matrix):
-                                if collision_count > 0:
-                                    all_collision_data.append({
-                                        'Year': year,
-                                        'Time': time,
-                                        'Species': species,
-                                        'Altitude_km': self.Hmid[alt_idx] if alt_idx < len(self.Hmid) else alt_idx,
-                                        'Altitude_Index': alt_idx,
-                                        'Collision_Count': float(collision_count),
-                                        'Indicator': indicator_name
-                                    })
-                        elif len(data_matrix.shape) == 2:
-                            # 2D array - sum across species dimension
-                            collision_totals = np.sum(data_matrix, axis=0)
-                            for alt_idx, collision_count in enumerate(collision_totals):
-                                if collision_count > 0:
-                                    all_collision_data.append({
-                                        'Year': year,
-                                        'Time': time,
-                                        'Species': species,
-                                        'Altitude_km': self.Hmid[alt_idx] if alt_idx < len(self.Hmid) else alt_idx,
-                                        'Altitude_Index': alt_idx,
-                                        'Collision_Count': float(collision_count),
-                                        'Indicator': indicator_name
-                                    })
-            
-            if all_collision_data:
-                # Create DataFrame and save to CSV
-                df = pd.DataFrame(all_collision_data)
-                csv_path = os.path.join(self.base_path, 'cumulative_collisions_by_altitude.csv')
-                df.to_csv(csv_path, index=False)
-                print(f"✅ Exported cumulative collisions by altitude to {csv_path}")
-                
-                # Also create a summary by species
-                summary_df = df.groupby(['Species', 'Altitude_km']).agg({
-                    'Collision_Count': 'sum',
-                    'Year': ['min', 'max']
-                }).round(4)
-                summary_df.columns = ['Total_Collisions', 'First_Year', 'Last_Year']
-                summary_path = os.path.join(self.base_path, 'collision_summary_by_species_altitude.csv')
-                summary_df.to_csv(summary_path)
-                print(f"✅ Exported collision summary to {summary_path}")
-                
-                return {'status': 'completed', 'files': [csv_path, summary_path], 'records': len(df)}
-            else:
-                print("⚠️  No collision data found to export")
-                return {'status': 'no_data'}
-            
-        except Exception as e:
-            print(f"✗ Error exporting collisions by altitude: {e}")
-            import traceback
-            traceback.print_exc()
-            return {'status': 'error', 'message': str(e)}
-
     def create_3d_collision_heatmaps(self):
         """
         Create 3D heatmaps of collisions by time, altitude, and species.
@@ -1552,115 +1631,320 @@ class SEPDataExport:
         """
         try:
             from mpl_toolkits.mplot3d import Axes3D
-            import matplotlib.pyplot as plt
-            import numpy as np
             
             # Create collisions subdirectory
             collisions_dir = os.path.join(self.base_path, "collisions")
             os.makedirs(collisions_dir, exist_ok=True)
             
-            # Get indicator data
-            inds = self.scenario_properties.indicator_results.get('indicators', {})
+            # Load altitude collision data
+            alt_csv_path = os.path.join(self.base_path, "cumulative_collisions_by_altitude.csv")
+            if not os.path.exists(alt_csv_path):
+                print("No altitude collision data found for 3D heatmaps")
+                return
             
-            # Find collision indicators
-            collision_indicators = {
-                n: d for n, d in inds.items()
-                if 'collision' in n.lower() and 'altitude' in n.lower()
-            }
+            altitude_data = pd.read_csv(alt_csv_path)
             
-            plots_created = 0
+            # Get unique species
+            species_list = altitude_data['Species_1'].unique()
             
-            for indicator_name, data_dict in collision_indicators.items():
-                try:
-                    # Extract species name
-                    species = indicator_name.split('_')[0] if '_' in indicator_name else 'Unknown'
+            # Create 3D heatmap for each species
+            for species in species_list:
+                species_data = altitude_data[altitude_data['Species_1'] == species]
+                
+                # Pivot data for 3D visualization
+                pivot_data = species_data.pivot_table(
+                    values='Collisions', 
+                    index='Altitude_km', 
+                    columns='Year', 
+                    aggfunc='sum',
+                    fill_value=0
+                )
+                
+                if pivot_data.empty:
+                    continue
+                
+                # Create 3D plot
+                fig = plt.figure(figsize=(12, 8))
+                ax = fig.add_subplot(111, projection='3d')
+                
+                # Prepare data for 3D surface
+                years = pivot_data.columns.values
+                altitudes = pivot_data.index.values
+                Y, X = np.meshgrid(years, altitudes)
+                Z = pivot_data.values
+                
+                # Create 3D surface plot
+                surf = ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8, linewidth=0, antialiased=True)
+                
+                # Customize plot
+                ax.set_xlabel('Altitude (km)')
+                ax.set_ylabel('Time (years)')
+                ax.set_zlabel('Collision Count')
+                ax.set_title(f'3D Collision Heatmap - {species} Species')
+                
+                # Flip altitude axis (invert x-axis)
+                ax.invert_xaxis()
+                
+                # Add colorbar
+                fig.colorbar(surf, shrink=0.5, aspect=5)
+                
+                # Save plot
+                plot_path = os.path.join(collisions_dir, f'3d_heatmap_{species}_collisions.png')
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                
+                print(f"✓ 3D heatmap saved: {plot_path}")
+            
+            # Create overall 3D heatmap for all collisions
+            fig = plt.figure(figsize=(14, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            
+            # Aggregate all collisions by altitude and time
+            agg_data = altitude_data.groupby(['Altitude_km', 'Year'])['Collisions'].sum().reset_index()
+            pivot_agg = agg_data.pivot_table(
+                values='Collisions', 
+                index='Altitude_km', 
+                columns='Year', 
+                aggfunc='sum',
+                fill_value=0
+            )
+            
+            if not pivot_agg.empty:
+                years = pivot_agg.columns.values
+                altitudes = pivot_agg.index.values
+                Y, X = np.meshgrid(years, altitudes)
+                Z = pivot_agg.values
+                
+                # Create 3D surface plot
+                surf = ax.plot_surface(X, Y, Z, cmap='plasma', alpha=0.8, linewidth=0, antialiased=True)
+                
+                # Customize plot
+                ax.set_xlabel('Altitude (km)')
+                ax.set_ylabel('Time (years)')
+                ax.set_zlabel('Total Collision Count')
+                ax.set_title('3D Collision Heatmap - All Species Combined')
+                
+                # Flip altitude axis (invert x-axis)
+                ax.invert_xaxis()
+                
+                # Add colorbar
+                fig.colorbar(surf, shrink=0.5, aspect=5)
+                
+                # Save plot
+                plot_path = os.path.join(collisions_dir, '3d_heatmap_all_collisions.png')
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                
+                print(f"✓ Overall 3D heatmap saved: {plot_path}")
+            
+            # Create cumulative version of all collisions heatmap
+            if not pivot_agg.empty:
+                # Calculate cumulative collisions over time
+                cumulative_data = altitude_data.groupby(['Altitude_km', 'Year'])['Collisions'].sum().reset_index()
+                cumulative_data = cumulative_data.sort_values(['Altitude_km', 'Year'])
+                cumulative_data['Cumulative_Collisions'] = cumulative_data.groupby('Altitude_km')['Collisions'].cumsum()
+                
+                pivot_cum = cumulative_data.pivot_table(
+                    values='Cumulative_Collisions', 
+                    index='Altitude_km', 
+                    columns='Year', 
+                    aggfunc='sum',
+                    fill_value=0
+                )
+                
+                if not pivot_cum.empty:
+                    fig_cum = plt.figure(figsize=(14, 10))
+                    ax_cum = fig_cum.add_subplot(111, projection='3d')
                     
-                    # Get time and altitude data
-                    times = np.array(list(data_dict.keys()))
+                    years_cum = pivot_cum.columns.values
+                    altitudes_cum = pivot_cum.index.values
+                    Y_cum, X_cum = np.meshgrid(years_cum, altitudes_cum)
+                    Z_cum = pivot_cum.values
                     
-                    if len(times) == 0:
-                        continue
+                    # Create 3D surface plot for cumulative
+                    surf_cum = ax_cum.plot_surface(X_cum, Y_cum, Z_cum, cmap='plasma', alpha=0.8, linewidth=0, antialiased=True)
                     
-                    # Create sample of times for plotting
-                    time_sample = times[::max(1, len(times)//10)]
+                    # Customize plot
+                    ax_cum.set_xlabel('Altitude (km)')
+                    ax_cum.set_ylabel('Time (years)')
+                    ax_cum.set_zlabel('Cumulative Collision Count')
+                    ax_cum.set_title('3D Cumulative Collision Heatmap - All Species Combined')
                     
-                    # Prepare data for 3D plotting
-                    collision_data = []
-                    for time in time_sample:
-                        data_matrix = data_dict[time]
-                        if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 0:
-                            if len(data_matrix.shape) == 1:
-                                collision_data.append(data_matrix)
-                            else:
-                                # Sum across species dimension if 2D
-                                collision_data.append(np.sum(data_matrix, axis=0))
-                    
-                    if len(collision_data) == 0:
-                        continue
-                    
-                    # Convert to numpy array
-                    collision_matrix = np.array(collision_data)
-                    
-                    # Create 3D surface plot
-                    fig = plt.figure(figsize=(12, 10))
-                    ax = fig.add_subplot(111, projection='3d')
-                    
-                    # Create meshgrid
-                    T, A = np.meshgrid(time_sample, range(collision_matrix.shape[1]))
-                    
-                    # Plot surface
-                    surf = ax.plot_surface(T, A, collision_matrix.T, cmap='viridis', alpha=0.8)
-                    
-                    ax.set_xlabel('Time')
-                    ax.set_ylabel('Altitude Shell')
-                    ax.set_zlabel('Collision Count')
-                    ax.set_title(f'3D Collision Heatmap - {species}')
+                    # Flip altitude axis (invert x-axis)
+                    ax_cum.invert_xaxis()
                     
                     # Add colorbar
-                    fig.colorbar(surf, shrink=0.5, aspect=5)
+                    fig_cum.colorbar(surf_cum, shrink=0.5, aspect=5)
                     
                     # Save plot
-                    plot_path = os.path.join(collisions_dir, f'3d_heatmap_{species}_collisions.png')
-                    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-                    plt.close()
+                    plot_path_cum = os.path.join(collisions_dir, '3d_heatmap_all_collisions_cumulative.png')
+                    plt.savefig(plot_path_cum, dpi=300, bbox_inches='tight')
+                    plt.close(fig_cum)
                     
-                    plots_created += 1
-                    print(f"✅ Created 3D collision heatmap: {species}")
-                    
-                except Exception as e:
-                    print(f"✗ Error creating 3D plot for {indicator_name}: {e}")
-                    continue
-            
-            if plots_created > 0:
-                print(f"✅ Created {plots_created} 3D collision heatmaps in {collisions_dir}")
-            else:
-                print("⚠️  No 3D collision heatmaps could be created")
-                
+                    print(f"✓ Cumulative 3D heatmap saved: {plot_path_cum}")
+        
         except Exception as e:
-            print(f"✗ Error creating 3D collision heatmaps: {e}")
+            print(f"✗ Error creating 3D heatmaps: {e}")
 
     def create_enhanced_collision_plots(self):
         """
         Create enhanced collision visualizations including summary plots and species subplots.
         """
         try:
-            # Create collisions subdirectory
-            collisions_dir = os.path.join(self.base_path, "collisions")
-            os.makedirs(collisions_dir, exist_ok=True)
+            # Load prefix collision data
+            prefix_csv_path = os.path.join(self.base_path, "cumulative_collisions_by_prefix.csv")
+            if not os.path.exists(prefix_csv_path):
+                print("No prefix collision data found for enhanced plots")
+                return
             
-            # Get collision data
-            inds = self.scenario_properties.indicator_results.get('indicators', {})
+            prefix_data = pd.read_csv(prefix_csv_path)
             
-            # Find collision indicators
-            collision_indicators = {
-                n: d for n, d in inds.items()
-                if 'collision' in n.lower()
-            }
+            # Create summary collision plot
+            self._create_summary_collision_plot(prefix_data)
             
-            if collision_indicators:
-                print(f"✅ Enhanced collision plots directory created: {collisions_dir}")
-            else:
-                print("⚠️  No collision indicators found for enhanced plots")
-                
+            # Create species subplots
+            self._create_species_subplots(prefix_data)
+            
         except Exception as e:
             print(f"✗ Error creating enhanced collision plots: {e}")
+
+    def _create_summary_collision_plot(self, prefix_data):
+        """Create summary collision plot"""
+        try:
+            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+            fig.suptitle(f'Collision Summary - {self.simulation_name}', fontsize=16, fontweight='bold')
+            
+            # Plot 1: Total collisions over time
+            ax1 = axes[0, 0]
+            if 'Total_Collisions' in prefix_data.columns:
+                ax1.plot(prefix_data['Time'], prefix_data['Total_Collisions'], 
+                        linewidth=2, color='red', label='Total Collisions')
+            ax1.set_xlabel('Time (years)')
+            ax1.set_ylabel('Cumulative Collisions')
+            ax1.set_title('Total Collisions Over Time')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            
+            # Plot 2: Species-specific collisions over time
+            ax2 = axes[0, 1]
+            species_cols = [col for col in prefix_data.columns if col.endswith('_Collisions') and col != 'Total_Collisions']
+            for col in species_cols:
+                species_name = col.replace('_Collisions', '')
+                ax2.plot(prefix_data['Time'], prefix_data[col], 
+                        linewidth=2, label=species_name)
+            ax2.set_xlabel('Time (years)')
+            ax2.set_ylabel('Cumulative Collisions')
+            ax2.set_title('Species-Specific Collisions Over Time')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            
+            # Plot 3: Final collision counts by species
+            ax3 = axes[1, 0]
+            final_collisions = {}
+            for col in species_cols:
+                species_name = col.replace('_Collisions', '')
+                final_collisions[species_name] = prefix_data[col].iloc[-1]
+            
+            if final_collisions:
+                species_names = list(final_collisions.keys())
+                collision_counts = list(final_collisions.values())
+                
+                bars = ax3.bar(species_names, collision_counts, alpha=0.8)
+                ax3.set_xlabel('Species')
+                ax3.set_ylabel('Final Collision Count')
+                ax3.set_title('Final Collision Counts by Species')
+                ax3.tick_params(axis='x', rotation=45)
+                ax3.grid(True, alpha=0.3)
+                
+                # Add value labels on bars
+                for bar, count in zip(bars, collision_counts):
+                    height = bar.get_height()
+                    ax3.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{count:.1f}', ha='center', va='bottom')
+            
+            # Plot 4: Collision rate (derivative of cumulative)
+            ax4 = axes[1, 1]
+            if 'Total_Collisions' in prefix_data.columns:
+                # Calculate collision rate as difference between consecutive time steps
+                collision_rate = np.diff(prefix_data['Total_Collisions'])
+                time_rate = prefix_data['Time'].iloc[1:].values
+                
+                ax4.plot(time_rate, collision_rate, linewidth=2, color='green', label='Collision Rate')
+                ax4.set_xlabel('Time (years)')
+                ax4.set_ylabel('Collision Rate (collisions/year)')
+                ax4.set_title('Collision Rate Over Time')
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            
+            # Save plot
+            plot_path = os.path.join(self.base_path, f'collision_summary_{self.simulation_name}.png')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"✓ Summary plot saved: {plot_path}")
+        
+        except Exception as e:
+            print(f"✗ Error creating summary plot: {e}")
+
+    def _create_species_subplots(self, prefix_data):
+        """Create subplots for each species"""
+        try:
+            # Get species columns
+            species_cols = [col for col in prefix_data.columns if col.endswith('_Collisions') and col != 'Total_Collisions']
+            
+            if not species_cols:
+                print("No species collision data found")
+                return
+            
+            # Calculate number of subplots needed
+            n_species = len(species_cols)
+            n_cols = 3  # 3 columns per row
+            n_rows = (n_species + n_cols - 1) // n_cols  # Ceiling division
+            
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
+            fig.suptitle(f'Species-Specific Collision Analysis - {self.simulation_name}', 
+                        fontsize=16, fontweight='bold')
+            
+            # Flatten axes array for easier indexing
+            if n_rows == 1:
+                axes = [axes] if n_cols == 1 else axes
+            else:
+                axes = axes.flatten()
+            
+            for i, col in enumerate(species_cols):
+                species_name = col.replace('_Collisions', '')
+                
+                # Plot cumulative collisions
+                axes[i].plot(prefix_data['Time'], prefix_data[col], 
+                            linewidth=2, color='blue', label=f'{species_name} Cumulative')
+                
+                # Plot collision rate (derivative)
+                if len(prefix_data) > 1:
+                    collision_rate = np.diff(prefix_data[col])
+                    time_rate = prefix_data['Time'].iloc[1:].values
+                    axes[i].plot(time_rate, collision_rate, 
+                               linewidth=2, color='red', alpha=0.7, label=f'{species_name} Rate')
+                
+                axes[i].set_xlabel('Time (years)')
+                axes[i].set_ylabel('Collisions')
+                axes[i].set_title(f'{species_name} Species Collisions')
+                axes[i].legend()
+                axes[i].grid(True, alpha=0.3)
+            
+            # Hide unused subplots
+            for i in range(n_species, len(axes)):
+                axes[i].set_visible(False)
+            
+            plt.tight_layout()
+            
+            # Save plot
+            plot_path = os.path.join(self.base_path, f'species_subplots_{self.simulation_name}.png')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"✓ Species subplots saved: {plot_path}")
+        
+        except Exception as e:
+            print(f"✗ Error creating species subplots: {e}")
