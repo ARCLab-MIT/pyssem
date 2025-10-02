@@ -456,6 +456,16 @@ class ScenarioProperties:
                                                                                     percentage = True, 
                                                                                     per_species = True, 
                                                                                     per_pair=False))
+                elif indicator == "collisions_per_species_altitude":
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude(self, 
+                                                                                            percentage = False, 
+                                                                                            per_species = True, 
+                                                                                            per_pair = False))
+                elif indicator == "collisions_per_species_altitude_per_pair":
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude_per_pair(self, 
+                                                                                                    percentage = False, 
+                                                                                                    per_species = False, 
+                                                                                                    per_pair = True))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         

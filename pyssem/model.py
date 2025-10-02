@@ -6,11 +6,11 @@
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
 # if testing locally, use the following import statements
-from utils.simulation.scen_properties_old import ScenarioProperties
+from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-from utils.collisions.collisions_elliptical import create_elliptical_collision_pairs
+# from utils.collisions.collisions_merged import create_elliptical_collision_pairs
 # from utils.collisions.collisions import create_collision_pairs
-from utils.collisions.collisions import create_collision_pairs
+from utils.collisions.collisions_merged import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from utils.plotting.SEPDataExport import *
 from utils.plotting.EllipticalOuputsToAltitudeBins import *
@@ -159,6 +159,7 @@ class Model:
             # Create Collision Pairs
             collision_pairs = create_collision_pairs(self.scenario_properties)
             self.scenario_properties.add_collision_pairs(collision_pairs)
+            
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 self.scenario_properties.build_indicator_variables()     
@@ -226,7 +227,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'simple.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_maya.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -292,7 +293,6 @@ if __name__ == "__main__":
     plot_names = simulation_data["plots"]
     # Only run plots if the list is not empty
     if plot_names:
-        # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
-        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
     else:
         print("No plots specified - skipping plotting phase.")

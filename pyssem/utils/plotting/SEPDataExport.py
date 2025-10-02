@@ -59,10 +59,54 @@ class SEPDataExport:
         self.export_snapshots(snapshot_years=snapshot_years)
 
         if scenario_properties.indicator_results is not None:
-            self.plot_cumulative_collisions_by_prefix()
-            self.plot_cumulative_indicator()
-            self.plot_cumulative_pairwise_by_species()
-            # self.export_pairwise_collisions_time_alt()
+            plots_completed = []
+            
+            # Try to plot cumulative collisions by prefix
+            try:
+                self.plot_cumulative_collisions_by_prefix()
+                plots_completed.append("cumulative_collisions_by_prefix")
+            except (ValueError, KeyError) as e:
+                print(f"⚠️  Skipping cumulative collisions by prefix plot: {e}")
+            
+            # Try to plot cumulative indicator
+            try:
+                self.plot_cumulative_indicator()
+                plots_completed.append("cumulative_indicator")
+            except (ValueError, KeyError) as e:
+                print(f"⚠️  Skipping cumulative indicator plot: {e}")
+            
+            # Try to plot cumulative pairwise by species
+            try:
+                self.plot_cumulative_pairwise_by_species()
+                plots_completed.append("cumulative_pairwise_by_species")
+            except (ValueError, KeyError) as e:
+                print(f"⚠️  Skipping cumulative pairwise by species plot: {e}")
+            
+            # Try to export pairwise collisions time alt
+            try:
+                self.export_pairwise_collisions_time_alt()
+                plots_completed.append("pairwise_collisions_time_alt")
+            except (ValueError, KeyError) as e:
+                print(f"⚠️  Skipping pairwise collisions time alt export: {e}")
+            
+            # Try to plot collisions per species altitude (if available)
+            try:
+                self.plot_collisions_per_species_altitude()
+                plots_completed.append("collisions_per_species_altitude")
+            except (ValueError, KeyError) as e:
+                print(f"⚠️  Skipping collisions per species altitude plot: {e}")
+            
+            # Try to plot collisions per species altitude per pair (if available)
+            try:
+                self.plot_collisions_per_species_altitude_per_pair()
+                plots_completed.append("collisions_per_species_altitude_per_pair")
+            except (ValueError, KeyError) as e:
+                print(f"⚠️  Skipping collisions per species altitude per pair plot: {e}")
+            
+            if plots_completed:
+                print(f"✅ Successfully plotted all available indicator variable plots: {', '.join(plots_completed)}")
+            else:
+                print("⚠️  No indicator variable plots could be generated with the available data")
         
         self.compute_metrics()
         self.plot_altitude_heatmap_comparison()
@@ -273,8 +317,15 @@ class SEPDataExport:
         import os, numpy as np, matplotlib.pyplot as plt
 
         inds = self.scenario_properties.indicator_results['indicators']
+        if not inds:
+            raise ValueError("No indicators available to plot")
+        
         if indicator_name is None:
             indicator_name = list(inds.keys())[-1]
+        
+        if indicator_name not in inds:
+            raise ValueError(f"Indicator '{indicator_name}' not found in available indicators: {list(inds.keys())}")
+            
         data = inds[indicator_name]
 
         times = np.array(list(data.keys()))
@@ -1277,3 +1328,101 @@ class SEPDataExport:
 
         # return DataFrames for immediate use if needed
         return df_full, df_scenario
+
+    def plot_collisions_per_species_altitude(self):
+        """
+        Plot collisions per species per altitude if the indicator variable is available.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        
+        indicators = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Look for collisions_per_species_altitude indicator
+        collision_data = None
+        for name, data in indicators.items():
+            if 'collisions_per_species_altitude' in name and 'per_pair' not in name:
+                collision_data = data
+                break
+        
+        if collision_data is None:
+            raise ValueError("No collisions_per_species_altitude indicator found")
+        
+        # Extract data
+        times = np.array(list(collision_data.keys()))
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Plot data for each time step
+        for i, time in enumerate(times[::max(1, len(times)//10)]):  # Sample times to avoid overcrowding
+            data_matrix = collision_data[time]
+            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                # Sum across species for each altitude
+                altitude_totals = np.sum(data_matrix, axis=0)
+                ax.plot(self.Hmid, altitude_totals, alpha=0.7, label=f'Time {time:.1f}')
+        
+        ax.set_xlabel('Altitude (km)')
+        ax.set_ylabel('Collisions per Species')
+        ax.set_title('Collisions per Species by Altitude Over Time')
+        ax.grid(True, alpha=0.3)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
+        
+        # Save plot
+        out_path = os.path.join(self.base_path, 'collisions_per_species_altitude.png')
+        fig.savefig(out_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return out_path
+
+    def plot_collisions_per_species_altitude_per_pair(self):
+        """
+        Plot collisions per species per altitude per pair if the indicator variable is available.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        
+        indicators = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Look for collisions_per_species_altitude_per_pair indicator
+        collision_data = None
+        for name, data in indicators.items():
+            if 'collisions_per_species_altitude_per_pair' in name:
+                collision_data = data
+                break
+        
+        if collision_data is None:
+            raise ValueError("No collisions_per_species_altitude_per_pair indicator found")
+        
+        # Extract data
+        times = np.array(list(collision_data.keys()))
+        
+        # Create figure with subplots
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        axes = axes.flatten()
+        
+        # Sample a few time points to show evolution
+        sample_times = times[::max(1, len(times)//4)][:4]
+        
+        for i, time in enumerate(sample_times):
+            ax = axes[i]
+            data_matrix = collision_data[time]
+            
+            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                # Create heatmap of collisions by species pairs and altitude
+                im = ax.imshow(data_matrix, aspect='auto', cmap='viridis', origin='lower')
+                ax.set_title(f'Time {time:.1f}')
+                ax.set_xlabel('Altitude Bin')
+                ax.set_ylabel('Species Pair')
+                plt.colorbar(im, ax=ax, label='Collisions')
+        
+        plt.suptitle('Collisions per Species Altitude per Pair Over Time')
+        plt.tight_layout()
+        
+        # Save plot
+        out_path = os.path.join(self.base_path, 'collisions_per_species_altitude_per_pair.png')
+        fig.savefig(out_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        return out_path
