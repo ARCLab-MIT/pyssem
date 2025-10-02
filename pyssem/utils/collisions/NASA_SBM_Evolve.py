@@ -778,7 +778,7 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
         # plt.savefig(f'hc_histogram_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png', dpi=300, bbox_inches='tight')
         # plt.close()
 
-    return nums, isCatastrophic, binOut, altNums
+    return nums, isCatastrophic, binOut, altNums, Am
 
 def compute_sma_ecc_scalar(r, v, mu):
     rx, ry, rz = r

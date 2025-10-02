@@ -26,17 +26,31 @@ class Plots:
                  simulation_name: str = None, main_path: str = 'figures'):
         self.scenario_properties = scenario_properties
         self.output = scenario_properties.output
-        self.n_species = scenario_properties.species_length
-        self.num_shells = scenario_properties.n_shells
+        # Handle both Model and ScenarioProperties objects
+        if hasattr(scenario_properties, 'species_length'):
+            # Direct ScenarioProperties object
+            self.n_species = scenario_properties.species_length
+            self.num_shells = scenario_properties.n_shells
+            self.species_names = scenario_properties.species_names
+        else:
+            # For Model objects, get attributes from scenario_properties
+            self.n_species = scenario_properties.scenario_properties.species_length
+            self.num_shells = scenario_properties.scenario_properties.n_shells
+            self.species_names = scenario_properties.scenario_properties.species_names
         self.plots = plots
-        self.species_names = scenario_properties.species_names
         self.simulation_name = simulation_name
         self.main_path = main_path
 
         # Create the figures directory if it doesn't exist
         os.makedirs(f'{self.main_path}/{self.simulation_name}', exist_ok=True)
 
-        if self.scenario_properties.elliptical:
+        # Handle elliptical attribute access
+        if hasattr(self.scenario_properties, 'elliptical'):
+            elliptical = self.scenario_properties.elliptical
+        else:
+            elliptical = self.scenario_properties.scenario_properties.elliptical
+
+        if elliptical:
             # Use the altitude-resolved data directly
             self.output.y = self.scenario_properties.output.y_alt
             print("Using altitude-resolved data for plots.")
