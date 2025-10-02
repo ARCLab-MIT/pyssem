@@ -456,6 +456,16 @@ class ScenarioProperties:
                                                                                     percentage = True, 
                                                                                     per_species = True, 
                                                                                     per_pair=False))
+                elif indicator == 'collisions_per_species_altitude':
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True, 
+                                                                                    per_pair = False))
+                elif indicator == 'collisions_per_species_altitude_per_pair':
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude_per_pair(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True, 
+                                                                                    per_pair = True))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         
@@ -524,146 +534,30 @@ class ScenarioProperties:
 
         :return: None
         """
-        t = sp.symbols('t')
+        from .build_run_model_helpers import (
+            process_species_terms, 
+            process_collision_terms, 
+            process_drag_and_density, 
+            process_integrated_indicators
+        )
 
-        species_list = [species for group in self.species.values() for species in group]
-        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
-        self.full_lambda = []
-        self.full_coll = sp.zeros(self.n_shells, self.species_length)
-        self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
-        self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
-
-        # Equations are going to be a matrix of symbolic expressions
-        # Each row corresponds to a shell, and each column corresponds to a species
-        for i, species in enumerate(species_list):
-
-            lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
-            self.full_lambda.append(lambda_expr)
-
-            # Post mission Disposal
-            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
-            self.full_Cdot_PMD[:, i] = Cdot_PMD
-
-            # Drag
-            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
-            try:
-                self.drag_term_upper[:, i] = upper_term
-                self.drag_term_cur[:, i] = current_term
-            except:
-                continue
+        # Process species terms (launch, PMD, drag)
+        self.full_lambda, self.full_Cdot_PMD, self.drag_term_upper, self.drag_term_cur = process_species_terms(self)
         
-        # Collisions
-        if self.elliptical:
-            self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
-            # Initialize as Sympy matrices to support + operator
-            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
-            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
-
-            # Determine debris insertion range
-            debris_species = [spc for spc in self.species['debris']]
-            if len(debris_species) > 0:
-                first_deb_name = debris_species[0].sym_name
-                deb_start_idx = next((j for j, spc in enumerate([spc for grp in self.species.values() for spc in grp])
-                                      if spc.sym_name == first_deb_name), None)
-                deb_len = len(debris_species)
-            else:
-                deb_start_idx, deb_len = None, 0
-
-            for cp in self.collision_pairs:
-                # indices of the two active species
-                s1_idx = self.species_names.index(cp.species1.sym_name)
-                s2_idx = self.species_names.index(cp.species2.sym_name)
-
-                # cp.eqs is an (n_shells x species_length) matrix
-                eqs = cp.eqs
-
-                # Build sinks matrix with contributions only in active species columns
-                sinks = sp.zeros(self.n_shells, self.species_length)
-                sinks[:, s1_idx] = eqs[:, s1_idx]
-                sinks[:, s2_idx] = eqs[:, s2_idx]
-
-                # Build sources matrix in debris columns
-                sources = sp.zeros(self.n_shells, self.species_length)
-                if deb_len > 0 and deb_start_idx is not None:
-                    sources[:, deb_start_idx:deb_start_idx + deb_len] = eqs[:, deb_start_idx:deb_start_idx + deb_len]
-
-                # Accumulate
-                self.full_coll_sink = self.full_coll_sink + sinks
-                self.full_coll_source = self.full_coll_source + sources
-
-                # Store term for RHS use
-                term = SymbolicCollisionTerm(
-                    s1_idx=s1_idx,
-                    s2_idx=s2_idx,
-                    eqs_sources=sources,
-                    eqs_sinks=sinks,
-                    fragment_spread_totals=getattr(cp, 'fragments_sd', None)
-                )
-                self.collision_terms.append(term)
-
-            self.equations = self.full_Cdot_PMD
-        else:
-            for i in self.collision_pairs:
-                self.full_coll += i.eqs
-
-            self.equations = sp.zeros(self.n_shells, self.species_length)      
-            self.equations = self.full_Cdot_PMD + self.full_coll
-
-
-        # Recalculate objects based on density, as this is time varying 
-        if not self.time_dep_density: 
-            # Take the shell altitudes, this will be n_shells + 1
-            rho = self.density_model(0, self.R0_km, self.species, self)
-            rho_reshape = rho.reshape(-1, 1) # Convert to column vector
-            rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
-            rho_mat = sp.Matrix(rho_mat)
-            
-            # Second to last row
-            upper_rho = rho_mat[1:, :]
-            
-            # First to penultimate row (mimics rho_mat(1:end-1, :))
-            current_rho = rho_mat[:-1, :]
-
-            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
-            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
-            self.full_drag = drag_upper_with_density + drag_cur_with_density
+        # Process collision terms
+        self.equations, self.collision_terms, self.full_coll_sink, self.full_coll_source = process_collision_terms(self)
+        
+        # Process drag and density
+        self.full_drag, self.sym_drag = process_drag_and_density(self, self.drag_term_upper, self.drag_term_cur)
+        
+        # Add drag to equations if not time dependent density
+        if not self.time_dep_density:
             self.equations += self.full_drag
-            self.sym_drag = True 
 
-        # Make Integrated Indicator Variables if passed
-        if hasattr(self, 'integrated_indicator_var_list'):
-            integrated_indicator_var_list = self.integrated_indicator_var_list
-            for ind_var in integrated_indicator_var_list:
-                if not ind_var.eqs:
-                    ind_var = self.make_indicator_eqs(ind_var)
-
-            self.num_integrated_indicator_vars = 0
-            end_indicator_idxs = len(self.xdot_eqs)
-
-            for ind_var in integrated_indicator_var_list:
-                num_add_indicator_vars = len(ind_var.eqs)
-                self.num_integrated_indicator_vars += num_add_indicator_vars
-
-                start_indicator_idxs = end_indicator_idxs + 1
-                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
-                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
-
-                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
-
-            if not self.sym_lambda:
-                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
-                self.full_lambda.extend(indicator_pad)
-
-        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
-                
-        # Dont add drag if time dependent density, this will be added during integration due to time dependent density
-        if self.time_dep_density:
-            self.full_drag = self.drag_term_upper + self.drag_term_cur
+        # Process integrated indicator variables
+        self.num_integrated_indicator_vars, self.full_lambda = process_integrated_indicators(self)
 
         # Lambdify the equations to be used for Scipy integration
-        # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
-        # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
-
         if self.baseline:
             self.store_equations = self.equations
             self.equations = self.lambdify_equations()
@@ -1166,10 +1060,15 @@ class ScenarioProperties:
 
         :return: None
         """
+        from .build_run_model_helpers import prepare_launch_functions
+        
         print("Preparing equations for integration (Lambdafying) ...")
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
+
+        # Prepare launch functions (common for both cases)
+        launch_rate_functions = prepare_launch_functions(self)
 
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
@@ -1181,8 +1080,15 @@ class ScenarioProperties:
 
             # Set up time varying density 
             self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
-                                                                                                                                       ))
+            
+            # Get available dates from density data to understand the data range
+            available_dates = list(self.density_data.keys())
+            print(f"Available density data dates: {available_dates[:5]}...")  # Show first 5 dates
+            
+            # Use only the available dates from the density data for date mapping
+            # This ensures we don't try to access dates that don't exist in the data
+            available_dates = sorted(self.density_data.keys())
+            self.date_mapping = available_dates
             
             # This will change when jb2008 is updated
             available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
@@ -1193,76 +1099,47 @@ class ScenarioProperties:
             self.prev_t = -1  # Initialize to an invalid time
             self.prev_rho = None
 
-            # print("Integrating equations...")
+            # Set up progress bar
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations (Time-varying Density)", unit="year")
+            
+            # Integrate with time-varying density
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
+                            args=(launch_rate_functions, self.equations),
                             t_eval=self.scen_times, method=self.integrator)
             
+            # Clean up
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
+            self.progress_bar.close()
+            self.progress_bar = None
 
-        else:
-
-            ## OLD
-            # output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-            #                 args=(self.full_lambda_flattened, self.equations, self.scen_times),
-            #                 t_eval=self.scen_times, method=self.integrator)
-            
-            ## NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
-            # Let's assume full_lambda_flattened is your list of launch rate arrays
-            launch_rate_functions = []
-            start_time = self.scen_times[0]
-            time_step_duration = self.scen_times[1] - self.scen_times[0]
-
-            if not self.baseline:
-                for rate_array in self.full_lambda_flattened:
-                    try: 
-                        if rate_array is not None:
-                            clean_rate_array = np.array(rate_array)
-                            clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
-                            clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
-
-                            ## USE INTERPOLATION
-                            # interp_func = interp1d(self.scen_times, clean_rate_array, 
-                            #                     kind='cubic', # 'linear', 'cubic'
-                            #                     bounds_error=False, 
-                            #                     fill_value=0)
-                            # launch_rate_functions.append(interp_func)
-
-                            # USE STEP FUNCTION
-                            step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-                            launch_rate_functions.append(step_func)
-                            
-                        else:
-                            # If there are no launches, create a simple lambda that always returns 0
-                            launch_rate_functions.append(lambda t: 0.0)
-                    except:
-                        launch_rate_functions.append(lambda t: 0.0)
-
+        else:    
+            # Set up progress bar
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
             
+            # Integrate with constant density
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                                        args=(launch_rate_functions, self.equations),
-                                        t_eval=self.scen_times, method=self.integrator)
+                            args=(launch_rate_functions, self.equations),
+                            t_eval=self.scen_times, method=self.integrator)
             
+            # Clean up
             self.progress_bar.close()
-            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+            self.progress_bar = None
 
+        # Check integration success
         if output.success:
             print(f"Model run completed successfully.")
         else:
             print(f"Model run failed: {output.message}")
 
-        self.output = output # Save
+        self.output = output
 
-        # Indicator Variables
-        # Evaluate non-indicator variables using states
+        # Evaluate indicator variables
         if hasattr(self, 'indicator_variables_list'):
             print("Evaluating post-processed indicator variables...")
             self.indicator_results['indicators'] = {}
 
             for i in self.indicator_variables_list:
-                # Convert the symbolic equations into a callable function
                 for indicator_var in i:
                     try:
                         simplified_eqs = sp.simplify(indicator_var.eqs)
@@ -1281,10 +1158,6 @@ class ScenarioProperties:
                     except Exception:
                         print(f"Cannot make indicator for {indicator_var}")
                         print(Exception)
-
-            # print("Indicator variables succesfully ran")
-            # print(self.indicator_results['indicators'].keys())
-
 
         return 
     
@@ -1568,8 +1441,9 @@ class ScenarioProperties:
 
             # Set up time varying density 
             self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
-                                                                                                                                       ))
+            # Use only the available dates from the density data for date mapping
+            available_dates = sorted(self.density_data.keys())
+            self.date_mapping = available_dates
             
             # This will change when jb2008 is updated
             available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
@@ -1900,7 +1774,6 @@ class ScenarioProperties:
                     raise ValueError(f"Symbol count {len(order_map)} != n_shells*n_species ({expected}).")
                 return order_map
 
-    # def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
     def population_shell(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
@@ -1917,32 +1790,14 @@ class ScenarioProperties:
         if self.progress_bar is not None and progress_bar:
             self.progress_bar.update(t - self.progress_bar.n)
 
-        # # Initialize the rate of change array
-        # dN_dt = np.zeros_like(N)
-
-        # # Iterate over each component in N
-        # for i in range(len(N)):
-        
-        #     # Compute and add the external modification rate, if applicable
-        #     # Now using np.interp to calculate the increase
-        #     if full_lambda[i] is not None:
-        #         increase = np.interp(t, times, full_lambda[i])
-        #         # If increase is nan set to 0
-        #         if np.isnan(increase) or np.isinf(increase):
-        #             increase = 0
-        #         else:
-        #             dN_dt[i] += increase
-
-        #     # Compute the intrinsic rate of change from the differential equation
-        #     dN_dt[i] += equations[i](*N)
 
         # NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
         dN_dt = np.zeros_like(N)
+
         # --- This is now much more efficient ---
         # Calculate the intrinsic rate of change from the differential equations
         # This part can be vectorized if your `equations` list is lambdified correctly
         intrinsic_rates = np.array([eq(*N) for eq in eq_funcs])
-
 
         if self.baseline:
             return intrinsic_rates
@@ -1956,59 +1811,129 @@ class ScenarioProperties:
         return dN_dt
     
 
-    def population_shell_time_varying_density(self, t, N, full_lambda, equations, times):
+    def population_shell_time_varying_density(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
         :param t: Timestep
         :param N: Population Count
-        :param full_lambda: Launch rates
-        :param equations: Equations
-        :param times: Times
-        :param density_model: Density Model
-        :param R0_km: Altitude of the shells
+        :param launch_funcs: Launch rate functions
+        :param eq_funcs: Equation functions
+        :param progress_bar: Whether to update progress bar
 
         :return: Rate of change of population
         """
-        print(f"Time: {t}")
+        # Update the progress bar
+        if self.progress_bar is not None and progress_bar:
+            self.progress_bar.update(t - self.progress_bar.n)
+
+        # print(f"Time: {t}")
         dN_dt = np.zeros_like(N)
 
         if self.time_dep_density:
             # Cache management logic for rho
-            current_t_step = int(t)
-            if current_t_step > self.prev_t:
-                rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
-                self.prev_rho = rho
-                self.prev_t = current_t_step
-            else:
-                rho = self.prev_rho  # Use cached rho
+            # For the first year (t <= 1), use a consistent density value
+            # For later years, update more frequently to capture time variations
+            
+            # Update density yearly instead of at each timestep to reduce integration instability
+            current_year = int(t)
+            
+            # Only update density if we've moved to a new year
+            if not hasattr(self, 'last_density_year') or self.last_density_year != current_year:
+                self.last_density_year = current_year
+                
+                # Calculate density for this year - cycle through available data
+                simulation_duration = self.scen_times[-1] - self.scen_times[0]
+                t_percentage = (t - self.scen_times[0]) / simulation_duration * 100
+                
+                # For simulations longer than available data, cycle through the available months
+                # Available data covers 5 months (0-100%), so cycle every 5 months
+                cycle_period = 100  # 5 months = 100% of available data
+                t_percentage = t_percentage % cycle_period
+                
+                t_percentage = max(0, min(100, t_percentage))  # Clamp to 0-100
+                
+                # Calculate density for all shells at this time
+                rho = JB2008_dens_func(t_percentage, self.R0_km.tolist(), self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+                
+                if rho is None or len(rho) == 0:
+                    raise ValueError(f"Failed to get density at t={t}, t_percentage={t_percentage}")
+                
+                # Store the density for this year
+                self.cached_rho = rho
+                print(f"Updated density for year {current_year} (t={t:.2f})")
+            
+            # Use the cached density for this year
+            rho = self.cached_rho
+            
+            # Ensure we got valid density values - no fallbacks
+            if rho is None or len(rho) == 0:
+                raise ValueError(f"JB2008 density data not available at time {t} (t_percentage={t_percentage:.2f})")
 
+            # Essential safety checks only
+            if rho is None or len(rho) == 0:
+                raise ValueError(f"Could not obtain density values at time {t}")
+            
+            # Ensure rho is a numpy array and handle any NaN/inf values
+            rho = np.array(rho)
+            if np.any(np.isnan(rho)) or np.any(np.isinf(rho)):
+                raise ValueError(f"Invalid density values (NaN/inf) at time {t}")
+            
+            
+            # No artificial clamping - use raw JB2008 data to preserve natural variations
             rho_full = np.repeat(rho, self.species_length)
-
             species_per_shell = self.species_length
 
-            # Apply drag computations
+            # Apply drag computations with time-varying density
             for i in range(len(N)):
                 shell_index = i // species_per_shell
+                
+                # Safety check for shell_index
+                if shell_index >= len(rho):
+                    shell_index = len(rho) - 1
+                if shell_index < 0:
+                    shell_index = 0
 
                 # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
-                if i < len(N) - 1:
-                    current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
-                    upper_drag = self.drag_upper_lamd[i](*N) * rho_full[shell_index + 1]
-                    dN_dt[i] += current_drag + upper_drag
-                else:
-                    current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
-                    dN_dt[i] += current_drag
-
-                # Handle incoming new species
-                if full_lambda[i] is not None:
-                    increase = np.interp(t, times, full_lambda[i])
-                    dN_dt[i] += 0 if np.isnan(increase) else increase
+                try:
+                    # Safety check for drag function availability
+                    if (hasattr(self, 'drag_cur_lamd') and hasattr(self, 'drag_upper_lamd') and 
+                        i < len(self.drag_cur_lamd) and i < len(self.drag_upper_lamd)):
+                        
+                        if i < len(N) - 1 and shell_index + 1 < len(rho):
+                            # For time-dependent density, multiply by ballistic coefficient and density
+                            species_index = i % self.species_length
+                            species_list = [species for group in self.species.values() for species in group]
+                            species = species_list[species_index]
+                            
+                            current_drag = self.drag_cur_lamd[i](*N) * species.beta * rho_full[shell_index]
+                            upper_drag = self.drag_upper_lamd[i](*N) * species.beta * rho_full[shell_index + 1]
+                            dN_dt[i] += current_drag + upper_drag
+                        else:
+                            # For time-dependent density, multiply by ballistic coefficient and density
+                            species_index = i % self.species_length
+                            species_list = [species for group in self.species.values() for species in group]
+                            species = species_list[species_index]
+                            
+                            current_drag = self.drag_cur_lamd[i](*N) * species.beta * rho_full[shell_index]
+                            dN_dt[i] += current_drag
+                except (IndexError, TypeError):
+                    # Skip drag calculation for this index
+                    pass
 
                 # Apply general equation dynamics
-                dN_dt[i] += equations[i](*N)
+                dN_dt[i] += eq_funcs[i](*N)
 
-        return dN_dt
+            if self.baseline:
+                return dN_dt
+        
+            # Calculate the launch rates at the current time 't' by calling the functions
+            launch_rates = np.array([func(t) for func in launch_funcs])
+
+            # The total rate of change is the sum
+            dN_dt = dN_dt + launch_rates        
+
+            return dN_dt
     
     def population_shell_for_OPUS(self, t, N, equations, times, launch):
         dN_dt = np.zeros_like(N)

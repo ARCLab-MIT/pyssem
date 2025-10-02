@@ -271,6 +271,49 @@ j
     
     return upper_term, current_term
 
+def drag_func_exp_time_dep(t, h, species, scen_properties):
+    """
+    Creating the symbolic variables for the drag function for time-dependent density.
+    
+    This version does NOT include the ballistic coefficient (beta), allowing it to be
+    multiplied by density during integration without double-counting.
+
+    Args:
+        t (float): Time from scenario start in years
+        species (Species): A Species Object with properties for the species
+        scen_properties (ScenProperties): A ScenarioProperties Object with properties for the scenario
+        
+    Returns:
+        tuple: (upper_term, current_term) - drag terms without ballistic coefficient
+    """
+    rvel_upper = zeros(scen_properties.n_shells, 1)
+    rvel_current = zeros(scen_properties.n_shells, 1)
+    upper_term = zeros(scen_properties.n_shells, 1)
+    current_term = zeros(scen_properties.n_shells, 1)
+
+    seconds_per_year = 365.25 * 24 * 3600
+
+    if species.drag_effected:
+        # Set up equations for the rate of change of the semi major axis, WITHOUT beta
+        for k in range(scen_properties.n_shells):            
+
+            # Check the shell is not the top shell
+            if k < scen_properties.n_shells - 1:
+                n0 = species.sym[k+1]
+                # Calculate Drag Flux (Relative Velocity) WITHOUT beta
+                rvel_upper[k] = -sqrt(scen_properties.mu * scen_properties.R0[k+1]) * seconds_per_year
+            
+            # Otherwise assume that no flux is coming down from the highest shell
+            else:
+                n0 = 0
+                rvel_upper[k] = -sqrt(scen_properties.mu * scen_properties.R0[k+1]) * seconds_per_year
+        
+            rvel_current[k] = -np.sqrt(scen_properties.mu * scen_properties.R0[k]) * seconds_per_year
+            upper_term[k] = n0 * rvel_upper[k] / scen_properties.Dhu
+            current_term[k] = rvel_current[k] / scen_properties.Dhl * species.sym[k]
+    
+    return upper_term, current_term
+
 def static_exp_dens_func(t, h, species, scen_properties):
     """
     This is a wrapper for densityexp to be used in the simulation. 
@@ -317,7 +360,7 @@ def precompute_nearest_altitudes(available_altitudes, max_query=2000, resolution
 def JB2008_dens_func(t, h, density_data, date_mapping, nearest_altitude_mapping):
     """
     Calculate density at various altitudes based on a percentage through a time range
-    using precomputed data for efficiency.
+    using precomputed data for efficiency. Corrected implementation to match MATLAB logic.
 
     :param t: Percentage of the way through the simulation (0-100).
     :param h: List of altitudes for which densities are required.
@@ -326,49 +369,57 @@ def JB2008_dens_func(t, h, density_data, date_mapping, nearest_altitude_mapping)
     :param nearest_altitude_mapping: Precomputed nearest altitude mapping.
     :return: List of densities corresponding to each altitude in h.
     """
-    num_dates = len(date_mapping)
-    t_normalized = min(max(t / 100 * (num_dates - 1), 0), num_dates - 1)
+    # Ensure t is in valid range
+    t = max(0, min(100, t))
     
-    # Find the two nearest indices and their corresponding dates
-    t_index_floor = int(np.floor(t_normalized))
-    t_index_ceil = int(np.ceil(t_normalized))
-
-    if t_index_ceil >= num_dates:
-        t_index_ceil = num_dates - 1
-
+    # Convert percentage to index in date_mapping
+    num_dates = len(date_mapping)
+    t_index = t / 100.0 * (num_dates - 1)
+    
+    # Get the two nearest dates for interpolation
+    t_index_floor = int(np.floor(t_index))
+    t_index_ceil = int(np.ceil(t_index))
+    
+    # Ensure indices are within bounds
+    t_index_floor = max(0, min(t_index_floor, num_dates - 1))
+    t_index_ceil = max(0, min(t_index_ceil, num_dates - 1))
+    
     date_floor = date_mapping[t_index_floor]
     date_ceil = date_mapping[t_index_ceil]
     
-    # Interpolation weight
+    # Calculate interpolation weight
     if t_index_floor == t_index_ceil:
-        weight = 1
+        weight = 0.0
     else:
-        weight = (t_normalized - t_index_floor) / (t_index_ceil - t_index_floor)
-
-    # Get density values for the floor and ceil dates
-    density_values_floor = []
-    density_values_ceil = []
-
+        weight = (t_index - t_index_floor) / (t_index_ceil - t_index_floor)
+    
+    # Get density values for each altitude
+    density_values = []
+    
     for alt in h:
-        query_alt = round(min(alt, max(nearest_altitude_mapping.keys())), 0) # wont index if a decimal
-        nearest_alt = nearest_altitude_mapping[query_alt]
-
+        # Find nearest altitude
+        query_alt = round(alt, 0)
+        if query_alt in nearest_altitude_mapping:
+            nearest_alt = nearest_altitude_mapping[query_alt]
+        else:
+            # Find closest altitude
+            available_alts = list(nearest_altitude_mapping.keys())
+            nearest_alt = min(available_alts, key=lambda x: abs(x - query_alt))
+            nearest_alt = nearest_altitude_mapping[nearest_alt]
+        
         try:
+            # Get density values for both dates
             density_floor = density_data[date_floor][str(nearest_alt)]
             density_ceil = density_data[date_ceil][str(nearest_alt)]
+            
+            # Interpolate between the two dates
+            density_value = density_floor * (1 - weight) + density_ceil * weight
+            density_values.append(density_value)
+            
         except KeyError as e:
             print(f"KeyError: {e} for date_floor: {date_floor}, date_ceil: {date_ceil}, nearest_alt: {nearest_alt}")
             return None
-
-        density_values_floor.append(density_floor)
-        density_values_ceil.append(density_ceil)
-
-    # Ensure that the interpolated values correctly capture the cyclical variations
-    density_values_floor = np.array(density_values_floor)
-    density_values_ceil = np.array(density_values_ceil)
     
-    density_values = density_values_floor * (1 - weight) + density_values_ceil * weight
-
     return density_values
 
 if __name__ == "__main__":
