@@ -333,10 +333,18 @@ class SEPDataExport:
         return cum
 
     def plot_cumulative_collisions_by_prefix(self) -> tuple[np.ndarray, dict]:
+        # Try new collision indicator method first
         inds = {
             n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
-            if n.endswith('aggregate_collisions') and n != 'active_aggregate_collisions'
+            if 'collisions_per_species_altitude' in n and 'per_pair' not in n
         }
+        
+        # Fallback to old method if new indicators not found
+        if not inds:
+            inds = {
+                n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
+                if n.endswith('aggregate_collisions') and n != 'active_aggregate_collisions'
+            }
         sum_by = {'N': None, 'S': None, 'B': None}
         times = None
         for name, data_dict in inds.items():
@@ -377,6 +385,30 @@ class SEPDataExport:
         out = os.path.join(self.base_path, "cumulative_collisions_by_prefix.png")
         fig.savefig(out, dpi=300)
         plt.close(fig)
+        
+        # Export CSV data
+        try:
+            # Create DataFrame with collision data
+            years = times + self.start_year
+            csv_data = {
+                'Time': times,
+                'Year': years,
+                'Total_Cumulative_Collisions': total_cum
+            }
+            
+            # Add each species prefix
+            for prefix, cumulative_data in cum_by.items():
+                if cumulative_data is not None:
+                    csv_data[f'{prefix}_Cumulative_Collisions'] = cumulative_data
+            
+            df = pd.DataFrame(csv_data)
+            csv_path = os.path.join(self.base_path, "cumulative_collisions_by_prefix.csv")
+            df.to_csv(csv_path, index=False)
+            print(f"✅ Exported cumulative collisions by prefix to {csv_path}")
+            
+        except Exception as e:
+            print(f"⚠️  Error exporting CSV for cumulative collisions by prefix: {e}")
+        
         # print(f"Saved cumulative collisions by prefix to {out}")
         return total_cum, cum_by
 
@@ -1437,12 +1469,80 @@ class SEPDataExport:
                     if n.endswith('aggregate_collisions') and n != 'active_aggregate_collisions'
                 }
             
-            if aggregate_indicators:
-                print("✅ Exported cumulative collisions by altitude")
+            if not aggregate_indicators:
+                print("⚠️  No collision indicators found for CSV export")
+                return {'status': 'no_data'}
             
-            return {'status': 'completed'}
+            # Create comprehensive collision data
+            all_collision_data = []
+            
+            for indicator_name, data_dict in aggregate_indicators.items():
+                # Extract species name
+                species = indicator_name.split('_')[0] if '_' in indicator_name else indicator_name
+                
+                # Get time steps and convert to years
+                times = np.array(list(data_dict.keys()))
+                years = times + self.start_year
+                
+                for time, year in zip(times, years):
+                    data_matrix = data_dict[time]
+                    
+                    # Handle different data shapes
+                    if hasattr(data_matrix, 'shape'):
+                        if len(data_matrix.shape) == 1:
+                            # 1D array - one value per altitude
+                            for alt_idx, collision_count in enumerate(data_matrix):
+                                if collision_count > 0:
+                                    all_collision_data.append({
+                                        'Year': year,
+                                        'Time': time,
+                                        'Species': species,
+                                        'Altitude_km': self.Hmid[alt_idx] if alt_idx < len(self.Hmid) else alt_idx,
+                                        'Altitude_Index': alt_idx,
+                                        'Collision_Count': float(collision_count),
+                                        'Indicator': indicator_name
+                                    })
+                        elif len(data_matrix.shape) == 2:
+                            # 2D array - sum across species dimension
+                            collision_totals = np.sum(data_matrix, axis=0)
+                            for alt_idx, collision_count in enumerate(collision_totals):
+                                if collision_count > 0:
+                                    all_collision_data.append({
+                                        'Year': year,
+                                        'Time': time,
+                                        'Species': species,
+                                        'Altitude_km': self.Hmid[alt_idx] if alt_idx < len(self.Hmid) else alt_idx,
+                                        'Altitude_Index': alt_idx,
+                                        'Collision_Count': float(collision_count),
+                                        'Indicator': indicator_name
+                                    })
+            
+            if all_collision_data:
+                # Create DataFrame and save to CSV
+                df = pd.DataFrame(all_collision_data)
+                csv_path = os.path.join(self.base_path, 'cumulative_collisions_by_altitude.csv')
+                df.to_csv(csv_path, index=False)
+                print(f"✅ Exported cumulative collisions by altitude to {csv_path}")
+                
+                # Also create a summary by species
+                summary_df = df.groupby(['Species', 'Altitude_km']).agg({
+                    'Collision_Count': 'sum',
+                    'Year': ['min', 'max']
+                }).round(4)
+                summary_df.columns = ['Total_Collisions', 'First_Year', 'Last_Year']
+                summary_path = os.path.join(self.base_path, 'collision_summary_by_species_altitude.csv')
+                summary_df.to_csv(summary_path)
+                print(f"✅ Exported collision summary to {summary_path}")
+                
+                return {'status': 'completed', 'files': [csv_path, summary_path], 'records': len(df)}
+            else:
+                print("⚠️  No collision data found to export")
+                return {'status': 'no_data'}
+            
         except Exception as e:
             print(f"✗ Error exporting collisions by altitude: {e}")
+            import traceback
+            traceback.print_exc()
             return {'status': 'error', 'message': str(e)}
 
     def create_3d_collision_heatmaps(self):

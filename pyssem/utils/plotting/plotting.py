@@ -30,17 +30,29 @@ class Plots:
             self.output = scenario_properties.output
         else:
             self.output = scenario_properties.scenario_properties.output
+        
+        # Ensure output has the expected attributes
+        if not hasattr(self.output, 'y') or not hasattr(self.output, 't'):
+            print(f"⚠️  Output object missing 'y' or 't' attributes. Type: {type(self.output)}")
+            if hasattr(self.output, 'keys'):
+                print(f"Available keys: {list(self.output.keys())}")
+            # Try to get the actual scenario_properties object
+            if hasattr(scenario_properties, 'scenario_properties'):
+                self.output = scenario_properties.scenario_properties.output
+                print(f"Trying scenario_properties.output: {type(self.output)}")
         # Handle both Model and ScenarioProperties objects
         if hasattr(scenario_properties, 'species_length'):
             # Direct ScenarioProperties object
             self.n_species = scenario_properties.species_length
             self.num_shells = scenario_properties.n_shells
             self.species_names = scenario_properties.species_names
+            self.scenario_properties = scenario_properties
         else:
             # For Model objects, get attributes from scenario_properties
             self.n_species = scenario_properties.scenario_properties.species_length
             self.num_shells = scenario_properties.scenario_properties.n_shells
             self.species_names = scenario_properties.scenario_properties.species_names
+            self.scenario_properties = scenario_properties.scenario_properties
         self.plots = plots
         self.simulation_name = simulation_name
         self.main_path = main_path
@@ -49,10 +61,7 @@ class Plots:
         os.makedirs(f'{self.main_path}/{self.simulation_name}', exist_ok=True)
 
         # Handle elliptical attribute access
-        if hasattr(self.scenario_properties, 'elliptical'):
-            elliptical = self.scenario_properties.elliptical
-        else:
-            elliptical = self.scenario_properties.scenario_properties.elliptical
+        elliptical = self.scenario_properties.elliptical
 
         if elliptical:
             # Use the altitude-resolved data directly
