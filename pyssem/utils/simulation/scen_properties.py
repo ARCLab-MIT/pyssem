@@ -565,13 +565,14 @@ class ScenarioProperties:
         # Collisions
         if self.elliptical:
             self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
-            self.full_coll_sink = []    # optionally initialize here
-            self.full_coll_source = []
+            # Initialize as SymPy Matrix objects for efficient matrix operations
+            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
+            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
 
             for i in self.collision_pairs:
-                # Accumulate global source/sink expressions
-                self.full_coll_sink += i.eqs_sinks
-                self.full_coll_source += i.eqs_sources
+                # Accumulate global source/sink expressions using matrix addition
+                self.full_coll_sink = self.full_coll_sink + i.eqs_sinks
+                self.full_coll_source = self.full_coll_source + i.eqs_sources
 
                 # Get indices of the two species from sym names
                 s1_idx = self.species_names.index(i.species1.sym_name)
@@ -696,13 +697,14 @@ class ScenarioProperties:
         # Collisions
         if self.elliptical:
             self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
-            self.full_coll_sink = []    # optionally initialize here
-            self.full_coll_source = []
+            # Initialize as SymPy Matrix objects for efficient matrix operations
+            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
+            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
 
             for i in self.collision_pairs:
-                # Accumulate global source/sink expressions
-                self.full_coll_sink += i.eqs_sinks
-                self.full_coll_source += i.eqs_sources
+                # Accumulate global source/sink expressions using matrix addition
+                self.full_coll_sink = self.full_coll_sink + i.eqs_sinks
+                self.full_coll_source = self.full_coll_source + i.eqs_sources
 
                 # Get indices of the two species from sym names
                 s1_idx = self.species_names.index(i.species1.sym_name)
@@ -975,12 +977,14 @@ class ScenarioProperties:
         #  This is the effective_altitude_matrix, as the population is essentially split across the shells based on their time in shell.
         # Secondly, keep track of which a e bins, for each species, are contributing to each shell. Used in the sink equations. (normalised_species_distribution_in_sma_e_space)
         #############################
-        self.effective_altitude_matrix = np.zeros((n_alt_shells, n_species))
-        normalised_species_distribution_in_sma_e_space = np.zeros((n_alt_shells, n_species, n_sma_bins, n_ecc_bins))
+        # IMPORTANT: Use self.n_shells (altitude shells) for collision calculations, not n_alt_shells
+        n_collision_shells = self.n_shells  # This is the number of altitude shells for collisions
+        self.effective_altitude_matrix = np.zeros((n_collision_shells, n_species))
+        normalised_species_distribution_in_sma_e_space = np.zeros((n_collision_shells, n_species, n_sma_bins, n_ecc_bins))
         # for each species, in each shell, trying to find the ae that contribute to those bins. 
         try:
             for species in range(n_species):
-                for alt_shell in range(n_alt_shells):
+                for alt_shell in range(n_collision_shells):
                     n_effective = 0
                     for sma in range(n_sma_bins):
                         for ecc in range(n_ecc_bins):
@@ -998,7 +1002,7 @@ class ScenarioProperties:
             print(f"Error in calculating effective altitude matrix: {e}")
             raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
         
-        total_dNdt_alt = np.zeros((n_alt_shells, n_species))
+        total_dNdt_alt = np.zeros((n_collision_shells, n_species))
         total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
 
 
@@ -1009,10 +1013,10 @@ class ScenarioProperties:
         # collision pair in altitude space 
         for term in self.collision_terms:
             dNdt_term = term.lambdified_sources(*x_flat_ordered)
-            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_alt_shells x n_species
+            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_collision_shells x n_species
 
             # multiply the growth rate for each species by the distribution of that species in a,e space
-            for shell in range(n_alt_shells):
+            for shell in range(n_collision_shells):
                 for species in range(n_species):
                     # Get the mass bin index (skip if not a debris species)
                     mass_bin = species_to_mass_bin.get(species, None)
@@ -1036,7 +1040,7 @@ class ScenarioProperties:
             dNdt_term = term.lambdified_sinks(*x_flat_ordered) # n_shells x n_species
             
             for species in range(n_species): # for each species essentially find where the fragments came from (using effective pop)
-                for shell in range(n_alt_shells):
+                for shell in range(n_collision_shells):
                     frag = dNdt_term[shell, species]
                     norm_a_e = normalised_species_distribution_in_sma_e_space[shell, species, :, :]
                     frag_sink_sma_ecc = frag * norm_a_e
