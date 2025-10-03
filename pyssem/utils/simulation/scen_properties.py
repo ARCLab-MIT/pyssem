@@ -723,13 +723,14 @@ class ScenarioProperties:
         # Collisions
         if self.elliptical:
             self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
-            self.full_coll_sink = []    # optionally initialize here
-            self.full_coll_source = []
+            # Initialize as SymPy Matrix objects for efficient matrix operations
+            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
+            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
 
             for i in self.collision_pairs:
-                # Accumulate global source/sink expressions
-                self.full_coll_sink += i.eqs_sinks
-                self.full_coll_source += i.eqs_sources
+                # Accumulate global source/sink expressions using matrix addition
+                self.full_coll_sink = self.full_coll_sink + i.eqs_sinks
+                self.full_coll_source = self.full_coll_source + i.eqs_sources
 
                 # Get indices of the two species from sym names
                 s1_idx = self.species_names.index(i.species1.sym_name)
@@ -1002,31 +1003,32 @@ class ScenarioProperties:
         #  This is the effective_altitude_matrix, as the population is essentially split across the shells based on their time in shell.
         # Secondly, keep track of which a e bins, for each species, are contributing to each shell. Used in the sink equations. (normalised_species_distribution_in_sma_e_space)
         #############################
-        # Vectorized computation of effective altitude matrix and normalized distribution
-        # time_in_shell shape: (n_alt_shells, n_ecc_bins, n_sma_bins)
-        # x_matrix       shape: (n_sma_bins, n_species, n_ecc_bins)
+        # IMPORTANT: Use self.n_shells (altitude shells) for collision calculations, not n_alt_shells
+        n_collision_shells = self.n_shells  # This is the number of altitude shells for collisions
+        self.effective_altitude_matrix = np.zeros((n_collision_shells, n_species))
+        normalised_species_distribution_in_sma_e_space = np.zeros((n_collision_shells, n_species, n_sma_bins, n_ecc_bins))
+        # for each species, in each shell, trying to find the ae that contribute to those bins. 
         try:
-            # Compute numerator contributions per (alt, species, sma, ecc)
-            # Align axes: time_in_shell (a,e,s) with x_matrix (s,p,e)
-            # Expand dims for broadcasting: T[a,e,s] -> (a,1,e,s) -> (a,1,s,e)
-            # X[s,p,e] -> (1,s,p,e)
-            # Result after multiply: (a,s,p,e)
-            contributions = time_in_shell[:, None, :, :].transpose(0, 1, 3, 2) * x_matrix[None, :, :, :]
+            for species in range(n_species):
+                for alt_shell in range(n_collision_shells):
+                    n_effective = 0
+                    for sma in range(n_sma_bins):
+                        for ecc in range(n_ecc_bins):
+                            tis = time_in_shell[alt_shell, ecc, sma]
+                            n_pop = x_matrix[sma, species, ecc]
+                            n_effective_a_e = n_pop * tis
+                            n_effective = n_effective + n_effective_a_e
+                            normalised_species_distribution_in_sma_e_space[alt_shell, species, sma, ecc] = n_effective_a_e
 
-            # Effective altitude per (alt, species): sum over sma (s) and ecc (e)
-            self.effective_altitude_matrix = contributions.sum(axis=(1, 3))  # (a,p)
-
-            # Normalized distribution per (alt, species, sma, ecc)
-            denom = self.effective_altitude_matrix  # (a,p)
-            # Avoid divide-by-zero: where denom==0, keep zeros
-            with np.errstate(divide='ignore', invalid='ignore'):
-                normalised_species_distribution_in_sma_e_space = contributions / denom[:, None, :, None]
-                normalised_species_distribution_in_sma_e_space = np.nan_to_num(normalised_species_distribution_in_sma_e_space)
+                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
+                    # convert any nans to 0
+                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = np.nan_to_num(normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :])
+                    self.effective_altitude_matrix[alt_shell, species] = n_effective
         except Exception as e:
             print(f"Error in calculating effective altitude matrix: {e}")
             raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
         
-        total_dNdt_alt = np.zeros((n_alt_shells, n_species))
+        total_dNdt_alt = np.zeros((n_collision_shells, n_species))
         total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
 
 
@@ -1037,10 +1039,10 @@ class ScenarioProperties:
         # collision pair in altitude space 
         for term in self.collision_terms:
             dNdt_term = term.lambdified_sources(*x_flat_ordered)
-            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_alt_shells x n_species
+            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_collision_shells x n_species
 
             # multiply the growth rate for each species by the distribution of that species in a,e space
-            for shell in range(n_alt_shells):
+            for shell in range(n_collision_shells):
                 for species in range(n_species):
                     # Get the mass bin index (skip if not a debris species)
                     mass_bin = species_to_mass_bin.get(species, None)
@@ -1064,7 +1066,7 @@ class ScenarioProperties:
             dNdt_term = term.lambdified_sinks(*x_flat_ordered) # n_shells x n_species
             
             for species in range(n_species): # for each species essentially find where the fragments came from (using effective pop)
-                for shell in range(n_alt_shells):
+                for shell in range(n_collision_shells):
                     frag = dNdt_term[shell, species]
                     norm_a_e = normalised_species_distribution_in_sma_e_space[shell, species, :, :]
                     frag_sink_sma_ecc = frag * norm_a_e

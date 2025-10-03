@@ -107,7 +107,6 @@ def select_elbow_k(k_list, inertia_list):
 
     idx = int(np.argmax(dists))
     return int(k_list[idx])
-
 # ---------- load & prepare ----------
 T = pd.read_csv(PATH)
 T['apogee']  = T['sma'] * (1 + T['ecc'])
@@ -303,7 +302,6 @@ try:
                 print(f"  ⬇️ saved debris elbow+clusters → {out_png}")
 except Exception as e:
     print(f"[N elbow] WARNING: {type(e).__name__}: {e}")
-
 # ---------- eccentricity bin search (N, B) ----------
 # Goal: for species N and B, find the number of eccentricity bins (1..10) and
 # binning scheme (linear vs log) that best represent the distribution of ecc.

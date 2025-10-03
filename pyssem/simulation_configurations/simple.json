@@ -1,5 +1,5 @@
 {
-  "simulation_name": "Simple-frag-spread-JB2008",
+  "simulation_name": "Simple-frag-spread",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -11,7 +11,7 @@
     "steps": 50,                            
     "min_altitude": 200,                   
     "max_altitude": 1200,                   
-    "n_shells": 10,                         
+    "n_shells": 40,                         
     "launch_function": "Constant", 
     "integrator": "BDF",                
     "density_model": "JB2008_dens_func", 
