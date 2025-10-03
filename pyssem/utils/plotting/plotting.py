@@ -72,7 +72,11 @@ class Plots:
     def total_objects_over_time_by_species(self):
         import numpy as np
         # --- Setup and filtering ---
-        species_names = list(self.scenario_properties.species_names)
+        # Handle both Model and ScenarioProperties objects for species_names access
+        if hasattr(self.scenario_properties, 'species_names'):
+            species_names = list(self.scenario_properties.species_names)
+        else:
+            species_names = list(self.scenario_properties.scenario_properties.species_names)
         selected_indices = [i for i, name in enumerate(species_names)
                             if isinstance(name, str) and name and name[0] in ('S', 'N', 'B')]
 
@@ -155,7 +159,12 @@ class Plots:
                 ax.plot(self.output.t, species_data[shell_index], label=f'Shell {shell_index + 1}')
 
             total = np.sum(species_data, axis=0)
-            ax.set_title(f'{self.scenario_properties.species_names[species_index]}')
+            # Handle both Model and ScenarioProperties objects for species_names access
+            if hasattr(self.scenario_properties, 'species_names'):
+                species_names = self.scenario_properties.species_names
+            else:
+                species_names = self.scenario_properties.scenario_properties.species_names
+            ax.set_title(f'{species_names[species_index]}')
             ax.set_xlabel('Time')
             ax.set_ylabel('Value')
 
@@ -169,7 +178,11 @@ class Plots:
         plt.close(fig)
 
         # Plot total objects over time for each species and total
-        species_names = self.scenario_properties.species_names
+        # Handle both Model and ScenarioProperties objects for species_names access
+        if hasattr(self.scenario_properties, 'species_names'):
+            species_names = self.scenario_properties.species_names
+        else:
+            species_names = self.scenario_properties.scenario_properties.species_names
         plt.figure(figsize=(10, 6))
 
         total_objects_all_species = np.zeros_like(self.output.t)
@@ -194,7 +207,11 @@ class Plots:
     def heatmaps_species(self):
         # Implementation for heatmaps_species plot
         # Plot heatmap for each species
-        n_time_points = len(self.output["t"])
+        # Handle both solve_ivp object and dictionary formats
+        if isinstance(self.output, dict):
+            n_time_points = len(self.output["times"])
+        else:
+            n_time_points = len(self.output.t)
         cols = 3
         rows = (self.n_species + cols - 1) // cols
 
@@ -208,18 +225,42 @@ class Plots:
 
             start_idx = i * self.num_shells
             end_idx = start_idx + self.num_shells
-            data_per_species = self.output["y"][start_idx:end_idx, :]
+            # Handle both solve_ivp object and dictionary formats
+            if isinstance(self.output, dict):
+                # For dictionary format, we need to reconstruct the y data from population_data
+                # This is more complex, so let's use a different approach
+                data_per_species = np.zeros((self.num_shells, n_time_points))
+                for shell_idx in range(self.num_shells):
+                    for time_idx in range(n_time_points):
+                        # Find the population data for this species and shell
+                        for pop_data in self.output["population_data"]:
+                            if pop_data["species"] == species_name and pop_data["shell"] == shell_idx + 1:
+                                data_per_species[shell_idx, time_idx] = pop_data["populations"][time_idx]
+                                break
+            else:
+                data_per_species = self.output.y[start_idx:end_idx, :]
 
+            # Get time range for extent
+            if isinstance(self.output, dict):
+                time_min, time_max = self.output["times"][0], self.output["times"][-1]
+            else:
+                time_min, time_max = self.output.t[0], self.output.t[-1]
+            
             cax = ax.imshow(data_per_species, aspect='auto', origin='lower',
-                            extent=[self.output["t"][0], self.output["t"][-1], 0, self.num_shells],
+                            extent=[time_min, time_max, 0, self.num_shells],
                             interpolation='nearest')
             fig.colorbar(cax, ax=ax, label='Number of Objects')
             ax.set_xlabel('Time')
             ax.set_ylabel('Orbital Shell')
             ax.set_title(species_name)
-            ax.set_xticks(np.linspace(self.output["t"][0], self.output["t"][-1], num=5))
+            ax.set_xticks(np.linspace(time_min, time_max, num=5))
             ax.set_yticks(np.arange(0, self.num_shells, max(1, self.num_shells // 5)))
-            ax.set_yticklabels([f'{alt:.0f}' for alt in self.scenario_properties.HMid[::max(1, self.num_shells // 5)]])
+            # Handle both Model and ScenarioProperties objects for HMid access
+            if hasattr(self.scenario_properties, 'HMid'):
+                hmid = self.scenario_properties.HMid
+            else:
+                hmid = self.scenario_properties.scenario_properties.HMid
+            ax.set_yticklabels([f'{alt:.0f}' for alt in hmid[::max(1, self.num_shells // 5)]])
 
         # Hide any unused axes
         for i in range(self.n_species, rows * cols):
@@ -344,22 +385,35 @@ class Plots:
     def total_objects_by_species_group(self):
         # Implementation for total_objects_by_species_group plot
         # Splitting by sub-group
-        self.output = self.scenario_properties.output  # self.output object from simulation
-        self.n_species = self.scenario_properties.species_length  # Number of species
-        self.num_shells = self.scenario_properties.n_shells  # Number of shells per species
-        species_names = self.scenario_properties.species_names  # List of species names
+        # Handle both Model and ScenarioProperties objects
+        if hasattr(self.scenario_properties, 'species_length'):
+            # Direct ScenarioProperties object
+            self.n_species = self.scenario_properties.species_length
+            self.num_shells = self.scenario_properties.n_shells
+            species_names = self.scenario_properties.species_names
+            self.output = self.scenario_properties.output
+        else:
+            # For Model objects, get attributes from scenario_properties
+            self.n_species = self.scenario_properties.scenario_properties.species_length
+            self.num_shells = self.scenario_properties.scenario_properties.n_shells
+            species_names = self.scenario_properties.scenario_properties.species_names
+            self.output = self.scenario_properties.scenario_properties.output
         plt.figure(figsize=(10, 6))
 
-        total_objects_all_species = np.zeros_like(self.output.t)
+        # Use the solve_ivp object directly
+        time_array = self.output.t
+
+        total_objects_all_species = np.zeros_like(time_array)
 
         # Initialize arrays for different species groups
-        total_objects_S_group = np.zeros_like(self.output.t)
-        total_objects_N_group = np.zeros_like(self.output.t)
-        total_objects_B_group = np.zeros_like(self.output.t)
+        total_objects_S_group = np.zeros_like(time_array)
+        total_objects_N_group = np.zeros_like(time_array)
+        total_objects_B_group = np.zeros_like(time_array)
 
         for i in range(self.n_species):
             start_idx = i * self.num_shells
             end_idx = start_idx + self.num_shells
+            # Use the solve_ivp object directly
             total_objects_per_species = np.sum(self.output.y[start_idx:end_idx, :], axis=0)
 
             # Check species group by name and sum accordingly
@@ -375,18 +429,18 @@ class Plots:
             total_objects_all_species += total_objects_per_species
 
         # Plot each species group in different colors
-        plt.plot(self.output.t, total_objects_S_group, label='S_ Group', color='blue', linewidth=2)
-        plt.plot(self.output.t, total_objects_N_group, label='N_ Group', color='green', linewidth=2)
-        plt.plot(self.output.t, total_objects_B_group, label='B_ Group', color='red', linewidth=2)
+        plt.plot(time_array, total_objects_S_group, label='S_ Group', color='blue', linewidth=2)
+        plt.plot(time_array, total_objects_N_group, label='N_ Group', color='green', linewidth=2)
+        plt.plot(time_array, total_objects_B_group, label='B_ Group', color='red', linewidth=2)
 
         # Plot the total number of objects for all species combined
-        plt.plot(self.output.t, total_objects_all_species, label='Total All Species', color='k', linewidth=2, linestyle='--')
+        plt.plot(time_array, total_objects_all_species, label='Total All Species', color='k', linewidth=2, linestyle='--')
 
         # Add labels, title, and legend
         plt.xlabel('Time')
         plt.ylabel('Total Number of Objects')
         plt.title('Objects Over Time for Each Species Group and Total')
-        plt.xlim(0, max(self.output.t))
+        plt.xlim(0, max(time_array))
         plt.legend()
         plt.tight_layout()
         # plt.yscale('log')
@@ -404,8 +458,14 @@ class Plots:
         indicator_dir = f'{self.main_path}/{self.simulation_name}/indicator_vars'
         os.makedirs(indicator_dir, exist_ok=True)  # Create the directory if it does not exist
 
+        # Handle both Model and ScenarioProperties objects for indicator_results access
+        if hasattr(self.scenario_properties, 'indicator_results'):
+            indicator_results = self.scenario_properties.indicator_results
+        else:
+            indicator_results = self.scenario_properties.scenario_properties.indicator_results
+        
         # Loop through all indicators in the dataset
-        for indicator_name, time_values in self.scenario_properties.indicator_results['indicators'].items():
+        for indicator_name, time_values in indicator_results['indicators'].items():
             # Extract time and indicator values
             times = np.array(list(time_values.keys()))  # Time array
             indicator_matrix = np.array([np.squeeze(values) for values in time_values.values()])  # Shape: [num_times, num_shells]

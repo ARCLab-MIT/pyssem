@@ -1180,6 +1180,37 @@ class ScenarioProperties:
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
+        ## NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
+        # Let's assume full_lambda_flattened is your list of launch rate arrays
+        launch_rate_functions = []
+        start_time = self.scen_times[0]
+        time_step_duration = self.scen_times[1] - self.scen_times[0]
+
+        if not self.baseline:
+            for rate_array in self.full_lambda_flattened:
+                try: 
+                    if rate_array is not None:
+                        clean_rate_array = np.array(rate_array)
+                        clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
+                        clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
+
+                        ## USE INTERPOLATION
+                        # interp_func = interp1d(self.scen_times, clean_rate_array, 
+                        #                     kind='cubic', # 'linear', 'cubic'
+                        #                     bounds_error=False, 
+                        #                     fill_value=0)
+                        # launch_rate_functions.append(interp_func)
+
+                        # USE STEP FUNCTION
+                        step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                        launch_rate_functions.append(step_func)
+                        
+                    else:
+                        # If there are no launches, create a simple lambda that always returns 0
+                        launch_rate_functions.append(lambda t: 0.0)
+                except:
+                    launch_rate_functions.append(lambda t: 0.0)
+
 
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
@@ -1205,50 +1236,13 @@ class ScenarioProperties:
 
             # print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
+                            args=(launch_rate_functions, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
             self.drag_cur_lamd = None
 
         else:
-
-            ## OLD
-            # output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-            #                 args=(self.full_lambda_flattened, self.equations, self.scen_times),
-            #                 t_eval=self.scen_times, method=self.integrator)
-            
-            ## NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
-            # Let's assume full_lambda_flattened is your list of launch rate arrays
-            launch_rate_functions = []
-            start_time = self.scen_times[0]
-            time_step_duration = self.scen_times[1] - self.scen_times[0]
-
-            if not self.baseline:
-                for rate_array in self.full_lambda_flattened:
-                    try: 
-                        if rate_array is not None:
-                            clean_rate_array = np.array(rate_array)
-                            clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
-                            clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
-
-                            ## USE INTERPOLATION
-                            # interp_func = interp1d(self.scen_times, clean_rate_array, 
-                            #                     kind='cubic', # 'linear', 'cubic'
-                            #                     bounds_error=False, 
-                            #                     fill_value=0)
-                            # launch_rate_functions.append(interp_func)
-
-                            # USE STEP FUNCTION
-                            step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
-                            launch_rate_functions.append(step_func)
-                            
-                        else:
-                            # If there are no launches, create a simple lambda that always returns 0
-                            launch_rate_functions.append(lambda t: 0.0)
-                    except:
-                        launch_rate_functions.append(lambda t: 0.0)
-
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
             
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
@@ -1924,34 +1918,13 @@ class ScenarioProperties:
         """
         # Update the progress bar
         if self.progress_bar is not None and progress_bar:
-            self.progress_bar.update(t - self.progress_bar.n)
+            self.progress_bar.update(t - self.progress_bar.n)\
 
-        # # Initialize the rate of change array
-        # dN_dt = np.zeros_like(N)
-
-        # # Iterate over each component in N
-        # for i in range(len(N)):
-        
-        #     # Compute and add the external modification rate, if applicable
-        #     # Now using np.interp to calculate the increase
-        #     if full_lambda[i] is not None:
-        #         increase = np.interp(t, times, full_lambda[i])
-        #         # If increase is nan set to 0
-        #         if np.isnan(increase) or np.isinf(increase):
-        #             increase = 0
-        #         else:
-        #             dN_dt[i] += increase
-
-        #     # Compute the intrinsic rate of change from the differential equation
-        #     dN_dt[i] += equations[i](*N)
-
-        # NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
         dN_dt = np.zeros_like(N)
         # --- This is now much more efficient ---
         # Calculate the intrinsic rate of change from the differential equations
         # This part can be vectorized if your `equations` list is lambdified correctly
         intrinsic_rates = np.array([eq(*N) for eq in eq_funcs])
-
 
         if self.baseline:
             return intrinsic_rates
@@ -1965,7 +1938,7 @@ class ScenarioProperties:
         return dN_dt
     
 
-    def population_shell_time_varying_density(self, t, N, full_lambda, equations, times):
+    def population_shell_time_varying_density(self, t, N, launch_funcs, equations, times):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
@@ -2010,14 +1983,16 @@ class ScenarioProperties:
                 current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
                 dN_dt[i] += current_drag
 
-            # Handle incoming new species
-            if full_lambda[i] is not None:
-                increase = np.interp(t, times, full_lambda[i])
-                dN_dt[i] += 0 if np.isnan(increase) else increase
-
             # Apply general equation dynamics
             dN_dt[i] += equations[i](*N)
 
+        if not self.baseline:
+            # Calculate the launch rates at the current time 't' by calling the functions
+            launch_rates = np.array([func(t) for func in launch_funcs])
+
+            # The total rate of change is the sum
+            dN_dt += launch_rates
+            
         return dN_dt
     
     def population_shell_for_OPUS(self, t, N, equations, times, launch):

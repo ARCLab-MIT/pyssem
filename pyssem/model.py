@@ -5,12 +5,9 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
-# if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
-# from utils.collisions.collisions_merged import create_elliptical_collision_pairs
-# from utils.collisions.collisions import create_collision_pairs
-from utils.collisions.collisions_merged import create_collision_pairs
+from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from utils.plotting.SEPDataExport import *
 from utils.plotting.EllipticalOuputsToAltitudeBins import *
@@ -227,7 +224,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_maya.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'simple.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
