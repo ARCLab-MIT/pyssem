@@ -5,22 +5,24 @@
 # from .utils.simulation.scen_properties import ScenarioProperties
 # from .utils.simulation.species import Species
 # from .utils.collisions.collisions import create_collision_pairs
+<<<<<<< HEAD
 # if testing locally, use the following import statements
 from utils.simulation.scen_properties import ScenarioProperties
 from utils.simulation.species import Species
 # from utils.collisions.collisions_merged import create_elliptical_collision_pairs
 # from utils.collisions.collisions import create_collision_pairs
 from utils.collisions.collisions_merged import create_collision_pairs
+=======
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+>>>>>>> main
 from utils.plotting.plotting import Plots, results_to_json
 from utils.plotting.SEPDataExport import *
-from utils.plotting.EllipticalOuputsToAltitudeBins import *
 from datetime import datetime
 import json
 import os
 import pickle
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 
 
 class Model:
@@ -295,4 +297,8 @@ if __name__ == "__main__":
     if plot_names:
         Plots(model, plot_names, simulation_data["simulation_name"], main_path)
     else:
+<<<<<<< HEAD
         print("No plots specified - skipping plotting phase.")
+=======
+        print("No plots specified - skipping plotting phase.")
+>>>>>>> main
