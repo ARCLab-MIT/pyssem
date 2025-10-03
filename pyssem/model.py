@@ -10,14 +10,10 @@ from utils.simulation.species import Species
 from utils.collisions.collisions import create_collision_pairs
 from utils.plotting.plotting import Plots, results_to_json
 from utils.plotting.SEPDataExport import *
-from utils.plotting.EllipticalOuputsToAltitudeBins import *
 from datetime import datetime
 import json
 import os
 import pickle
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 
 
 class Model:
@@ -224,7 +220,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'simple.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
