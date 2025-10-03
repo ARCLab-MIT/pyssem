@@ -1324,6 +1324,8 @@ class ScenarioProperties:
         # Initial Population
         x0 = self.x0.T.values.flatten()
 
+        self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
             drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
@@ -1356,8 +1358,6 @@ class ScenarioProperties:
             self.drag_cur_lamd = None
 
         else:
-            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
-
             ## OLD
             # output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
             #                 args=(self.full_lambda_flattened, self.equations, self.scen_times),
@@ -1399,8 +1399,8 @@ class ScenarioProperties:
                                         args=(launch_rate_functions, self.equations),
                                         t_eval=self.scen_times, method=self.integrator)
             
-            self.progress_bar.close()
-            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+        self.progress_bar.close()
+        self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
 
         if output.success:
             print(f"Model run completed successfully.")
@@ -2124,43 +2124,44 @@ class ScenarioProperties:
 
         :return: Rate of change of population
         """
-        print(f"Time: {t}")
+        # Update the progress bar
+        if self.progress_bar is not None:
+            self.progress_bar.update(t - self.progress_bar.n)
+
+        # Clean the derivative array
         dN_dt = np.zeros_like(N)
 
-        if self.time_dep_density:
-            # Cache management logic for rho
-            current_t_step = int(t)
-            if current_t_step > self.prev_t:
-                rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
-                self.prev_rho = rho
-                self.prev_t = current_t_step
+        # fetch time-varying density with cache management logic for rho
+        current_t_step = int(t)
+        if current_t_step > self.prev_t:
+            rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+            self.prev_rho = rho
+            self.prev_t = current_t_step
+        else:
+            rho = self.prev_rho  # Use cached rho
+
+        # Apply drag computations
+        for i in range(len(N)):
+            # get appropriate shell index, as the flattened functions iterate over every shell
+            # within a species first (rather than each species in a shell)
+            shell_index = i % self.n_shells
+
+            # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
+            if i < len(N) - 1:
+                current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
+                upper_drag = self.drag_upper_lamd[i](*N) * rho[shell_index + 1]
+                dN_dt[i] += current_drag + upper_drag
             else:
-                rho = self.prev_rho  # Use cached rho
+                current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
+                dN_dt[i] += current_drag
 
-            rho_full = np.repeat(rho, self.species_length)
+            # Handle incoming new species
+            if full_lambda[i] is not None:
+                increase = np.interp(t, times, full_lambda[i])
+                dN_dt[i] += 0 if np.isnan(increase) else increase
 
-            species_per_shell = self.species_length
-
-            # Apply drag computations
-            for i in range(len(N)):
-                shell_index = i // species_per_shell
-
-                # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
-                if i < len(N) - 1:
-                    current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
-                    upper_drag = self.drag_upper_lamd[i](*N) * rho_full[shell_index + 1]
-                    dN_dt[i] += current_drag + upper_drag
-                else:
-                    current_drag = self.drag_cur_lamd[i](*N) * rho_full[shell_index]
-                    dN_dt[i] += current_drag
-
-                # Handle incoming new species
-                if full_lambda[i] is not None:
-                    increase = np.interp(t, times, full_lambda[i])
-                    dN_dt[i] += 0 if np.isnan(increase) else increase
-
-                # Apply general equation dynamics
-                dN_dt[i] += equations[i](*N)
+            # Apply general equation dynamics
+            dN_dt[i] += equations[i](*N)
 
         return dN_dt
     
