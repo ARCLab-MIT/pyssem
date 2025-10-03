@@ -1,15 +1,17 @@
-from .utils.simulation.scen_properties import ScenarioProperties
-from .utils.simulation.species import Species
-from .utils.collisions.collisions import create_collision_pairs
-from .utils.drag.drag import calculate_orbital_lifetimes
-from .utils.plotting.plotting import results_to_json, Plots
-# if testing locally, use the following import statements
-# from utils.simulation.scen_properties import ScenarioProperties
-# from utils.simulation.species import Species
-# from utils.collisions.collisions import create_collision_pairs
-# from utils.drag.drag import calculate_orbital_lifetimes
-# from utils.plotting.plotting import results_to_json, Plots
-import numpy as np
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.plotting.plotting import create_plots, results_to_json
+# from .utils.simulation.scen_properties import ScenarioProperties
+# from .utils.simulation.species import Species
+# from .utils.collisions.collisions import create_collision_pairs
+# from .utils.drag.drag import calculate_orbital_lifetimes
+from utils.simulation.scen_properties import ScenarioProperties
+from utils.simulation.species import Species
+from utils.collisions.collisions import create_collision_pairs
+from utils.plotting.plotting import Plots, results_to_json
+from utils.drag.drag import calculate_orbital_lifetimes
+from utils.plotting.SEPDataExport import *
 from datetime import datetime
 import json
 import os
@@ -43,7 +45,8 @@ class Model:
                         n_shells, launch_function, integrator, density_model, LC, 
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
-                        indicator_variables=None, launch_scenario=None, SEP_mapping=None):
+                        indicator_variables=None, launch_scenario=None, SEP_mapping=None, 
+                        elliptical=False, eccentricity_bins=None):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -106,6 +109,8 @@ class Model:
                 indicator_variables=indicator_variables,
                 launch_scenario=launch_scenario,
                 SEP_mapping=SEP_mapping,
+                elliptical=elliptical,
+                eccentricity_bins=eccentricity_bins
             )
             
         except Exception as e:
@@ -131,10 +136,10 @@ class Model:
         try:
             species_list = Species()
             
-            species_list.add_species_from_json(species_json)
+            _, self.scenario_properties.pmd_debris_names = species_list.add_species_from_json(species_json)
 
             # Set up elliptical orbits for species
-            # species_list.set_elliptical_orbits(self.scenario_properties.n_shells, self.scenario_properties.R0_km, self.scenario_properties.HMid, self.scenario_properties.mu, self.scenario_properties.parallel_processing)
+            species_list.set_elliptical_orbits(self.scenario_properties)
             
             # Pass functions for drag and PMD
             species_list.convert_params_to_functions()
@@ -147,18 +152,21 @@ class Model:
 
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
-
+                
             # Create Collision Pairs
-            self.scenario_properties.add_collision_pairs(create_collision_pairs(self.scenario_properties))
-
+            collision_pairs = create_collision_pairs(self.scenario_properties)
+            self.scenario_properties.add_collision_pairs(collision_pairs)
+            
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 # Calculate Orbital Lifetimes if "umpy" is in the indicator variables
                 if "umpy" in self.scenario_properties.indicator_variables:
                     self.scenario_properties.species = calculate_orbital_lifetimes(self.scenario_properties)
+                self.scenario_properties.build_indicator_variables()     
 
-                self.scenario_properties.build_indicator_variables()
-
+            # Initial population of species and any launches
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+            
             return species_list
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON format for species.")
@@ -241,14 +249,19 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
-            self.scenario_properties.build_model()
-            self.scenario_properties.run_model()
-            
-            # CSI Index
-            # self.scenario_properties.cum_CSI()
+            if self.scenario_properties.elliptical:
+                self.scenario_properties.build_model_elliptical()
+                self.scenario_properties.run_model_elliptical()
+            else:
+                self.scenario_properties.build_model()
+                self.scenario_properties.run_model()
 
-            # save self as a pickle file
+            self.scenario_properties.equations = None
+            self.scenario_properties.lambdify_equations = None
+            self.scenario_properties.lambdify_launch = None
+            self.scenario_properties.collision_terms = None
+            self.scenario_properties.full_Cdot_PMD = None
+
             with open('scenario-properties-baseline.pkl', 'wb') as f:
 
                 # first remove the lambdified equations as pickle cannot serialize them
@@ -257,7 +270,7 @@ class Model:
                 self.scenario_properties.full_lambda_flattened = None
             
                 pickle.dump(self.scenario_properties, f)
-        
+
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
         
@@ -323,10 +336,11 @@ class Model:
             return results_to_json(self)
         except Exception as e:
             raise RuntimeError(f"Failed to convert results to JSON: {str(e)}")
+    
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'example-sim.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -350,24 +364,48 @@ if __name__ == "__main__":
         indicator_variables=scenario_props.get("indicator_variables", None),
         launch_scenario=scenario_props["launch_scenario"],
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
+        elliptical=scenario_props.get("elliptical", None),
+        eccentricity_bins=scenario_props.get("eccentricity_bins", None)
     )
 
     species = simulation_data["species"]
 
     species_list = model.configure_species(species)
 
-    results = model.run_model()
+    model.run_model()
 
     data = model.results_to_json()
-    # Create the figures directory if it doesn't exist
-    os.makedirs(f'figures/{simulation_data["simulation_name"]}', exist_ok=True)
+
+    # # # # Create the figures directory if it doesn't exist
+    main_path = 'figures'
+    if not os.path.exists(main_path):
+        os.makedirs(main_path)
+
+    # Create a subdirectory for the simulation name
+    os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
     # Save the results to a JSON file
-    with open(f'figures/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+    with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
         json.dump(data, f, indent=4)
 
     try:
         plot_names = simulation_data["plots"]
-        Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"])
+        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                      )
+        # SEPDataExport(model, simulation_data["simulation_name"], 
+        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+        #               )
     except Exception as e:
-        print(e)
+        import traceback
+        print(f"Error in SEPDataExport: {e}")
+        print(traceback.format_exc())
         print("No plots specified in the simulation configuration file.")
+
+    plot_names = simulation_data["plots"]
+    # Only run plots if the list is not empty
+    if plot_names:
+        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    else:
+        print("No plots specified - skipping plotting phase.")

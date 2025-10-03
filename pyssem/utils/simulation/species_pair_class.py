@@ -1,8 +1,10 @@
 from sympy import symbols, Matrix, pi, S, Expr, zeros
+# import matplotlib.pyplot as plt
 import numpy as np
 
 class SpeciesPairClass:
-    def __init__(self, species1, species2, gammas, source_sinks, scen_properties, fragsMadeDV=None):
+    def __init__(self, species1, species2, gammas, source_sinks, scen_properties, fragment_spread_totals=None, fragsMadeDV_3d=None,
+                 model_type='baseline'):
         """
         This makes the species pair class associated with a collision between species1
         and species2. It will then create equations for the collision probability modifiers
@@ -22,6 +24,8 @@ class SpeciesPairClass:
             source_sinks (list): A list of species that are either sources or sinks in the collision
             scen_properties (ScenarioProperties): The scenario properties object
         """
+        self.fragment_spread_totals = fragment_spread_totals
+        self.fragments = fragsMadeDV_3d
         if gammas.shape[1] != len(source_sinks):
             raise ValueError("Gammas and source_sinks must be the same length")
     
@@ -49,23 +53,15 @@ class SpeciesPairClass:
         M2 = species2.mass
         LC = scen_properties.LC
         
-        nf = zeros(len(scen_properties.v_imp_all), 1)
-
-        for i, dv in enumerate(scen_properties.v_imp_all):
-            if self.catastrophic[i]:
-                # number of fragments generated during a catastrophic collision (NASA standard break-up model). M is the sum of the mass of the objects colliding in kg
-                n_f_catastrophic = 0.1 * LC**(-S(1.71)) * (M1 + M2)**(S(0.75))
-                nf[i] = n_f_catastrophic
-            else:
-                # number of fragments generated during a non-catastrophic collision (improved NASA standard break-up model: takes into account the kinetic energy). M is the mass of the less massive object colliding in kg
-                n_f_damaging = 0.1 * LC**(-S(1.71)) * (min(M1, M2) * dv**2)**(S(0.75))
-                nf[i] = n_f_damaging
-
-        self.nf = nf.transpose() 
-            
         self.gammas = gammas
         self.source_sinks = source_sinks
-        self.eqs = Matrix(scen_properties.n_shells, len(all_species), lambda i, j: 0)
+        
+        if model_type == 'elliptical':
+            self.eqs_sources = Matrix(scen_properties.n_shells, len(all_species), lambda i, j: 0)
+            self.eqs_sinks = Matrix(scen_properties.n_shells, len(all_species), lambda i, j: 0)
+        else:
+            self.eqs = Matrix(scen_properties.n_shells, len(all_species), lambda i, j: 0)
+
 
         if isinstance(self.phi, (int, float, Expr)):
             phi_matrix = Matrix([self.phi] * len(gamma))
@@ -95,49 +91,69 @@ class SpeciesPairClass:
                     eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 else:  # Debris generated from collision
                     try:                         
-                        fragsMadeDVcurrentDeb = fragsMadeDV[:, i-2] # First two rows are the reduction of the species in the collision (i.e -1)
+                        # Extract fragment data for this debris species from 3D matrix
+                        fragsMadeDV_3d_current = fragsMadeDV_3d[:, i-2, :]  # Shape: (n_shells, n_shells)
 
-                        # Create the 2D fragment matrix with circular shifts
-                        fragsMade2D_list = [np.roll(fragsMadeDVcurrentDeb, shift) for shift in range(scen_properties.n_shells + 1)]
-                        fragsMade2D = np.column_stack(fragsMade2D_list)
+                        # Example of fragsMadeDV_3d_current, this is for one debris species. Eeach item is from the collision source shell and where the fragments end up. 
+                        # array([[6.11666667, 5.43333333, 0.65      , 0.21666667, 0.03333333],
+                        #     [0.5       , 5.75      , 5.75      , 0.73333333, 0.16666667],
+                        #     [0.15      , 0.63333333, 5.58333333, 5.7       , 0.71666667],
+                        #     [0.05      , 0.23333333, 0.5       , 5.78333333, 5.95      ],
+                        #     [0.01666667, 0.06666667, 0.23333333, 0.43333333, 5.86666667]])
+                        
+                        # Check if there are any non-zero fragments
+                        if np.any(fragsMadeDV_3d_current > 0):
+                            # Create symbolic equations for each destination shell
+                            eq_list = []
+                            
+                            for dest_shell in range(scen_properties.n_shells):
+                                # Sum contributions from all source shells to this destination shell
+                                source_contributions = []
+                                
+                                for source_shell in range(scen_properties.n_shells):
+                                    fragment_count = fragsMadeDV_3d_current[source_shell, dest_shell]
+                                    
+                                    if fragment_count > 0:  # Only include non-zero contributions
+                                        # Create symbolic term: collision_rate * fragment_count
+                                        # This represents: species1[source] * species2[source] * fragments_from_source_to_dest
+                                        collision_term = species1.sym[source_shell] * species2.sym[source_shell] * fragment_count
+                                        source_contributions.append(collision_term)
+                                
+                                # Sum all source contributions for this destination shell
+                                if source_contributions:
+                                    eq_list.append(sum(source_contributions))
+                                else:
+                                    eq_list.append(0)
+                            
+                            # Create the final equation matrix
+                            eq = Matrix(eq_list)
+                            
+                            # Multiply by gammas and phi to get the final collision equations
+                            eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(eq)
+                        else:
+                            # No fragments, use simple collision equation
+                            eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
 
-                        # Adjust the slicing to match MATLAB's slicing
-                        fragsMade2D = fragsMade2D[scen_properties.n_shells:, :scen_properties.n_shells]  # from N_shell:end for rows, 1:N_shell for columns
-                        fragsMade2D_sym = Matrix(fragsMade2D)
-
-                        # Use the species product matrix and repeat it for each shell, this will allow all symbolic variables to be affected across all shells
-                        rep_mat_sym = Matrix.vstack(*[product_sym for _ in range(scen_properties.n_shells)])
-
-                        # Perform element-wise multiplication
-                        sum_ = fragsMade2D_sym.multiply_elementwise(rep_mat_sym)
-                                          
-                        # Sum the columns of the multiplied_matrix
-                        sum_matrix = Matrix([sum(sum_[row, :]) for row in range(sum_.shape[0])])
-
-                        # Multiply gammas, phi, and the sum_matrix element-wise
-                        eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
-
-                        # Plotting (similar to MATLAB's imagesc)
-                        # plt.figure(100)
-                        # plt.clf()
-                        # plt.imshow(fragsMade2D, aspect='auto', interpolation='none')
-                        # plt.colorbar()
-                        # plt.title(f"{self.name} for {source_sinks[i].sym_name}", fontsize=10)
-                        # plt.gca().invert_yaxis()
-                        # plt.savefig(f"figures/frag_spread/fragsMade2D_{source_sinks[i].sym_name}.png")
-                        # print(f"eq: {eq}")
                     except Exception as e:
-                        if np.any(fragsMadeDV == 0):
+                        if np.any(fragsMadeDV_3d == 0):
                             eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                             continue
                         # print(f"Error in creating debris matrix: {e}")
+                
+                self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq
+            elif model_type == 'elliptical':
+                eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
+                if i < 2:
+                    # These are the sinks
+                    self.eqs_sinks[:, eq_index] = self.eqs_sinks[:, eq_index] + eq
+                else:
+                    # Sources:
+                    self.eqs_sources[:, eq_index] = self.eqs_sources[:, eq_index] + eq
+
             else:
                 eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 
-            for j, val in enumerate(self.nf):
-                eq = eq.subs(n_f[j], val)
-
-            self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
+                self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
             
 
     def is_catastrophic(self, mass1, mass2, vels):
@@ -165,3 +181,40 @@ class SpeciesPairClass:
         is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
 
         return is_catastrophic
+    
+    def _map_fragments_to_shells_corrected(self, fragment_distribution, n_shells, collision_shell):
+        """
+        Map fragment distribution from velocity bins to shell indices using corrected binning.
+        The collision shell is the center, and fragments spread above and below it.
+        
+        Args:
+            fragment_distribution: 1D array of fragment counts per velocity bin
+            n_shells: Number of shells
+            collision_shell: The shell where the collision occurs (center of distribution)
+            
+        Returns:
+            2D array with shape (n_shells, n_shells) representing fragment distribution
+        """
+        n_velocity_bins = len(fragment_distribution)
+        n_shells_hist = (n_velocity_bins - 1) // 2  # Middle bin index (collision shell)
+        
+        # Create shell mapping for this specific collision
+        shell_totals = np.zeros(n_shells)
+        
+        for hist_bin in range(n_velocity_bins):
+            # Map velocity bin to shell index relative to collision shell
+            shell_idx = collision_shell + (hist_bin - n_shells_hist)
+            
+            # Only include shells that are within bounds
+            if 0 <= shell_idx < n_shells:
+                shell_totals[shell_idx] = fragment_distribution[hist_bin]
+        
+        # Create 2D matrix for the species pair system
+        # Each row represents a source shell, each column represents a destination shell
+        fragsMade2D = np.zeros((n_shells, n_shells))
+        
+        # For this collision at collision_shell, distribute fragments to all shells
+        # based on the shell_totals calculated above
+        fragsMade2D[collision_shell, :] = shell_totals
+        
+        return fragsMade2D

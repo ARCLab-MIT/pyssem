@@ -1,0 +1,80 @@
+{
+  "simulation_name": "Simple-frag-spread",
+  "id": "1234567890",
+  "owner": "Indigo Brownhall",
+  "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
+  "created": "2024-01-01T12:00:00Z",
+  "modified": "2024-01-01T12:00:00Z",
+  "scenario_properties": {
+    "start_date": "01/01/2025",   
+    "simulation_duration": 50,              
+    "steps": 50,                            
+    "min_altitude": 200,                   
+    "max_altitude": 1200,                   
+    "n_shells": 40,                         
+    "launch_function": "Constant", 
+    "integrator": "BDF",                
+    "density_model": "JB2008_dens_func", 
+    "LC": 0.1,                             
+    "v_imp": 10.0,
+    "fragment_spreading": false,
+    "parallel_processing": false,
+    "baseline" : true,
+    "launch_scenario": "SEP2",
+    "indicator_variables": [
+      "collisions_per_species_altitude",
+      "collisions_per_species_altitude_per_pair"
+    ]   
+  },
+  "plots": [
+    "all_plots"
+  ],
+  "SEP_mapping": [
+      "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'S'",
+      "T.loc[(T['phase'] == 2) & (T['obj_type'] == 2) & (T['maneuverable'] == 1) & (T['const_name'].notna()), 'species_class'] = 'S'",
+      "T.loc[(T['obj_type'] >= 3) & (T['mass'] > 0.03), 'species_class'] = 'N'"
+    ],
+  "species": [
+      {
+        "sym_name": "S",
+        "Cd": 2.2,
+        "mass": 4,
+        "radius": 0.5,
+        "A": "Calculated based on radius",
+        "active": true,
+        "maneuverable": true,
+        "trackable": true,
+        "deltat": 8,
+        "Pm": 0.90,
+        "RBflag": 0,
+        "alpha": 1e-5,
+        "alpha_active": 1e-5,
+        "slotted": true, 
+        "slotting_effectiveness": 1.0,
+        "drag_effected": false,
+        "launch_func": "launch_func_null",
+        "pmd_func": "pmd_func_sat",
+        "drag_func": "drag_func_exp"     
+      },
+    {
+        "sym_name": "N",
+        "Cd": 2.2,
+        "mass": [0.0582454648526077, 148],
+        "radius": [0.05875773, 0.5],
+        "A": [0.010846257488371536, 0.035],
+        "active": false,
+        "maneuverable": false,
+        "trackable": false,
+        "deltat": null,
+        "Pm": 0,
+        "alpha": 0,
+        "alpha_active": 0,
+        "RBflag": 0,
+        "slotting_effectiveness": 1,
+        "drag_effected": true,
+        "launch_func": "launch_func_null",
+        "pmd_func": "pmd_func_derelict",
+        "drag_func": "drag_func_exp"
+    }
+  ]
+}

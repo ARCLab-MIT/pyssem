@@ -2,6 +2,7 @@ import numpy as np
 from math import pi
 from datetime import datetime
 from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d, make_interp_spline
 from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
@@ -13,6 +14,49 @@ import os
 import multiprocessing
 from collections import defaultdict
 
+class SymbolicCollisionTerm:
+    def __init__(self, s1_idx, s2_idx, eqs_sources, eqs_sinks, fragment_spread_totals):
+        self.s1_idx = s1_idx
+        self.s2_idx = s2_idx
+        self.eqs_sources = eqs_sources     # list of sympy expressions
+        self.eqs_sinks = eqs_sinks         # list of sympy expressions
+
+        # Optionally lambdify now or later
+        self.lambdified_sources = None
+        self.lambdified_sinks = None
+
+        # This is for the distribution of the fragments across a, e
+        self.fragment_spread_totals = fragment_spread_totals
+
+class StepFunction:
+    """
+    A callable object that acts as a fast, piecewise constant step function
+    for evenly spaced time series data.
+    """
+    def __init__(self, start_time, time_step_duration, rate_values):
+        self.start_time = start_time
+        self.time_step_duration = time_step_duration
+        self.rate_values = np.array(rate_values)
+        self.num_steps = len(rate_values)
+
+    def __call__(self, t):
+        """
+        This makes the object callable, e.g., func(t).
+        It finds the correct index for time 't' and returns the corresponding rate.
+        """
+        # If t is outside the defined time range, return 0
+        if t < self.start_time or t >= self.start_time + self.num_steps * self.time_step_duration:
+            return 0.0
+
+        # Calculate the index for the time step
+        # This is extremely fast because the steps are uniform.
+        index = int((t - self.start_time) / self.time_step_duration)
+        
+        # Clamp the index to be within the valid range of the array
+        index = min(index, self.num_steps - 1)
+        
+        return self.rate_values[index]
+
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
 
@@ -21,6 +65,7 @@ def parallel_lambdify(equations_flattened, all_symbolic_vars):
     from loky import get_reusable_executor
 
     # Prepare arguments for parallel processing
+    from loky import get_reusable_executor
     args = [(all_symbolic_vars, eq) for eq in equations_flattened]
     
     # Determine the number of available CPU cores
@@ -40,6 +85,7 @@ class ScenarioProperties:
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
                  fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False,
                  indicator_variables: list = None, launch_scenario: str = None, SEP_mapping: str = None,
+                 elliptical: bool = False, eccentricity_bins: list = None
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -94,6 +140,10 @@ class ScenarioProperties:
 
         # MOCAT specific parameters
         R0 = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1) # Altitude of the shells [km]
+        # semi-major-axis midpoints in meters:
+        R0_alt_km = np.linspace(self.min_altitude, self.max_altitude, self.n_shells + 1)
+        self.R0_rad_km = self.re + R0_alt_km          # length = n_shells+1
+        self.sma_HMid_km = 0.5 * (self.R0_rad_km[:-1] + self.R0_rad_km[1:]) 
         self.R0_km = R0  # Lower bound of altitude of the shells [km]
         self.HMid = R0[:-1] + np.diff(R0) / 2 # Midpoint of the shells [km]
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
@@ -115,10 +165,18 @@ class ScenarioProperties:
         self.species = []
         self.species_cells = {} #dict with S, D, N, Su, B arrays or whatever species types exist}
         self.species_names = []
+        self.debris_names = []
+        self.debris_length = 0
         self.species_length = 0
         self.all_symbolic_vars = []
+        self.pmd_debris_names = []
         
         self.collision_pairs = [] 
+
+        # Elliptical orbits
+        self.elliptical = elliptical
+        self.eccentricity_bins = eccentricity_bins
+        self.time_in_shell = None
 
         # Parameters for simulation
         self.full_Cdot_PMD = sp.Matrix([])
@@ -133,6 +191,8 @@ class ScenarioProperties:
         
         # Outputs
         self.output = None
+        self.prev_t = -1
+        self.launch = np.zeros(self.species_length * self.n_shells)
 
         # Restults
         self.results = None
@@ -209,7 +269,7 @@ class ScenarioProperties:
         if all_symbolic_vars:
             self.all_symbolic_vars = all_symbolic_vars
 
-    def add_collision_pairs(self, collision_pairs: list):
+    def add_collision_pairs(self, collision_pairs):
         """
         Adds a list of collision pairs to the overall scenario properties. 
 
@@ -218,55 +278,138 @@ class ScenarioProperties:
         """
         self.collision_pairs = collision_pairs
 
-    
     def future_launch_model(self, FLM_steps):
         """
-        This will take the FLM steps and convert them into lambda functions for each species. 
-        The code uses the np.arrays() to create the number of objects launched into each shell, for each species. These are then interpolated at simulation time. 
+        Processes FLM_steps to assign raw launch values per shell, eccentricity bin, and year to each species.
+        No interpolation is performed. Each [alt_bin][ecc_bin] entry contains a launch array or 0.
+        
+        Updates `species.lambda_funs` to be:
+            - If elliptical: list of list (n_shells × n_ecc_bins) of arrays or 0
+            - If circular:   list (n_shells) of arrays or 0
 
-        It does not return anything, but updates the species objects with the lambda functions.
-
-        :param FLM_steps: The FLM steps from the launch file
-        :type FLM_steps: pd.DataFrame
+        :param FLM_steps: DataFrame containing ['alt_bin', 'epoch_start_date', 'species', ...] 
+                        and optionally 'ecc_bin' if elliptical
         """
-        # Check for consistent time step
-        scen_times = np.array(self.scen_times)
-        if len(np.unique(np.round(np.diff(scen_times), 5))) == 1:
-            time_step = np.unique(np.round(np.diff(scen_times), 5))[0]
-        else:
-            raise ValueError("FLM to Launch Function is not set up for variable time step runs.")
+        elliptical = self.elliptical
+        n_shells = self.n_shells
 
-        for species_group in self.species.values():
-            for species in species_group:
+        if elliptical:
+            self.n_sma_bins, n_species, self.n_ecc_bins = self.x0.shape
 
-                # Extract the species columns, with altitude and time
-                if species.sym_name in FLM_steps.columns:
-                    temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+            for species_group in self.species.values():
+                for species in species_group:
+                    if species.sym_name not in FLM_steps.columns:
+                        if elliptical:
+                            # Flat list of n_shells * n_ecc_bins
+                            species.lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+                        else:
+                            species.lambda_funs = [0 for _ in range(n_shells)]
+                        continue
 
-                else:
-                    continue
+                    if elliptical:
+                        # Ensure the species column exists and is numeric (NaNs -> 0)
+                        if species.sym_name not in FLM_steps.columns:
+                            # Flat list of n_shells * n_ecc_bins with zeros
+                            species.lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
+                            continue
 
-                species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
+                        # Work on a copy; coerce to numeric and zero-fill NaNs/infs
+                        temp_df = FLM_steps.loc[:, ['alt_bin', 'ecc_bin', 'epoch_start_date', species.sym_name]].copy()
+                        temp_df[species.sym_name] = pd.to_numeric(temp_df[species.sym_name], errors='coerce')
+                        temp_df[species.sym_name] = temp_df[species.sym_name].replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
-                # Convert spec_FLM to interpolating functions (lambdadot) for each shell
-                # Remember indexing starts at 0 (40th shell is index 39)
-                species.lambda_funs = []
-                
-                if species.launch_altitude is not None:
-                    closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
+                        # Drop rows with NaN bins and cast bins to int
+                        temp_df = temp_df.dropna(subset=['alt_bin', 'ecc_bin'])
+                        temp_df['alt_bin'] = temp_df['alt_bin'].astype(int)
+                        temp_df['ecc_bin'] = temp_df['ecc_bin'].astype(int)
 
-                for shell in range(self.n_shells):
-                    y = species_FLM.loc[shell, :].values / time_step  
+                        # Sortable epoch: parse to datetime if needed
+                        if not np.issubdtype(temp_df['epoch_start_date'].dtype, np.datetime64):
+                            temp_df['epoch_start_date'] = pd.to_datetime(temp_df['epoch_start_date'], errors='coerce', utc=True)
 
-                    if species.launch_altitude is not None and shell == closest_shell:
-                        # Add the lambda_constant to each value in the array y
-                        y += species.lambda_constant
+                        # Flat list of length n_shells * n_ecc_bins
+                        lambda_funs = [0 for _ in range(n_shells * self.n_ecc_bins)]
 
-                    if np.all(y == 0):
-                        species.lambda_funs.append(None)  
+                        grouped = temp_df.groupby(['alt_bin', 'ecc_bin'], sort=True)
+                        for (shell, ecc_bin), group in grouped:
+                            group = group.sort_values('epoch_start_date')
+                            y = group[species.sym_name].to_numpy(dtype=float)
+                            y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+                            flat_index = int(shell) * self.n_ecc_bins + int(ecc_bin)
+                            lambda_funs[flat_index] = y if (y.size > 0 and np.any(y != 0.0)) else 0
+
+                        species.lambda_funs = lambda_funs
+
+                        # NaN-safe total
+                        total_count = float(np.nansum([np.nansum(entry) if isinstance(entry, np.ndarray) else 0.0
+                                                       for entry in lambda_funs]))
+                        if species.sym_name == 'B':
+                            nan_cells = sum(int(np.isnan(entry).any()) for entry in lambda_funs if isinstance(entry, np.ndarray))
+                            print(f"Species: {species.sym_name} Total Count: {total_count} (cells with NaNs: {nan_cells})")
+                        else:
+                            print(f"Species: {species.sym_name} Total Count: {total_count}")
                     else:
-                        species.lambda_funs.append(np.array(y))
+                        temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+                        species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
 
+                        lambda_funs = []
+                        if species.launch_altitude is not None:
+                            closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
+                        else:
+                            closest_shell = None
+
+                        for shell in range(n_shells):
+                            if shell in species_FLM.index:
+                                y = species_FLM.loc[shell, :].values
+                            else:
+                                y = np.zeros(len(species_FLM.columns))
+
+                            if closest_shell is not None and shell == closest_shell:
+                                y += species.lambda_constant
+
+                            lambda_funs.append(y if not np.all(y == 0) else 0)
+
+                        species.lambda_funs = lambda_funs
+
+        else: # circular orbits
+            # Check for consistent time step
+            scen_times = np.array(self.scen_times)
+            if len(np.unique(np.round(np.diff(scen_times), 5))) == 1:
+                time_step = np.unique(np.round(np.diff(scen_times), 5))[0]
+            else:
+                raise ValueError("FLM to Launch Function is not set up for variable time step runs.")
+
+            for species_group in self.species.values():
+                for species in species_group:
+
+                    # Extract the species columns, with altitude and time
+                    if species.sym_name in FLM_steps.columns:
+                        temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
+
+                    else:
+                        continue
+
+                    species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
+
+                    # Convert spec_FLM to interpolating functions (lambdadot) for each shell
+                    # Remember indexing starts at 0 (40th shell is index 39)
+                    species.lambda_funs = []
+                    
+                    if species.launch_altitude is not None:
+                        closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
+
+                    for shell in range(self.n_shells):
+                        y = species_FLM.loc[shell, :].values / time_step  
+
+                        if species.launch_altitude is not None and shell == closest_shell:
+                            # Add the lambda_constant to each value in the array y
+                            y += species.lambda_constant
+
+                        if np.all(y == 0):
+                            species.lambda_funs.append(None)  
+                        else:
+                            species.lambda_funs.append(np.array(y))
     def build_indicator_variables(self):
         """
             This will create the indicator variables for the simulation. The different indicators will be provided by the user. 
@@ -291,19 +434,39 @@ class ScenarioProperties:
                 elif indicator == "active_loss_per_shell":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = False, 
-                                                                                    per_species = False))
+                                                                                    per_species = False,
+                                                                                    per_pair = False))
                 elif indicator == "active_loss_per_shell_percentage":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
-                                                                                    per_species = False))
+                                                                                    per_species = False, 
+                                                                                    per_pair = False))
                 elif indicator == "active_loss_per_species":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = False, 
-                                                                                    per_species = True))
+                                                                                    per_species = True, 
+                                                                                    per_pair = False))
+                elif indicator == "active_loss_per_species_per_pair":
+                    self.indicator_variables_list.append(make_active_loss_per_shell(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True, 
+                                                                                    per_pair = True
+                                                                                    ))
                 elif indicator == "active_loss_per_species_percentage":
                     self.indicator_variables_list.append(make_active_loss_per_shell(self, 
                                                                                     percentage = True, 
-                                                                                    per_species = True))
+                                                                                    per_species = True, 
+                                                                                    per_pair=False))
+                elif indicator == "collisions_per_species_altitude":
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude(self, 
+                                                                                            percentage = False, 
+                                                                                            per_species = True, 
+                                                                                            per_pair = False))
+                elif indicator == "collisions_per_species_altitude_per_pair":
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude_per_pair(self, 
+                                                                                                    percentage = False, 
+                                                                                                    per_species = False, 
+                                                                                                    per_pair = True))
                 elif indicator == "umpy":
                     self.indicator_variables_list.append(make_umpy_indicator(self,
                                                                              X=4
@@ -473,42 +636,11 @@ class ScenarioProperties:
         self.FLM_steps = FLM_steps
 
         # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
+        # x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
         if not baseline:
             self.future_launch_model(FLM_steps)
-
-    def initial_pop_and_launch2(self, baseline=False):
-        """
-        Generate the initial population and the launch rates. 
-        The Launch File path should be within the launch/data folder, however, it is not, then download it from Google Drive.
-        
-        Returns: None
-        """
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
-
-        # Check to see if the data folder exists, if not, create it
-        if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
-            os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
-
-        # Check to see if launch_file_path exists
-        if not os.path.exists(launch_file_path):
-            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
-        
-        print('Using launch file:', launch_file_path)
-
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
-
-        # Store as part of the class, as it is needed for the run_model()
-        self.x0 = x0
-        self.FLM_steps = FLM_steps
-
-        # Export x0 to csv
-        x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
-
-        if not baseline:
-            self.future_launch_model(FLM_steps)
-            
+    
     def build_model(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
@@ -547,11 +679,288 @@ class ScenarioProperties:
                 continue
         
         # Collisions
+        if self.elliptical:
+            self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
+            # Initialize as Sympy matrices to support + operator
+            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
+            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
+
+            # Determine debris insertion range
+            debris_species = [spc for spc in self.species['debris']]
+            if len(debris_species) > 0:
+                first_deb_name = debris_species[0].sym_name
+                deb_start_idx = next((j for j, spc in enumerate([spc for grp in self.species.values() for spc in grp])
+                                      if spc.sym_name == first_deb_name), None)
+                deb_len = len(debris_species)
+            else:
+                deb_start_idx, deb_len = None, 0
+
+            for cp in self.collision_pairs:
+                # indices of the two active species
+                s1_idx = self.species_names.index(cp.species1.sym_name)
+                s2_idx = self.species_names.index(cp.species2.sym_name)
+
+                # cp.eqs is an (n_shells x species_length) matrix
+                eqs = cp.eqs
+
+                # Build sinks matrix with contributions only in active species columns
+                sinks = sp.zeros(self.n_shells, self.species_length)
+                sinks[:, s1_idx] = eqs[:, s1_idx]
+                sinks[:, s2_idx] = eqs[:, s2_idx]
+
+                # Build sources matrix in debris columns
+                sources = sp.zeros(self.n_shells, self.species_length)
+                if deb_len > 0 and deb_start_idx is not None:
+                    sources[:, deb_start_idx:deb_start_idx + deb_len] = eqs[:, deb_start_idx:deb_start_idx + deb_len]
+
+                # Accumulate
+                self.full_coll_sink = self.full_coll_sink + sinks
+                self.full_coll_source = self.full_coll_source + sources
+
+                # Store term for RHS use
+                term = SymbolicCollisionTerm(
+                    s1_idx=s1_idx,
+                    s2_idx=s2_idx,
+                    eqs_sources=sources,
+                    eqs_sinks=sinks,
+                    fragment_spread_totals=getattr(cp, 'fragments_sd', None)
+                )
+                self.collision_terms.append(term)
+
+            self.equations = self.full_Cdot_PMD
+        else:
+            for i in self.collision_pairs:
+                self.full_coll += i.eqs
+
+            self.equations = sp.zeros(self.n_shells, self.species_length)      
+            self.equations = self.full_Cdot_PMD + self.full_coll
+
+
+        # Recalculate objects based on density, as this is time varying 
+        if not self.time_dep_density: 
+            # Take the shell altitudes, this will be n_shells + 1
+            rho = self.density_model(0, self.R0_km, self.species, self)
+            rho_reshape = rho.reshape(-1, 1) # Convert to column vector
+            rho_mat = np.tile(rho_reshape, (1, self.species_length)) 
+            rho_mat = sp.Matrix(rho_mat)
+            
+            # Second to last row
+            upper_rho = rho_mat[1:, :]
+            
+            # First to penultimate row (mimics rho_mat(1:end-1, :))
+            current_rho = rho_mat[:-1, :]
+
+            drag_upper_with_density = self.drag_term_upper.multiply_elementwise(upper_rho)
+            drag_cur_with_density = self.drag_term_cur.multiply_elementwise(current_rho)
+            self.full_drag = drag_upper_with_density + drag_cur_with_density
+            self.equations += self.full_drag
+            self.sym_drag = True 
+
+        # Make Integrated Indicator Variables if passed
+        if hasattr(self, 'integrated_indicator_var_list'):
+            integrated_indicator_var_list = self.integrated_indicator_var_list
+            for ind_var in integrated_indicator_var_list:
+                if not ind_var.eqs:
+                    ind_var = self.make_indicator_eqs(ind_var)
+
+            self.num_integrated_indicator_vars = 0
+            end_indicator_idxs = len(self.xdot_eqs)
+
+            for ind_var in integrated_indicator_var_list:
+                num_add_indicator_vars = len(ind_var.eqs)
+                self.num_integrated_indicator_vars += num_add_indicator_vars
+
+                start_indicator_idxs = end_indicator_idxs + 1
+                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
+                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
+
+                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
+
+            if not self.sym_lambda:
+                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
+                self.full_lambda.extend(indicator_pad)
+
+        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
+                
+        # Dont add drag if time dependent density, this will be added during integration due to time dependent density
+        if self.time_dep_density:
+            self.full_drag = self.drag_term_upper + self.drag_term_cur
+
+        # Lambdify the equations to be used for Scipy integration
+        # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        if self.baseline:
+            self.store_equations = self.equations
+            self.equations = self.lambdify_equations()
+        else:
+            self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
+            
+        return
+
+
+    def build_model_elliptical(self):
+        """
+        Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
+
+        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species, launch, pmd, drag and collisions equations
+        and add them shape them into a matrix of symbolic expressions. 
+
+        :return: None
+        """
+        t = sp.symbols('t')
+
+        species_list = [species for group in self.species.values() for species in group]
+        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
+        self.full_lambda = []
+        self.full_coll = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
+
+        # Equations are going to be a matrix of symbolic expressions
+        # Each row corresponds to a shell, and each column corresponds to a species
+        for i, species in enumerate(species_list):
+
+            lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+            self.full_lambda.append(lambda_expr)
+
+            # Post mission Disposal
+            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
+            self.full_Cdot_PMD[:, i] = Cdot_PMD
+
+            # Drag
+            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
+            try:
+                self.drag_term_upper[:, i] = upper_term
+                self.drag_term_cur[:, i] = current_term
+            except:
+                continue
+        
+        # Collisions
+        if self.elliptical:
+            self.collision_terms = []   # flat list of SymbolicCollisionTerm objects
+            # Initialize as SymPy Matrix objects for efficient matrix operations
+            self.full_coll_sink = sp.zeros(self.n_shells, self.species_length)
+            self.full_coll_source = sp.zeros(self.n_shells, self.species_length)
+
+            for i in self.collision_pairs:
+                # Accumulate global source/sink expressions using matrix addition
+                self.full_coll_sink = self.full_coll_sink + i.eqs_sinks
+                self.full_coll_source = self.full_coll_source + i.eqs_sources
+
+                # Get indices of the two species from sym names
+                s1_idx = self.species_names.index(i.species1.sym_name)
+                s2_idx = self.species_names.index(i.species2.sym_name)
+
+                # Create and store the symbolic collision term
+                term = SymbolicCollisionTerm(
+                    s1_idx=s1_idx,
+                    s2_idx=s2_idx,
+                    eqs_sources=i.eqs_sources,
+                    eqs_sinks=i.eqs_sinks, 
+                    fragment_spread_totals=i.fragment_spread_totals
+                )
+
+                self.collision_terms.append(term)
+
+            self.equations = self.full_Cdot_PMD
+        else:
+            for i in self.collision_pairs:
+                self.full_coll += i.eqs
+
+            self.equations = sp.zeros(self.n_shells, self.species_length)      
+            self.equations = self.full_Cdot_PMD + self.full_coll
+
+        # Make Integrated Indicator Variables if passed
+        if hasattr(self, 'integrated_indicator_var_list'):
+            integrated_indicator_var_list = self.integrated_indicator_var_list
+            for ind_var in integrated_indicator_var_list:
+                if not ind_var.eqs:
+                    ind_var = self.make_indicator_eqs(ind_var)
+
+            self.num_integrated_indicator_vars = 0
+            end_indicator_idxs = len(self.xdot_eqs)
+
+            for ind_var in integrated_indicator_var_list:
+                num_add_indicator_vars = len(ind_var.eqs)
+                self.num_integrated_indicator_vars += num_add_indicator_vars
+
+                start_indicator_idxs = end_indicator_idxs + 1
+                end_indicator_idxs = start_indicator_idxs + num_add_indicator_vars - 1
+                ind_var.indicator_idxs = list(range(start_indicator_idxs, end_indicator_idxs + 1))
+
+                self.xdot_eqs = sp.Matrix.vstack(self.xdot_eqs, sp.Matrix(ind_var.eqs))
+
+            if not self.sym_lambda:
+                indicator_pad = [lambda x, t: 0] * self.num_integrated_indicator_vars
+                self.full_lambda.extend(indicator_pad)
+
+        # Non Integrated Indicator Variables should already be compiled - so just used in run_model()
+                
+        # Dont add drag if time dependent density, this will be added during integration due to time dependent density
+        if self.time_dep_density:
+            self.full_drag = self.drag_term_upper + self.drag_term_cur
+
+        # Lambdify the equations to be used for Scipy integration
+        # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+
+        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch_elliptical()
+            
+        return
+
+    def build_sym_model(self):
+        """
+        Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
+
+        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species, launch, pmd, drag and collisions equations
+        and add them shape them into a matrix of symbolic expressions. 
+
+        :return: None
+        """
+        t = sp.symbols('t')
+
+        species_list = [species for group in self.species.values() for species in group]
+        self.full_Cdot_PMD = sp.zeros(self.n_shells, self.species_length)
+        # self.full_lambda = []
+        self.full_lambda = sp.zeros(self.n_shells, self.species_length)
+        self.full_coll = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_upper = sp.zeros(self.n_shells, self.species_length)
+        self.drag_term_cur = sp.zeros(self.n_shells, self.species_length)
+        self.full_control = sp.zeros(self.n_shells, self.species_length)
+
+        # Equations are going to be a matrix of symbolic expressions
+        # Each row corresponds to a shell, and each column corresponds to a species
+        for i, species in enumerate(species_list):
+
+            # lambda_expr = species.launch_func(self.scen_times, self.HMid, species, self)
+            # self.full_lambda.append(lambda_expr)
+            lambda_expr = species.launch_func(t, self.HMid, species, self)
+            self.full_lambda[:, i] = lambda_expr
+
+            # Post mission Disposal
+            Cdot_PMD = species.pmd_func(t, self.HMid, species, self)
+            self.full_Cdot_PMD[:, i] = Cdot_PMD
+
+            # Control
+            U = species.control_func(t, self.HMid, species, self)
+            self.full_control[:, i] = U
+
+            # Drag
+            [upper_term, current_term] = species.drag_func(t, self.HMid, species, self)
+            try:
+                self.drag_term_upper[:, i] = upper_term
+                self.drag_term_cur[:, i] = current_term
+            except:
+                continue
+        
+        # Collisions
         for i in self.collision_pairs:
             self.full_coll += i.eqs
 
         self.equations = sp.zeros(self.n_shells, self.species_length)      
-        self.equations = self.full_Cdot_PMD + self.full_coll
+        # self.equations = self.full_Cdot_PMD + self.full_coll
+        self.equations = self.full_Cdot_PMD + self.full_coll + self.full_lambda + self.full_control
 
         # Recalculate objects based on density, as this is time varying 
         if not self.time_dep_density: 
@@ -627,11 +1036,11 @@ class ScenarioProperties:
             self.full_drag = self.drag_term_upper + self.drag_term_cur
 
         # Lambdify the equations to be used for Scipy integration
-        collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
-        self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
+        # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
+        # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
         self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
-  
+
         return
     
     def lambdify_equations(self):
@@ -650,31 +1059,232 @@ class ScenarioProperties:
             equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
 
         return equations
-
-    def lambdify_launch(self, full_lambda=None):
-        """ 
-            Convert the Numpy launch rates to Scipy lambdified functions for integration.
-        
+    
+    def sma_ecc_mat_to_altitude_mat(self, population_matrix_sma_ecc):
         """
-        # Launch rates
-        full_lambda_flattened = []
+        Convert (sma, species, ecc) -> (alt, species), zeroing cells whose perigee altitude < 150 km.
+        population_matrix_sma_ecc shape: (n_sma_bins, n_species, n_ecc_bins)
+        time_in_shell shape:              (n_alt_shells, n_ecc_bins, n_sma_bins)
+        """
+        import numpy as np
 
-        if full_lambda is None:
-            for i in range(len(self.full_lambda)):
-                if self.full_lambda[i] is not None:
-                    full_lambda_flattened.extend(self.full_lambda[i])
-                else:
-                    # Append None to the list, length of scenario_properties.n_shells
-                    full_lambda_flattened.extend([None]*self.n_shells)
-        else:
-            for i in range(len(full_lambda)):
-                if full_lambda[i] is not None:
-                    full_lambda_flattened.extend(full_lambda[i])
-                else:
-                    # Append None to the list, length of scenario_properties.n_shells
-                    full_lambda_flattened.extend([None]*self.n_shells)
+        n_sma, n_species, n_ecc = population_matrix_sma_ecc.shape
+        assert n_sma == self.n_sma_bins and n_species == self.species_length and n_ecc == self.n_ecc_bins
 
-        return full_lambda_flattened
+        # --- Midpoints (fallback to scenario_properties if attributes live there) ---
+        try:
+            ecc_mid = np.asarray(self.binE_ecc_mid_point, dtype=float)   # (n_ecc,)
+            sma_mid = np.asarray(self.sma_HMid_km, dtype=float)          # (n_sma,)
+        except AttributeError:
+            ecc_mid = np.asarray(self.scenario_properties.binE_ecc_mid_point, dtype=float)
+            sma_mid = np.asarray(self.scenario_properties.sma_HMid_km, dtype=float)
+
+        # --- Perigee filter: keep only a(1-e) > R_earth + 150 km ---
+        R_earth_km = getattr(
+            self, "R_earth_km",
+            getattr(getattr(self, "scenario_properties", self), "R_earth_km", 6378.137)
+        )
+        perigee_altitude_threshold_km = 150.0
+
+        # Grid of (a,e) to compute r_p = a(1-e)
+        A_km, E = np.meshgrid(sma_mid, ecc_mid, indexing="ij")      # both (n_sma, n_ecc)
+        rp_km = A_km * (1.0 - E)
+        keep_mask = rp_km > (R_earth_km + perigee_altitude_threshold_km)  # True => keep
+
+        # Zero out decaying cells across all species
+        pop_filtered = population_matrix_sma_ecc * keep_mask[:, None, :]  # (n_sma, n_species, n_ecc)
+
+        # --- Map to altitude via time-in-shell weights ---
+        # time_in_shell: (alt, ecc, sma); pop_filtered: (sma, species, ecc)
+        # Result: (alt, species)
+        effective_altitude = np.einsum("aes, spe -> ap", self.time_in_shell, pop_filtered, optimize=True)
+
+        self.effective_altitude_matrix = effective_altitude
+        return effective_altitude
+    
+    def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
+                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe,
+                      drag_affected_bool, all_species_list, progress_bar=True):
+
+        # dt = years * (t - self.t_0)
+        # self.t_0 = t
+        if self.progress_bar is not None and progress_bar:
+            self.progress_bar.update(t - self.progress_bar.n)
+        #############################
+        # Reshape the population (3d) into sma, species, ecc
+        #############################
+        x_matrix = x_flat.reshape((n_sma_bins, n_species, n_ecc_bins))  # shape: (sma_shells, species, ecc)
+        time_in_shell = self.time_in_shell  # shape: (alt_shells, sma_shells, ecc)
+
+        #############################
+        # We need to loop over each species, then for each sma and ecc pairing, calculate the number of objects in each altitude bin. 
+        #  This is the effective_altitude_matrix, as the population is essentially split across the shells based on their time in shell.
+        # Secondly, keep track of which a e bins, for each species, are contributing to each shell. Used in the sink equations. (normalised_species_distribution_in_sma_e_space)
+        #############################
+        # IMPORTANT: Use self.n_shells (altitude shells) for collision calculations, not n_alt_shells
+        n_collision_shells = self.n_shells  # This is the number of altitude shells for collisions
+        self.effective_altitude_matrix = np.zeros((n_collision_shells, n_species))
+        normalised_species_distribution_in_sma_e_space = np.zeros((n_collision_shells, n_species, n_sma_bins, n_ecc_bins))
+        # for each species, in each shell, trying to find the ae that contribute to those bins. 
+        try:
+            for species in range(n_species):
+                for alt_shell in range(n_collision_shells):
+                    n_effective = 0
+                    for sma in range(n_sma_bins):
+                        for ecc in range(n_ecc_bins):
+                            tis = time_in_shell[alt_shell, ecc, sma]
+                            n_pop = x_matrix[sma, species, ecc]
+                            n_effective_a_e = n_pop * tis
+                            n_effective = n_effective + n_effective_a_e
+                            normalised_species_distribution_in_sma_e_space[alt_shell, species, sma, ecc] = n_effective_a_e
+
+                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
+                    # convert any nans to 0
+                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = np.nan_to_num(normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :])
+                    self.effective_altitude_matrix[alt_shell, species] = n_effective
+        except Exception as e:
+            print(f"Error in calculating effective altitude matrix: {e}")
+            raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
+        
+        total_dNdt_alt = np.zeros((n_collision_shells, n_species))
+        total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
+
+
+        # # #############################
+        # # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
+        # # # #############################    
+        x_flat_ordered = self.effective_altitude_matrix.flatten()
+        # collision pair in altitude space 
+        for term in self.collision_terms:
+            dNdt_term = term.lambdified_sources(*x_flat_ordered)
+            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_collision_shells x n_species
+
+            # multiply the growth rate for each species by the distribution of that species in a,e space
+            for shell in range(n_collision_shells):
+                for species in range(n_species):
+                    # Get the mass bin index (skip if not a debris species)
+                    mass_bin = species_to_mass_bin.get(species, None)
+                    if mass_bin is None:
+                        # Add this slice to total_dNdt_sma_ecc as zeros - as no growth fragments
+                        continue
+
+                    sma_ecc_distribution = term.spread_distribution[shell, mass_bin, :, :] # this should be to equal to on
+                    species_frag = total_dNdt_alt[shell, species] # get the column of the debris species
+                    if np.sum(sma_ecc_distribution) == 0 and np.sum(species_frag) != 0:
+                        print("fragments made but no distribution in sma_ecc space")
+                    frag_spread_sma_ecc = species_frag * sma_ecc_distribution
+                    total_dNdt_sma_ecc_sources[:, species, :] = total_dNdt_sma_ecc_sources[:, species, :] + frag_spread_sma_ecc
+
+        #############################
+        # Now we need to calculate the sink equations, which are the same as the source equations
+        # but multiplied by the time in shell.
+        #############################
+        dNdt_sink_sma_ecc = np.zeros((n_sma_bins, n_species, n_ecc_bins)) 
+        for term in self.collision_terms: # for each species pair
+            dNdt_term = term.lambdified_sinks(*x_flat_ordered) # n_shells x n_species
+            
+            for species in range(n_species): # for each species essentially find where the fragments came from (using effective pop)
+                for shell in range(n_collision_shells):
+                    frag = dNdt_term[shell, species]
+                    norm_a_e = normalised_species_distribution_in_sma_e_space[shell, species, :, :]
+                    frag_sink_sma_ecc = frag * norm_a_e
+                    dNdt_sink_sma_ecc[:, species, :] = dNdt_sink_sma_ecc[:, species, :] + frag_sink_sma_ecc
+                    # if frag_sink_sma_ecc has any nans stop
+                    if np.isnan(dNdt_sink_sma_ecc).any():
+                        raise ValueError(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
+            
+        output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
+
+        # so we no have the change of the points, we need to multiply each species sma and ecc by this matrix of change
+        # Loop over species and compute finite-difference transport using rates (no dt)
+        dN_all_species = np.zeros_like(x_matrix) 
+        for species in range(n_species):
+            # Only apply to species that are not drag affected
+            if drag_affected_bool[species] is False:
+                continue 
+
+            adot = adot_all_species[species]
+            edot = edot_all_species[species]
+
+            N_sma_ecc = x_matrix[:, species, :]
+            dN = np.zeros_like(N_sma_ecc)
+
+            for sma in range(n_sma_bins - 1, -1, -1):
+                for ecc in range(n_ecc_bins - 1, -1, -1):
+                    Nrc = N_sma_ecc[sma, ecc]
+                    out_a = Nrc * adot[sma, ecc] / Δa #* dt
+                    out_e = Nrc * edot[sma, ecc] / Δe #* dt
+
+                    total_out = out_a + out_e
+                    if abs(total_out) > Nrc and Nrc > 0:
+                        factor = Nrc / abs(total_out)
+                        out_a *= factor
+                        out_e *= factor
+                    elif Nrc == 0:
+                        out_a = 0
+                        out_e = 0
+
+                    dN[sma, ecc] += out_a + out_e
+                    if sma > 0: dN[sma - 1, ecc] -= out_a
+                    if ecc > 0: dN[sma, ecc - 1] -= out_e
+
+            dN_all_species[:, species, :] = dN
+            
+        # self.t_0 = t # update global variable 
+        dN_all_species = dN_all_species + output
+
+        # #############################
+        # # Post Mission Disposal of Existing Population, this should be from the circular population of x_flat
+        # #############################
+
+        # First loop through the species and do their sinks
+        pmd = np.zeros_like(dN_all_species)
+        for species in range(n_species):
+            # remove the total number of satellites based on deltat
+            if all_species_list[species].active == True:
+                for sma in range(n_sma_bins):
+                    for ecc in range(n_ecc_bins):
+                        pmd[sma, species, ecc] -= (1/ all_species_list[species].deltat) * x_matrix[sma, species, ecc]
+
+            # Then gain the number of derelicts based on deltat
+            if not all_species_list[species].active:
+                if all_species_list[species].pmd_linked_species:
+                    linked_sym = all_species_list[species].pmd_linked_species[0].sym_name
+                    linked_idx = next(i for i, sp in enumerate(all_species_list)
+                                    if sp.sym_name == linked_sym)
+
+                    Pm      = all_species_list[linked_idx].Pm
+                    dt_link = all_species_list[linked_idx].deltat
+                    fail_rate = (1.0 - Pm) / dt_link
+
+                    for sma in range(n_sma_bins):
+                        for ecc in range(n_ecc_bins):
+                            pop_linked = x_matrix[sma, linked_idx, ecc]
+                            pmd[sma, species, ecc] += fail_rate * pop_linked
+
+        dN_all_species += pmd
+             
+        ############################
+        # Add the change in population due to launches
+        ############################    
+        if launch_funcs is not None and self.baseline is False:
+            for sma in range(n_sma_bins):
+                for species in range(n_species):
+                    for ecc in range(n_ecc_bins):
+                        func = launch_funcs[sma, species, ecc]
+                        if func is not None:
+                            try:
+                                launch = func(t)
+                                dN_all_species[sma, species, ecc] += launch
+                            except Exception as e:
+                                raise RuntimeError(
+                                    f"Failed evaluating launch_func at [sma={sma}, species={species}, ecc={ecc}]: {e}"
+                                )
+
+        
+        # print(f"Amount removed due to PMD: {np.sum(val)} Amount added due to launches: {np.sum(launch_rates)}")
+        # print(t)
+        return dN_all_species.flatten()
     
     def run_model(self):
         """
@@ -690,6 +1300,37 @@ class ScenarioProperties:
         
         # Initial Population
         x0 = self.x0.T.values.flatten()
+        ## NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
+        # Let's assume full_lambda_flattened is your list of launch rate arrays
+        launch_rate_functions = []
+        start_time = self.scen_times[0]
+        time_step_duration = self.scen_times[1] - self.scen_times[0]
+
+        if not self.baseline:
+            for rate_array in self.full_lambda_flattened:
+                try: 
+                    if rate_array is not None:
+                        clean_rate_array = np.array(rate_array)
+                        clean_rate_array[np.isnan(clean_rate_array)] = 0 # Replace any NaN values with 0.
+                        clean_rate_array[np.isinf(clean_rate_array)] = 0 # Replace any infinity values (positive or negative) with 0.
+
+                        ## USE INTERPOLATION
+                        # interp_func = interp1d(self.scen_times, clean_rate_array, 
+                        #                     kind='cubic', # 'linear', 'cubic'
+                        #                     bounds_error=False, 
+                        #                     fill_value=0)
+                        # launch_rate_functions.append(interp_func)
+
+                        # USE STEP FUNCTION
+                        step_func = StepFunction(start_time, time_step_duration, clean_rate_array)
+                        launch_rate_functions.append(step_func)
+                        
+                    else:
+                        # If there are no launches, create a simple lambda that always returns 0
+                        launch_rate_functions.append(lambda t: 0.0)
+                except:
+                    launch_rate_functions.append(lambda t: 0.0)
+
 
         if self.time_dep_density:
             # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
@@ -713,10 +1354,9 @@ class ScenarioProperties:
             self.prev_t = -1  # Initialize to an invalid time
             self.prev_rho = None
 
-
-            print("Integrating equations...")
+            # print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
+                            args=(launch_rate_functions, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
             self.drag_upper_lamd = None
@@ -724,10 +1364,10 @@ class ScenarioProperties:
 
         else:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
-
+            
             output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
-                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
-                            t_eval=self.scen_times, method=self.integrator)
+                                        args=(launch_rate_functions, self.equations),
+                                        t_eval=self.scen_times, method=self.integrator)
             
             self.progress_bar.close()
             self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
@@ -748,19 +1388,26 @@ class ScenarioProperties:
             for i in self.indicator_variables_list:
                 # Convert the symbolic equations into a callable function
                 for indicator_var in i:
-                    simplified_eqs = sp.simplify(indicator_var.eqs)
-                    indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
-                    evaluated_indicator_dict = {}
+                    try:
+                        simplified_eqs = sp.simplify(indicator_var.eqs)
+                        indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+                        evaluated_indicator_dict = {}
 
-                    # Iterate over states (rows in y) and corresponding time steps (t)
-                    for state, t in zip(self.output.y.T, self.output.t):
-                        # Evaluate the indicator function for the current state
-                        evaluated_value = indicator_fun(*state)
-                        # Store the result in the dictionary with the corresponding time step
-                        evaluated_indicator_dict[t] = evaluated_value
+                        # Iterate over states (rows in y) and corresponding time steps (t)
+                        for state, t in zip(self.output.y.T, self.output.t):
+                            # Evaluate the indicator function for the current state
+                            evaluated_value = indicator_fun(*state)
+                            # Store the result in the dictionary with the corresponding time step
+                            evaluated_indicator_dict[t] = evaluated_value
 
-                    # Store the results for this indicator in the results dictionary
-                    self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+                        # Store the results for this indicator in the results dictionary
+                        self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+                    except Exception:
+                        print(f"Cannot make indicator for {indicator_var}")
+                        print(Exception)
+
+            # print("Indicator variables succesfully ran")
+            # print(self.indicator_results['indicators'].keys())
 
 
         return 
@@ -862,63 +1509,50 @@ class ScenarioProperties:
 
         :return: Rate of change of population
         """
-        print(f"Time: {t}")
-        dN_dt = np.zeros_like(N)
-
-        if self.time_dep_density:
-            # Cache management logic for rho
-            current_t_step = int(t)
-            if current_t_step > self.prev_t:
-                rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
-                self.prev_rho = rho
-                self.prev_t = current_t_step
-            else:
-                rho = self.prev_rho  # Use cached rho
-
-            species_per_shell = self.species_length
-
-            # Apply drag computations
-            for i in range(len(N)):
-                shell_index = i // species_per_shell
-
-                shell_rho = rho[shell_index]  # use directly
-
-                # Apply drag
-                current_drag = self.drag_cur_lamd[i](*N) * shell_rho
-                dN_dt[i] += current_drag
-
-                if shell_index < (self.n_shells - 1):
-                    upper_rho = rho[shell_index + 1]
-                    upper_drag = self.drag_upper_lamd[i](*N) * upper_rho
-                    dN_dt[i] += upper_drag
-
-                # Incoming new species
-                if full_lambda[i] is not None:
-                    increase = np.interp(t, times, full_lambda[i])
-                    dN_dt[i] += 0 if np.isnan(increase) else increase
-
-                # General dynamics
-                dN_dt[i] += equations[i](*N)
-
-        return dN_dt
-    
-    def population_shell(self, t, N, full_lambda, equations, times, progress_bar=True):
-        """
-        Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
-
-        :param t: Timestep (int)
-        :param N: Population Count (Flattened array of species and shells)
-        :param full_lambda: Launch rates (Flattened np.array of species and shells)
-        :param equations: Equations (Lambdified sympy functions for each species and shell)
-        :param times: Times (Times for the simulation, usually years)
-
-        :return: Rate of change of population at the given timestep, t. 
-        """
         # Update the progress bar
-        if self.progress_bar is not None and progress_bar:
+        if self.progress_bar is not None:
             self.progress_bar.update(t - self.progress_bar.n)
 
-        # Initialize the rate of change array
+        # Clean the derivative array
+        dN_dt = np.zeros_like(N)
+
+        # fetch time-varying density with cache management logic for rho
+        current_t_step = int(t)
+        if current_t_step > self.prev_t:
+            rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+            self.prev_rho = rho
+            self.prev_t = current_t_step
+        else:
+            rho = self.prev_rho  # Use cached rho
+
+        # Apply drag computations
+        for i in range(len(N)):
+            # get appropriate shell index, as the flattened functions iterate over every shell
+            # within a species first (rather than each species in a shell)
+            shell_index = i % self.n_shells
+
+            # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
+            if i < len(N) - 1:
+                current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
+                upper_drag = self.drag_upper_lamd[i](*N) * rho[shell_index + 1]
+                dN_dt[i] += current_drag + upper_drag
+            else:
+                current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
+                dN_dt[i] += current_drag
+
+            # Apply general equation dynamics
+            dN_dt[i] += equations[i](*N)
+
+        if not self.baseline:
+            # Calculate the launch rates at the current time 't' by calling the functions
+            launch_rates = np.array([func(t) for func in launch_funcs])
+
+            # The total rate of change is the sum
+            dN_dt += launch_rates
+            
+        return dN_dt
+    
+    def population_shell_for_OPUS(self, t, N, equations, times, launch):
         dN_dt = np.zeros_like(N)
 
         # Iterate over each component in N
@@ -926,120 +1560,175 @@ class ScenarioProperties:
         
             # Compute and add the external modification rate, if applicable
             # Now using np.interp to calculate the increase
-            if full_lambda[i] is not None:
-                increase = np.interp(t, times, full_lambda[i])
+            if launch[i] is not None:
+                # increase = np.interp(t, times, launch[i])
+                increase = launch[i]
                 # If increase is nan set to 0
-                if np.isnan(increase) or np.isinf(increase):
+                if np.isnan(increase) or np.isinf(increase) or increase is None:
                     increase = 0
                 else:
                     dN_dt[i] += increase
 
             # Compute the intrinsic rate of change from the differential equation
-            dN_dt[i] += equations[i](*N)
+            change = equations[i](*N)
+        
+            dN_dt[i] += change
 
         return dN_dt
-
-    def cum_CSI(self):
-        k = 0.6
-        def life(h):
-            return np.exp(14.18 * h ** 0.1831 - 42.94)
-
-        M_ref = 10000 # kg
-        h_ref = 1000 # km
-        life_h_ref = 1468 # years, it corresponds to life0 = life(1000)
-
-        if isinstance(self.results, str):
-            self.results = json.loads(self.results)
-
-        initial_populations = [data['populations'][0] for data in self.results['population_data']]
-        V = np.array(self.V)
-        D_ref = np.max(np.sum(initial_populations, axis=0) / V)
-        
-        den = M_ref * D_ref * life_h_ref * (1+k) / 10
-        #den = 2.4477e-09
-
-        cos_i_av = 2/pi #average value of cosine of inclination in the range -pi/2 pi/2 calculated using integral average
-        Gamma_av = (1-cos_i_av)/2
-
-        rgb_c = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
-        
-        def life(h):
-            return np.exp(14.18 * h**0.1831 - 42.94)
-
-        if hasattr(self, 'results'):
-            print("Producing two visuals of CSI.")
-            plt.figure()
-            plt.grid(True)
-            CSI_S_sum_array = np.zeros((len(self.results['times']), 0))
-            CSI_D_sum_array = np.zeros((len(self.results['times']), 0))
-            
-            unique_species = set([data['species'] for data in self.results['population_data']])
-            
-            for i2, species in enumerate(unique_species):
-                if i2 >= len(rgb_c):
-                    colorset = np.random.rand(3)
-                else:
-                    colorset = rgb_c[i2]
-                
-                CSI_X_mat = np.zeros((len(self.results['times']), self.n_shells))
-                species_list = [sp for species_group in self.species.values() for sp in species_group]
-
-                if 'S' in species or 'D' in species:
-                    for i in range(self.n_shells):
-                        shell_data = [data for data in self.results['population_data'] if data['species'] == species and data['shell'] == (i + 1)]
-                        if shell_data:
-                            life_i = life((self.R0_km[i] + self.R0_km[i + 1]) / 2)
-                            num = life_i * (1 + k * Gamma_av)
-                            try:
-                                mass = next((item.mass for item in species_list if item.sym_name == species), 0)
-                            except TypeError as e:
-                                print(f"Error accessing species_properties for species '{species}': {e}")
-                                print(f"species_list: {species_list}")
-                                raise
-                            dum_X = mass * num
-                            D_X = np.array(shell_data[0]['populations']) / self.V[i]
-                            CSI_X_mat[:, i] = D_X * dum_X
-                    
-                    CSI_X_mat /= den
-                    CSI_X = np.sum(CSI_X_mat, axis=1)
-                    plt.plot(self.results['times'], CSI_X, label=f'CSI for {species.replace("p", ".")}', linewidth=2, color=colorset)
-                    
-                    if 'S' in species and 'D' not in species:
-                        CSI_S_sum_array = np.column_stack((CSI_S_sum_array, CSI_X))
-                    elif 'D' in species:
-                        CSI_D_sum_array = np.column_stack((CSI_D_sum_array, CSI_X))
-
-            if CSI_S_sum_array.shape[1] > 0:
-                CSI_S_sum = np.sum(CSI_S_sum_array, axis=1)
-            else:
-                CSI_S_sum = np.zeros(len(self.results['times']))
-
-            if CSI_D_sum_array.shape[1] > 0:
-                CSI_D_sum = np.sum(CSI_D_sum_array, axis=1)
-            else:
-                CSI_D_sum = np.zeros(len(self.results['times']))
-
-            plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
-            plt.xlabel('Time (years)')
-            plt.ylabel('CSI')
-            plt.title('Cumulative Space Index (CSI) per Species')
-            plt.xlim([0, np.max(self.results['times'])])
-            plt.legend(loc='best', frameon=False)
-            plt.savefig('figures/CSI_per_species.png')
-
-            plt.figure()
-            plt.grid(True)
-            plt.plot(self.results['times'], CSI_S_sum, label='Total CSI for Active Satellites', linewidth=2, color='#1f77b4')
-            plt.plot(self.results['times'], CSI_D_sum, label='Total CSI for Derelict Satellites', linewidth=2, color='#ff7f0e')
-            plt.plot(self.results['times'], CSI_S_sum + CSI_D_sum, label='Total CSI', linewidth=2, color='black', linestyle='--')
-            plt.xlabel('Time (years)')
-            plt.ylabel('Cumulative CSI')
-            plt.xlim([0, np.max(self.results['times'])])
-            plt.title('Cumulative Space Index (CSI) for Active and Derelict Species')
-            plt.legend(loc='best', frameon=False)
-            plt.savefig('figures/CSI_active_derelict.png')
-        else:
-            raise ValueError("Simulation does not contain results. Please run the function run_model(x0) to produce simulation results required for CSI computation.")
-        
-        return
     
+    def propagate(self, population, times, launch=None):
+        """
+            This will use the equations that have been built already by the model, and then integrate the differential equations
+            over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
+
+            :param population: Initial population
+            :param times: Times to integrate over
+            :param launch: Launch rates
+
+            :return: results_matrix
+        """
+        # check to see if the equations have already been lamdified
+        if self.equations is None:
+            self.equations = self.lambdify_equations()
+
+        # if launch is not None:
+        #     full_lambda_flattened = self.lambdify_launch(launch)
+
+        output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
+                            args=(self.equations, times, launch), 
+                            t_eval=times, method=self.integrator)
+        
+        if output.success:
+            # Extract the results at the specified time points
+            results_matrix = output.y.T  # Transpose to make it [time, variables]
+            return results_matrix
+        else:
+            print(f"Model run failed: {output.message}")
+            return None
+
+    def lambdify_equations(self):
+        """
+            Convert the Sympy symbolic equations to lambda functions, this allows for a quicker integration for SciPy.
+
+            Returns: equations, full_lambda_flattened
+        """
+
+        equations_flattened = [self.equations[i, j] for j in range(self.equations.cols) for i in range(self.equations.rows)]
+
+        # Convert the equations to lambda functions
+        if self.parallel_processing:
+            equations = parallel_lambdify(equations_flattened, self.all_symbolic_vars)
+        else:
+            equations = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in equations_flattened]
+
+        return equations
+
+    # def lambdify_launch(self, full_lambda=None):
+    #     """ 
+    #         Convert the Numpy launch rates to Scipy lambdified functions for integration.
+        
+    #     """
+    #     # Launch rates
+    #     # full_lambda_flattened = list(self.full_lambda)  
+    #     full_lambda_flattened = []
+    #     # # Iterate through columns first, then rows
+    #     # for c in range(self.full_lambda.cols):      # Iterate over column indices (0, 1, 2)
+    #     #     for r in range(self.full_lambda.rows):  # Iterate over row indices (0 to 23)
+    #     #         full_lambda_flattened.append(self.full_lambda[r, c])
+
+    #     if full_lambda is None:
+    #         for i in range(len(self.full_lambda)):
+    #             if self.full_lambda[i] is not None:
+    #                 full_lambda_flattened.extend(self.full_lambda[i])
+    #             else:
+    #                 # Append None to the list, length of scenario_properties.n_shells
+    #                 full_lambda_flattened.extend([None]*self.n_shells)
+    #     else:
+    #         for i in range(len(full_lambda)):
+    #             if full_lambda[i] is not None:
+    #                 full_lambda_flattened.extend(full_lambda[i])
+    #             else:
+    #                 # Append None to the list, length of scenario_properties.n_shells
+    #                 full_lambda_flattened.extend([None]*self.n_shells)
+
+    #     return full_lambda_flattened
+
+    def lambdify_launch(self, full_lambda=None):
+        """ 
+            Convert the Numpy launch rates to Scipy lambdified functions for integration.
+        
+        """
+        # Launch rates
+        # full_lambda_flattened = list(self.full_lambda)  
+        full_lambda_flattened = []
+        # # Iterate through columns first, then rows
+        # for c in range(self.full_lambda.cols):      # Iterate over column indices (0, 1, 2)
+        #     for r in range(self.full_lambda.rows):  # Iterate over row indices (0 to 23)
+        #         full_lambda_flattened.append(self.full_lambda[r, c])
+
+        if full_lambda is None:
+            for i in range(len(self.full_lambda)):
+                if self.full_lambda[i] is not None:
+                    full_lambda_flattened.extend(self.full_lambda[i])
+                else:
+                    # Append None to the list, length of scenario_properties.n_shells
+                    full_lambda_flattened.extend([None]*self.n_shells)
+        else:
+            for i in range(len(full_lambda)):
+                if full_lambda[i] is not None:
+                    full_lambda_flattened.extend(full_lambda[i])
+                else:
+                    # Append None to the list, length of scenario_properties.n_shells
+                    full_lambda_flattened.extend([None]*self.n_shells)
+
+        return full_lambda_flattened
+    
+
+    def lambdify_launch_elliptical(self, full_lambda=None):
+        full_lambda_flattened = []
+
+        if self.baseline:
+            return full_lambda_flattened
+
+        if full_lambda is None:
+            full_lambda = self.full_lambda
+
+        for species_lambda in full_lambda:
+            if species_lambda is None:
+                if self.elliptical:
+                    full_lambda_flattened.extend([None] * (self.n_shells * self.n_ecc_bins))
+                else:
+                    full_lambda_flattened.extend([None] * self.n_shells)
+                continue
+            full_lambda_flattened.extend(species_lambda)
+
+        # Print total launches per species
+        species_names = self.species_names
+        idx = 0
+        for i, species_lambda in enumerate(full_lambda):
+            if species_lambda is None:
+                idx += self.n_shells * (self.n_ecc_bins if self.elliptical else 1)
+                continue
+
+            total_launches = sum(
+                np.sum(entry) if isinstance(entry, np.ndarray) else 0
+                for entry in species_lambda
+            )
+            # print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
+
+        # ============================
+        # Reshape for use with [sma, species, ecc]
+        # ============================
+        if self.elliptical:
+            reshaped = np.array(full_lambda_flattened, dtype=object).reshape(
+                (len(species_names), self.n_shells, self.n_ecc_bins)
+            )
+            full_lambda_reshaped = np.transpose(reshaped, (1, 0, 2))  # → (sma, species, ecc)
+        else:
+            reshaped = np.array(full_lambda_flattened, dtype=object).reshape(
+                (len(species_names), self.n_shells)
+            )
+            full_lambda_reshaped = np.transpose(reshaped, (1, 0))  # → (sma, species)
+
+        self.full_lambda_flattened = full_lambda_reshaped
+        return self.full_lambda_flattened
