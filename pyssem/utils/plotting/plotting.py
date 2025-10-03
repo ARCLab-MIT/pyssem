@@ -220,11 +220,8 @@ class Plots:
     def heatmaps_species(self):
         # Implementation for heatmaps_species plot
         # Plot heatmap for each species
-        # Handle both solve_ivp object and dictionary formats
-        if isinstance(self.output, dict):
-            n_time_points = len(self.output["times"])
-        else:
-            n_time_points = len(self.output.t)
+        # Use the solve_ivp object directly (fallback logic in __init__ ensures this is correct)
+        n_time_points = len(self.output.t)
         cols = 3
         rows = (self.n_species + cols - 1) // cols
 
@@ -238,26 +235,11 @@ class Plots:
 
             start_idx = i * self.num_shells
             end_idx = start_idx + self.num_shells
-            # Handle both solve_ivp object and dictionary formats
-            if isinstance(self.output, dict):
-                # For dictionary format, we need to reconstruct the y data from population_data
-                # This is more complex, so let's use a different approach
-                data_per_species = np.zeros((self.num_shells, n_time_points))
-                for shell_idx in range(self.num_shells):
-                    for time_idx in range(n_time_points):
-                        # Find the population data for this species and shell
-                        for pop_data in self.output["population_data"]:
-                            if pop_data["species"] == species_name and pop_data["shell"] == shell_idx + 1:
-                                data_per_species[shell_idx, time_idx] = pop_data["populations"][time_idx]
-                                break
-            else:
-                data_per_species = self.output.y[start_idx:end_idx, :]
+            # Use the solve_ivp object directly (fallback logic in __init__ ensures this is correct)
+            data_per_species = self.output.y[start_idx:end_idx, :]
 
-            # Get time range for extent
-            if isinstance(self.output, dict):
-                time_min, time_max = self.output["times"][0], self.output["times"][-1]
-            else:
-                time_min, time_max = self.output.t[0], self.output.t[-1]
+            # Get time range for extent (fallback logic in __init__ ensures this is correct)
+            time_min, time_max = self.output.t[0], self.output.t[-1]
             
             cax = ax.imshow(data_per_species, aspect='auto', origin='lower',
                             extent=[time_min, time_max, 0, self.num_shells],
