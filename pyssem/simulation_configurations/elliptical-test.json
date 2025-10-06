@@ -1,5 +1,5 @@
 {
-  "simulation_name": "not_elliptical_nshell_15_sp_8",
+  "simulation_name": "JB2008_nshell_15_sp_8",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -7,8 +7,8 @@
   "modified": "2024-01-01T12:00:00Z",
   "scenario_properties": {
     "start_date": "01/01/2025",
-    "simulation_duration": 100,
-    "steps": 100,
+    "simulation_duration": 90,
+    "steps": 90,
     "min_altitude": 200,
     "max_altitude": 2000,
     "n_shells": 20,
@@ -17,8 +17,8 @@
     "density_model": "static_exp_dens_func",
     "LC": 0.1,
     "v_imp": 10.0,
-    "fragment_spreading": false,
-    "parallel_processing": false,
+    "fragment_spreading": true,
+    "parallel_processing": true,
     "baseline": false,
     "launch_scenario": "test",
     "indicator_variables": [

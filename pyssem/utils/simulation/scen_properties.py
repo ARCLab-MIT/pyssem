@@ -173,8 +173,14 @@ class ScenarioProperties:
         
         self.collision_pairs = [] 
 
+        # Varying collision shells 
+        self.fragment_spreading = fragment_spreading
+
         # Elliptical orbits
         self.elliptical = elliptical
+        if self.elliptical:
+            # make sure fragment_spreading is False
+            self.fragment_spreading = False
         self.eccentricity_bins = eccentricity_bins
         self.time_in_shell = None
 
@@ -196,9 +202,6 @@ class ScenarioProperties:
 
         # Restults
         self.results = None
-
-        # Varying collision shells 
-        self.fragment_spreading = fragment_spreading
 
         # Parallel Processing
         self.parallel_processing = parallel_processing
@@ -1285,6 +1288,329 @@ class ScenarioProperties:
         # print(f"Amount removed due to PMD: {np.sum(val)} Amount added due to launches: {np.sum(launch_rates)}")
         # print(t)
         return dN_all_species.flatten()
+
+    def run_model_elliptical(self):
+        """
+        For each species, integrate the equations of population change for each shell and species.
+
+        The starting point will be, x0, the initial population.
+
+        The launch rate will be first calculated at time t, then the change of population in that species will be calculated using the ODEs. 
+
+        :return: None
+        """
+        print("Preparing equations for integration (Lambdafying) ...")
+        
+        if self.time_dep_density:
+            # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
+            drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
+            drag_current_flattened = [self.drag_term_cur[i, j] for j in range(self.drag_term_cur.cols) for i in range(self.drag_term_cur.rows)]
+
+            self.drag_upper_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_upper_flattened]
+            self.drag_cur_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_current_flattened]
+
+            # Set up time varying density 
+            self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
+            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
+                                                                                                                                       ))
+            
+            # This will change when jb2008 is updated
+            available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
+            available_altitudes.sort()
+
+            self.nearest_altitude_mapping = precompute_nearest_altitudes(available_altitudes)
+
+            self.prev_t = -1  # Initialize to an invalid time
+            self.prev_rho = None
+
+
+            print("Integrating equations...")
+            output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
+                            args=(self.full_lambda_flattened, self.equations, self.scen_times),
+                            t_eval=self.scen_times, method=self.integrator)
+            
+            self.drag_upper_lamd = None
+            self.drag_cur_lamd = None
+
+        else:
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
+            # This should change location, but first make the fragments spread distribution
+            for term in self.collision_terms:
+                # === 1. Sum over SMA × ECC for each (shell, mass) bin ===
+                totals = term.fragment_spread_totals.sum(axis=(2, 3), keepdims=True)  # shape: (shell, mass, 1, 1)
+
+                # === 2. Normalize safely using np.where (broadcasting-friendly) ===
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    spread_distribution = np.where(
+                        totals > 0,
+                        term.fragment_spread_totals / totals,
+                        0.0
+                    )
+
+                # === 3. Store for later use ===
+                term.spread_distribution = spread_distribution
+
+                if np.sum(spread_distribution) == 0 and np.sum(totals) != 0:
+                    print(f"Warning: No fragments produced for term {term.name}. Check your collision parameters.")
+
+            # === 1. Setup ===
+            x0_sum = np.sum(self.x0, axis=2)  # shape (n_shells, n_species)
+            flat_vars = self.all_symbolic_vars
+            self.n_sma_bins, n_species, self.n_ecc_bins = self.x0.shape
+            self.n_alt_shells = self.n_shells # remember the shells are in altitude
+
+            # === 2. Lambdify each collision term’s eqs_sources ===
+            for term in self.collision_terms:
+                term.lambdified_sources = sp.lambdify(flat_vars, term.eqs_sources, modules="numpy")
+                term.lambdified_sinks = sp.lambdify(flat_vars, term.eqs_sinks, modules="numpy")
+
+            # Map species index to mass bin index, only for debris
+            species_to_mass_bin = {
+                i: j for j, (i, name) in enumerate(
+                    [(i, name) for i, name in enumerate(self.species_names) if name.startswith("N")]
+                )
+            }
+
+            launch_rate_functions = np.full(
+                (self.n_sma_bins, n_species, self.n_ecc_bins), 
+                None, 
+                dtype=object
+            )
+
+            if not self.baseline:
+                for sma in range(self.n_sma_bins):
+                    for species in range(n_species):
+                        for ecc in range(self.n_ecc_bins):
+                            rate_array = self.full_lambda_flattened[sma, species, ecc]
+
+                            try:
+                                launch_rate_functions[sma, species, ecc] = None  # default
+
+                                if rate_array is None:
+                                    continue
+
+                                # Case 1: ndarray directly
+                                if isinstance(rate_array, np.ndarray):
+                                    flattened_array = rate_array.astype(float)
+
+                                # Case 2: mixed list of array + zeros
+                                elif isinstance(rate_array, list):
+                                    array_found = next(
+                                        (np.asarray(r).astype(float) for r in rate_array if isinstance(r, np.ndarray)),
+                                        None
+                                    )
+                                    if array_found is None:
+                                        continue
+                                    flattened_array = array_found
+
+                                # Case 3: scalar/unexpected → skip
+                                else:
+                                    continue
+
+                                # Clean
+                                flattened_array[np.isnan(flattened_array)] = 0.0
+                                flattened_array[np.isinf(flattened_array)] = 0.0
+
+                                # Validate
+                                if flattened_array.shape[0] != len(self.scen_times):
+                                    continue
+                                if np.all(flattened_array == 0.0):
+                                    continue
+
+                                # === Interpolate with make_interp_spline ===
+                                spline_func, _, _ = self._zero_padded_spline(self.scen_times, flattened_array, bc_type="natural")
+                                launch_rate_functions[sma, species, ecc] = spline_func
+
+                            except Exception as e:
+                                raise ValueError(
+                                    f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n"
+                                    f"{rate_array}\n\n{e}"
+                                )
+            # Finally lambdify the equations for integration, this will just be pmd
+            # equations_flattened = [self.equations[i, j] for j in r÷
+            self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
+
+            # Constants
+            self.t_0 = 0
+            hours = 3600.0
+            days = 24.0 * hours
+            years = 365.25 * days
+
+            def get_dadt(a_current, e_current, p):
+                    re   = p['req']
+                    mu   = p['mu']
+                    n0   = np.sqrt(mu) * a_current ** -1.5
+                    a_minus_re = a_current - re
+                    rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
+                    # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
+                    C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+                    
+                    beta = (np.sqrt(3)/2)*e_current
+                    ang  = np.arctan(beta)
+                    sec2 = 1.0 / np.cos(ang) ** 2
+                    return -(4 / np.sqrt(3)) * (a_current**2 * n0 * C_0 / e_current) * np.tan(ang) * sec2
+
+            def get_dedt(a_current, e_current, p):
+                re   = p['req']
+                mu   = p['mu']
+                n0   = np.sqrt(mu) * a_current ** -1.5
+                beta = (np.sqrt(3)/2) * e_current
+                a_minus_re = a_current - re
+                rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
+                # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
+                C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+
+                sec2 = 1.0 / np.cos(np.arctan(beta)) ** 2
+                return -e_current * n0 * a_current * C_0 * sec2
+
+            binE_ecc = self.eccentricity_bins
+            binE_ecc = np.sort(binE_ecc)
+            self.binE_ecc_mid_point = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+            Δa      = self.sma_HMid_km[1] - self.sma_HMid_km[0]
+            Δe      = self.eccentricity_bins[1] - self.eccentricity_bins[0]
+
+            adot_all_species = []
+            edot_all_species = []
+
+            bstar_vals = []
+            for species_group in self.species.values():
+                for species in species_group:
+                    bstar_vals.append(species.bstar)
+            
+            for bstar in bstar_vals:
+                # now we need to propagate using the dynamical equations
+                param = {
+                    'req': 6378.136, 
+                    'mu': 398600.0, # should already be defined
+                    'Bstar': bstar, # 2.2000e-08, # 2.2 * ((2.687936011/1e3)**2/ 1783),  # bstar = cd * ((radius/1e3)**2/ mass) 0.5, 148
+                    'j2': 1082.63e-6
+                }
+
+                # Calculate da/dt and de/dt at each point
+                adot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+                edot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+
+                for sma in range(self.n_sma_bins):
+                    a_val = self.sma_HMid_km[sma]
+                    for ecc in range(self.n_ecc_bins):
+                        e_val = self.binE_ecc_mid_point[ecc]
+                        adot[sma, ecc] = get_dadt(a_val, e_val, param) * years 
+                        edot[sma, ecc] = get_dedt(a_val, e_val, param) * years
+
+                adot_all_species.append(adot)
+                edot_all_species.append(edot)
+
+
+            # create a boolean list that is the same length as species, depending on whether they are active or not
+            active_species_bool = []
+            for species_group in self.species.values():
+                for species in species_group:
+                    active_species_bool.append(species.drag_effected)
+
+            # get a list of all species for pmd 
+            all_species_list = [species for category in self.species.values() for species in category]
+
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+
+            output = solve_ivp(
+                fun=self.population_rhs,
+                t_span=(self.scen_times[0], self.scen_times[-1]),
+                y0=self.x0.flatten(),
+                t_eval=self.scen_times,
+                args=(launch_rate_functions, self.n_sma_bins, n_species, self.n_ecc_bins, self.n_alt_shells,
+                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, active_species_bool, all_species_list),
+                method="RK45"# or any other method you prefer
+            )
+
+            # output = 1
+            self.progress_bar.close()
+            self.progress_bar = None # Set back to None becuase a tqdm object cannot be pickled
+
+        if output.success:
+            print(f"Model run completed successfully.")
+        else:
+            print(f"Model run failed: {output.message}")
+
+        self.output = output # Save
+
+        ###############
+        # Indicator variables rely on altitude shells to calculate the number of collisions,
+        # Therefore, project (sma,ecc) -> altitude shells (y_alt), then evaluate indicators.
+        ###############
+        if hasattr(self, 'indicator_variables_list'):
+            print("Evaluating post-processed indicator variables...")
+
+            # --- Dimensions ---
+            n_species = self.species_length
+            n_time    = self.output.y.shape[1]
+
+            # --- Unpack and reshape population data: (sma, species, ecc, time) ---
+            x_matrix = self.output.y.reshape(self.n_sma_bins, n_species, self.n_ecc_bins, n_time)
+
+            # --- Project to altitude shells over time ---
+            n_eff = np.zeros((self.n_shells, n_species, n_time))  # (alt/shell, species, time)
+            for s in range(n_species):
+                for t_idx, _ in enumerate(self.output.t):
+                    snap = x_matrix[:, s, :, t_idx]  # (sma, ecc)
+                    cube = np.zeros((self.n_sma_bins, n_species, self.n_ecc_bins))
+                    cube[:, s, :] = snap
+                    alt_proj = self.sma_ecc_mat_to_altitude_mat(cube)  # (alt, species)
+                    n_eff[:, s, t_idx] = alt_proj[:, s]
+
+            self.output.y_alt = n_eff  # shape: (n_alt_shells, n_species, n_time)
+
+            # --- Prepare indicator results dict ONCE (not inside loops) ---
+            if not hasattr(self, 'indicator_results') or self.indicator_results is None:
+                self.indicator_results = {}
+            self.indicator_results['indicators'] = {}
+
+            # --- Sanity checks ---
+            y_alt = self.output.y_alt
+            n_shells, n_species_chk, n_time_chk = y_alt.shape
+            if n_shells != self.n_shells or n_species_chk != self.species_length:
+                raise ValueError("Shape mismatch: y_alt dims do not match self.n_shells/self.species_length.")
+            if n_time_chk != len(self.output.t):
+                raise ValueError("Time axis mismatch: len(self.output.t) != y_alt.shape[2].")
+
+            # --- Build symbol→(species_idx, shell_idx) order mapping ---
+            order_map = self._build_symbol_order_map()
+
+            # --- Evaluate each indicator with states ordered as self.all_symbolic_vars ---
+            for group in self.indicator_variables_list:
+                for indicator_var in group:
+                    try:
+                        eq  = sp.simplify(indicator_var.eqs)
+                        fun = sp.lambdify(self.all_symbolic_vars, eq, 'numpy')
+
+                        evaluated_indicator_dict = {}
+
+                        for t_idx, t in enumerate(self.output.t):
+                            # Build state vector matching self.all_symbolic_vars
+                            state = np.empty(len(order_map), dtype=float)
+                            for j, (sp_idx, sh_idx) in enumerate(order_map):
+                                state[j] = y_alt[sh_idx, sp_idx, t_idx]
+
+                            evaluated_indicator_dict[t] = fun(*state)
+
+                        self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+
+                    except Exception as e:
+                        print(f"Cannot make indicator for {getattr(indicator_var, 'name', '<unnamed>')}")
+                        print(e)
+
+            # --- Make output.y match the non-elliptical plotting layout ---
+            # optional: preserve original solver array
+            self.output.y_sma_ecc = self.output.y
+
+            # species-major stacking of shells → (n_species*n_shells, n_time)
+            self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,
+                                                                n_time)
+            
+            # print("Indicator variables succesfully ran")
+            # print(self.indicator_results['indicators'].keys())
+
+        return
     
     def run_model(self):
         """
@@ -1732,3 +2058,82 @@ class ScenarioProperties:
 
         self.full_lambda_flattened = full_lambda_reshaped
         return self.full_lambda_flattened
+
+    def _build_symbol_order_map(self):
+                """
+                Returns a list of (species_idx, shell_idx) in the exact order of self.all_symbolic_vars.
+                shell_idx is 0-based; symbol names are assumed to end with '_<shell>' (1-based in the name).
+                """
+                species_to_idx = {name: i for i, name in enumerate(self.species_names)}
+                order_map = []
+
+                for sym in self.all_symbolic_vars:
+                    name = str(sym)  # e.g., 'N_0.00141372kg_7' or 'S_3'
+                    base, sep, shell_str = name.rpartition('_')
+                    if sep == '' or not shell_str.isdigit():
+                        raise ValueError(f"Symbol '{name}' must end with '_<shell_index>' (1-based).")
+
+                    shell_idx = int(shell_str) - 1  # convert to 0-based
+                    if base not in species_to_idx:
+                        # strict match against species_names to avoid accidental mis-ordering
+                        raise KeyError(f"Symbol base '{base}' not found in species_names {self.species_names}.")
+
+                    species_idx = species_to_idx[base]
+                    if not (0 <= shell_idx < self.n_shells):
+                        raise IndexError(f"Shell index {shell_idx} out of range for symbol '{name}' with n_shells={self.n_shells}.")
+
+                    order_map.append((species_idx, shell_idx))
+
+                # Sanity: number of symbols must match n_shells * n_species
+                expected = self.n_shells * self.species_length
+                if len(order_map) != expected:
+                    raise ValueError(f"Symbol count {len(order_map)} != n_shells*n_species ({expected}).")
+                return order_map
+    def _zero_padded_spline(self, x, y, bc_type="natural"):
+                """
+                Build a spline f(t) that returns 0 outside [x[0], x[-1]].
+                Handles short series by reducing k automatically.
+                Dedups x by averaging y at duplicate times.
+                """
+                x = np.asarray(x, float)
+                y = np.asarray(y, float)
+
+                # sort & dedup x, average y on duplicates
+                order = np.argsort(x)
+                x = x[order]
+                y = y[order]
+                xu, inv = np.unique(x, return_inverse=True)
+                if xu.size != x.size:
+                    y_agg = np.zeros_like(xu, dtype=float)
+                    counts = np.zeros_like(xu, dtype=float)
+                    np.add.at(y_agg, inv, y)
+                    np.add.at(counts, inv, 1.0)
+                    y = y_agg / counts
+                    x = xu
+
+                # choose spline degree
+                k = int(min(3, max(1, len(x) - 1)))
+                if len(x) == 1:
+                    # constant inside the single support point
+                    v = float(y[0])
+                    t0 = t1 = float(x[0])
+                    def f(tt):
+                        tt = np.asarray(tt, float)
+                        out = np.zeros_like(tt, float)
+                        mask = (tt == t0)  # only defined at that point
+                        out[mask] = v
+                        return out
+                    return f, t0, t1
+
+                spl = make_interp_spline(x, y, k=k, bc_type=bc_type)
+                t0, t1 = float(x[0]), float(x[-1])
+
+                def f(tt):
+                    tt = np.asarray(tt, float)
+                    out = np.zeros_like(tt, float)
+                    mask = (tt >= t0) & (tt <= t1)
+                    if np.any(mask):
+                        out[mask] = spl(tt[mask])
+                    return out
+
+                return f, t0, t1

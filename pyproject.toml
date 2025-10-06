@@ -13,11 +13,10 @@ dynamic = ["version"]
 description = "A source sink model to support the study of the long-term sustainability of Low Earth Orbit (LEO)"
 readme = "README.md"
 authors = [{name = "Indigo Brownhall", email = "indigo.brownhall.20@ucl.ac.uk"}]
-license = {file = "LICENSE"}
+license = {text = "MIT"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
@@ -39,3 +38,7 @@ dependencies = [
     "loky>=3.0.0",
     "imageio>=2.0.0"
 ]
+
+[tool.setuptools.packages.find]
+include = ["pyssem*"]
+exclude = ["figures*", "indigo-thesis*"]
