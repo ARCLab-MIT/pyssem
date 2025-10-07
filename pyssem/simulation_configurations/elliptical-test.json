@@ -13,7 +13,7 @@
     "max_altitude": 2000,
     "n_shells": 20,
     "launch_function": "Constant",
-    "integrator": "BDF",
+    "integrator": "RK45",
     "density_model": "static_exp_dens_func",
     "LC": 0.1,
     "v_imp": 10.0,

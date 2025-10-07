@@ -8,54 +8,13 @@ import sympy as sp
 from ..drag.drag import *
 from ..launch.launch import ADEPT_traffic_model, SEP_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
+from ..simulation.build_run_model_helpers import *
 from ..indicators.indicators import *
 import pandas as pd
 import os
 import multiprocessing
 from collections import defaultdict
 
-class SymbolicCollisionTerm:
-    def __init__(self, s1_idx, s2_idx, eqs_sources, eqs_sinks, fragment_spread_totals):
-        self.s1_idx = s1_idx
-        self.s2_idx = s2_idx
-        self.eqs_sources = eqs_sources     # list of sympy expressions
-        self.eqs_sinks = eqs_sinks         # list of sympy expressions
-
-        # Optionally lambdify now or later
-        self.lambdified_sources = None
-        self.lambdified_sinks = None
-
-        # This is for the distribution of the fragments across a, e
-        self.fragment_spread_totals = fragment_spread_totals
-
-class StepFunction:
-    """
-    A callable object that acts as a fast, piecewise constant step function
-    for evenly spaced time series data.
-    """
-    def __init__(self, start_time, time_step_duration, rate_values):
-        self.start_time = start_time
-        self.time_step_duration = time_step_duration
-        self.rate_values = np.array(rate_values)
-        self.num_steps = len(rate_values)
-
-    def __call__(self, t):
-        """
-        This makes the object callable, e.g., func(t).
-        It finds the correct index for time 't' and returns the corresponding rate.
-        """
-        # If t is outside the defined time range, return 0
-        if t < self.start_time or t >= self.start_time + self.num_steps * self.time_step_duration:
-            return 0.0
-
-        # Calculate the index for the time step
-        # This is extremely fast because the steps are uniform.
-        index = int((t - self.start_time) / self.time_step_duration)
-        
-        # Clamp the index to be within the valid range of the array
-        index = min(index, self.num_steps - 1)
-        
-        return self.rate_values[index]
 
 def lambdify_equation(all_symbolic_vars, eq):
     return sp.lambdify(all_symbolic_vars, eq, 'numpy')
@@ -538,62 +497,13 @@ class ScenarioProperties:
             simplified_eqs = sp.simplify(umpy_eqs)
             self.umpy_lambdified = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
 
-        # Calculate the UMPY
-        umpy = self.umpy_lambdified(*state_matrix)
-        
-        return umpy
-    
-    def calculate_umpy_for_opus(self, state_matrix):
-        """
-            Calculate the undispossed mass per year (UMPY) from the current state_matrix using indicator variables.
-        """
-
-        # if self.umpy_lambdified exists
-        if not hasattr(self, 'umpy_lambdified'):
-            # Get the index of umpy in list
-            umpy_index = self.indicator_variables.index("umpy")
-
-            # Use this index to get the indicator vars
-            umpy_eqs = self.indicator_variables_list[umpy_index][0].eqs
+        # Calculate the UMPY, if state_matix is a matrix, flatten 
+        if len(state_matrix.shape) > 1:
+            state_matrix = state_matrix.flatten()
             
-            # Simplify and Lambdify the equations
-            simplified_eqs = sp.simplify(umpy_eqs)
-            self.umpy_lambdified = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
-
-        # Calculate the UMPY
         umpy = self.umpy_lambdified(*state_matrix)
         
         return umpy
-
-
-    def initial_pop_and_launch(self, baseline=False, launch_file=None):
-        """
-           This function will determine which launch file to use. 
-           Users must select on of the Space Environment Pathways (SEPs), see: https://www.researchgate.net/publication/385299836_Development_of_Reference_Scenarios_and_Supporting_Inputs_for_Space_Environment_Modeling
-
-           There are seven possible launch scenarios:
-                SEP1: No Future Launch 
-
-                SEP 2: Continuing Current Behaviours 
-
-                SEP 3 M: Space Winter (Medium Sustainability Effort) 
-
-                SEP 3 H: Space Winter (High Sustainability Effort) 
-
-                SEP 4: Strategic Rivalry 
-
-                SEP 5 M: Commercial-driven Development (Medium Sustainability Effort) 
-
-                SEP 5 H: Commercial-driven Development (High Sustainability Effort) 
-
-                SEP 6 M: Intensive Space Demand (Medium Sustainability Effort) 
-
-                SEP 6 H: Intensive Space Demand (High Sustainability Effort) 
-        """
-
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
-        
-
 
     def initial_pop_and_launch(self, baseline=False, launch_file=None):
         """
@@ -908,7 +818,95 @@ class ScenarioProperties:
         # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
         # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch_elliptical()
+        ## from old run model 
+
+        # This should change location, but first make the fragments spread distribution
+        for term in self.collision_terms:
+            # === 1. Sum over SMA × ECC for each (shell, mass) bin ===
+            totals = term.fragment_spread_totals.sum(axis=(2, 3), keepdims=True)  # shape: (shell, mass, 1, 1)
+
+            # === 2. Normalize safely using np.where (broadcasting-friendly) ===
+            with np.errstate(invalid='ignore', divide='ignore'):
+                spread_distribution = np.where(
+                    totals > 0,
+                    term.fragment_spread_totals / totals,
+                    0.0
+                )
+
+            # === 3. Store for later use ===
+            term.spread_distribution = spread_distribution
+
+            if np.sum(spread_distribution) == 0 and np.sum(totals) != 0:
+                print(f"Warning: No fragments produced for term {term.name}. Check your collision parameters.")
+
+        # === 1. Setup ===
+        flat_vars = self.all_symbolic_vars
+        self.n_sma_bins, self.species_length, self.n_ecc_bins = self.x0.shape
+        self.n_alt_shells = self.n_shells # remember the shells are in altitude
+
+        # === 2. Lambdify each collision term’s eqs_sources ===
+        for term in self.collision_terms:
+            term.lambdified_sources = sp.lambdify(flat_vars, term.eqs_sources, modules="numpy")
+            term.lambdified_sinks = sp.lambdify(flat_vars, term.eqs_sinks, modules="numpy")
+
+        # === 3. lambdify the pmd equations
+        # Finally lambdify the equations for integration, this will just be pmd
+        self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
+
+        #  Map species index to mass bin index, only for debris
+        self.species_to_mass_bin = {
+            i: j for j, (i, name) in enumerate(
+                [(i, name) for i, name in enumerate(self.species_names) if name.startswith("N")]
+            )
+        }
+
+        # create a boolean list that is the same length as species, depending on whether they are active or not
+        self.active_species_bool = []
+        for species_group in self.species.values():
+            for species in species_group:
+                self.active_species_bool.append(species.drag_effected)
+
+        # get a list of all species for pmd 
+        self.all_species_list = [species for category in self.species.values() for species in category]
+
+        binE_ecc = self.eccentricity_bins
+        binE_ecc = np.sort(binE_ecc)
+        self.binE_ecc_mid_point = (binE_ecc[:-1] + binE_ecc[1:]) / 2
+        self.Δa      = self.sma_HMid_km[1] - self.sma_HMid_km[0]
+        self.Δe      = self.eccentricity_bins[1] - self.eccentricity_bins[0]
+
+        self.adot_all_species = []
+        self.edot_all_species = []
+
+        bstar_vals = []
+        for species_group in self.species.values():
+            for species in species_group:
+                bstar_vals.append(species.bstar)
+        
+        for bstar in bstar_vals:
+            # now we need to propagate using the dynamical equations
+            param = {
+                'req': 6378.136, 
+                'mu': 398600.0, # should already be defined
+                'Bstar': bstar, # 2.2000e-08, # 2.2 * ((2.687936011/1e3)**2/ 1783),  # bstar = cd * ((radius/1e3)**2/ mass) 0.5, 148
+                'j2': 1082.63e-6
+            }
+
+            # Calculate da/dt and de/dt at each point
+            adot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+            edot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
+
+            for sma in range(self.n_sma_bins):
+                a_val = self.sma_HMid_km[sma]
+                for ecc in range(self.n_ecc_bins):
+                    e_val = self.binE_ecc_mid_point[ecc]
+                    adot[sma, ecc] = get_dadt(a_val, e_val, param) * years 
+                    edot[sma, ecc] = get_dedt(a_val, e_val, param) * years
+
+            self.adot_all_species.append(adot)
+            self.edot_all_species.append(edot)
+
+        self.full_lambda_flattened = self.lambdify_launch_elliptical()
             
         return
 
@@ -1107,7 +1105,7 @@ class ScenarioProperties:
     
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
                       species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe,
-                      drag_affected_bool, all_species_list, progress_bar=True):
+                      drag_affected_bool, all_species_list, progress_bar=True, opus=False):
 
         # dt = years * (t - self.t_0)
         # self.t_0 = t
@@ -1241,31 +1239,32 @@ class ScenarioProperties:
         # #############################
 
         # First loop through the species and do their sinks
-        pmd = np.zeros_like(dN_all_species)
-        for species in range(n_species):
-            # remove the total number of satellites based on deltat
-            if all_species_list[species].active == True:
-                for sma in range(n_sma_bins):
-                    for ecc in range(n_ecc_bins):
-                        pmd[sma, species, ecc] -= (1/ all_species_list[species].deltat) * x_matrix[sma, species, ecc]
-
-            # Then gain the number of derelicts based on deltat
-            if not all_species_list[species].active:
-                if all_species_list[species].pmd_linked_species:
-                    linked_sym = all_species_list[species].pmd_linked_species[0].sym_name
-                    linked_idx = next(i for i, sp in enumerate(all_species_list)
-                                    if sp.sym_name == linked_sym)
-
-                    Pm      = all_species_list[linked_idx].Pm
-                    dt_link = all_species_list[linked_idx].deltat
-                    fail_rate = (1.0 - Pm) / dt_link
-
+        if not opus:
+            pmd = np.zeros_like(dN_all_species)
+            for species in range(n_species):
+                # remove the total number of satellites based on deltat
+                if all_species_list[species].active == True:
                     for sma in range(n_sma_bins):
                         for ecc in range(n_ecc_bins):
-                            pop_linked = x_matrix[sma, linked_idx, ecc]
-                            pmd[sma, species, ecc] += fail_rate * pop_linked
+                            pmd[sma, species, ecc] -= (1/ all_species_list[species].deltat) * x_matrix[sma, species, ecc]
 
-        dN_all_species += pmd
+                # Then gain the number of derelicts based on deltat
+                if not all_species_list[species].active:
+                    if all_species_list[species].pmd_linked_species:
+                        linked_sym = all_species_list[species].pmd_linked_species[0].sym_name
+                        linked_idx = next(i for i, sp in enumerate(all_species_list)
+                                        if sp.sym_name == linked_sym)
+
+                        Pm      = all_species_list[linked_idx].Pm
+                        dt_link = all_species_list[linked_idx].deltat
+                        fail_rate = (1.0 - Pm) / dt_link
+
+                        for sma in range(n_sma_bins):
+                            for ecc in range(n_ecc_bins):
+                                pop_linked = x_matrix[sma, linked_idx, ecc]
+                                pmd[sma, species, ecc] += fail_rate * pop_linked
+
+            dN_all_species += pmd
              
         ############################
         # Add the change in population due to launches
@@ -1333,54 +1332,15 @@ class ScenarioProperties:
             self.drag_cur_lamd = None
 
         else:
-            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
-
-            # This should change location, but first make the fragments spread distribution
-            for term in self.collision_terms:
-                # === 1. Sum over SMA × ECC for each (shell, mass) bin ===
-                totals = term.fragment_spread_totals.sum(axis=(2, 3), keepdims=True)  # shape: (shell, mass, 1, 1)
-
-                # === 2. Normalize safely using np.where (broadcasting-friendly) ===
-                with np.errstate(invalid='ignore', divide='ignore'):
-                    spread_distribution = np.where(
-                        totals > 0,
-                        term.fragment_spread_totals / totals,
-                        0.0
-                    )
-
-                # === 3. Store for later use ===
-                term.spread_distribution = spread_distribution
-
-                if np.sum(spread_distribution) == 0 and np.sum(totals) != 0:
-                    print(f"Warning: No fragments produced for term {term.name}. Check your collision parameters.")
-
-            # === 1. Setup ===
-            x0_sum = np.sum(self.x0, axis=2)  # shape (n_shells, n_species)
-            flat_vars = self.all_symbolic_vars
-            self.n_sma_bins, n_species, self.n_ecc_bins = self.x0.shape
-            self.n_alt_shells = self.n_shells # remember the shells are in altitude
-
-            # === 2. Lambdify each collision term’s eqs_sources ===
-            for term in self.collision_terms:
-                term.lambdified_sources = sp.lambdify(flat_vars, term.eqs_sources, modules="numpy")
-                term.lambdified_sinks = sp.lambdify(flat_vars, term.eqs_sinks, modules="numpy")
-
-            # Map species index to mass bin index, only for debris
-            species_to_mass_bin = {
-                i: j for j, (i, name) in enumerate(
-                    [(i, name) for i, name in enumerate(self.species_names) if name.startswith("N")]
-                )
-            }
-
             launch_rate_functions = np.full(
-                (self.n_sma_bins, n_species, self.n_ecc_bins), 
+                (self.n_sma_bins,  self.species_length, self.n_ecc_bins), 
                 None, 
                 dtype=object
             )
 
             if not self.baseline:
                 for sma in range(self.n_sma_bins):
-                    for species in range(n_species):
+                    for species in range( self.species_length):
                         for ecc in range(self.n_ecc_bins):
                             rate_array = self.full_lambda_flattened[sma, species, ecc]
 
@@ -1425,92 +1385,10 @@ class ScenarioProperties:
                             except Exception as e:
                                 raise ValueError(
                                     f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n"
-                                    f"{rate_array}\n\n{e}"
+                                     f"{rate_array}\n\n{e}"
                                 )
-            # Finally lambdify the equations for integration, this will just be pmd
-            # equations_flattened = [self.equations[i, j] for j in r÷
-            self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
-
-            # Constants
             self.t_0 = 0
-            hours = 3600.0
-            days = 24.0 * hours
-            years = 365.25 * days
-
-            def get_dadt(a_current, e_current, p):
-                    re   = p['req']
-                    mu   = p['mu']
-                    n0   = np.sqrt(mu) * a_current ** -1.5
-                    a_minus_re = a_current - re
-                    rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
-                    # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
-                    C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
-                    
-                    beta = (np.sqrt(3)/2)*e_current
-                    ang  = np.arctan(beta)
-                    sec2 = 1.0 / np.cos(ang) ** 2
-                    return -(4 / np.sqrt(3)) * (a_current**2 * n0 * C_0 / e_current) * np.tan(ang) * sec2
-
-            def get_dedt(a_current, e_current, p):
-                re   = p['req']
-                mu   = p['mu']
-                n0   = np.sqrt(mu) * a_current ** -1.5
-                beta = (np.sqrt(3)/2) * e_current
-                a_minus_re = a_current - re
-                rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
-                # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
-                C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
-
-                sec2 = 1.0 / np.cos(np.arctan(beta)) ** 2
-                return -e_current * n0 * a_current * C_0 * sec2
-
-            binE_ecc = self.eccentricity_bins
-            binE_ecc = np.sort(binE_ecc)
-            self.binE_ecc_mid_point = (binE_ecc[:-1] + binE_ecc[1:]) / 2
-            Δa      = self.sma_HMid_km[1] - self.sma_HMid_km[0]
-            Δe      = self.eccentricity_bins[1] - self.eccentricity_bins[0]
-
-            adot_all_species = []
-            edot_all_species = []
-
-            bstar_vals = []
-            for species_group in self.species.values():
-                for species in species_group:
-                    bstar_vals.append(species.bstar)
             
-            for bstar in bstar_vals:
-                # now we need to propagate using the dynamical equations
-                param = {
-                    'req': 6378.136, 
-                    'mu': 398600.0, # should already be defined
-                    'Bstar': bstar, # 2.2000e-08, # 2.2 * ((2.687936011/1e3)**2/ 1783),  # bstar = cd * ((radius/1e3)**2/ mass) 0.5, 148
-                    'j2': 1082.63e-6
-                }
-
-                # Calculate da/dt and de/dt at each point
-                adot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
-                edot = np.zeros((self.n_sma_bins, self.n_ecc_bins))
-
-                for sma in range(self.n_sma_bins):
-                    a_val = self.sma_HMid_km[sma]
-                    for ecc in range(self.n_ecc_bins):
-                        e_val = self.binE_ecc_mid_point[ecc]
-                        adot[sma, ecc] = get_dadt(a_val, e_val, param) * years 
-                        edot[sma, ecc] = get_dedt(a_val, e_val, param) * years
-
-                adot_all_species.append(adot)
-                edot_all_species.append(edot)
-
-
-            # create a boolean list that is the same length as species, depending on whether they are active or not
-            active_species_bool = []
-            for species_group in self.species.values():
-                for species in species_group:
-                    active_species_bool.append(species.drag_effected)
-
-            # get a list of all species for pmd 
-            all_species_list = [species for category in self.species.values() for species in category]
-
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
             output = solve_ivp(
@@ -1518,9 +1396,9 @@ class ScenarioProperties:
                 t_span=(self.scen_times[0], self.scen_times[-1]),
                 y0=self.x0.flatten(),
                 t_eval=self.scen_times,
-                args=(launch_rate_functions, self.n_sma_bins, n_species, self.n_ecc_bins, self.n_alt_shells,
-                      species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe, active_species_bool, all_species_list),
-                method="RK45"# or any other method you prefer
+                args=(launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, self.n_alt_shells,
+                      self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, self.active_species_bool, self.all_species_list),
+                method = self.integrator # or any other method you prefer
             )
 
             # output = 1
@@ -1534,31 +1412,31 @@ class ScenarioProperties:
 
         self.output = output # Save
 
+        # --- outputs ---
+        n_species = self.species_length
+        n_time    = self.output.y.shape[1]
+
+        # --- Unpack and reshape population data: (sma, species, ecc, time) ---
+        x_matrix = self.output.y.reshape(self.n_sma_bins, n_species, self.n_ecc_bins, n_time)
+
+        # --- Project to altitude shells over time ---
+        n_eff = np.zeros((self.n_shells, n_species, n_time))  # (alt/shell, species, time)
+        for s in range(n_species):
+            for t_idx, _ in enumerate(self.output.t):
+                snap = x_matrix[:, s, :, t_idx]  # (sma, ecc)
+                cube = np.zeros((self.n_sma_bins, n_species, self.n_ecc_bins))
+                cube[:, s, :] = snap
+                alt_proj = self.sma_ecc_mat_to_altitude_mat(cube)  # (alt, species)
+                n_eff[:, s, t_idx] = alt_proj[:, s]
+
+        self.output.y_alt = n_eff  # shape: (n_alt_shells, n_species, n_time)
+
         ###############
         # Indicator variables rely on altitude shells to calculate the number of collisions,
         # Therefore, project (sma,ecc) -> altitude shells (y_alt), then evaluate indicators.
         ###############
         if hasattr(self, 'indicator_variables_list'):
             print("Evaluating post-processed indicator variables...")
-
-            # --- Dimensions ---
-            n_species = self.species_length
-            n_time    = self.output.y.shape[1]
-
-            # --- Unpack and reshape population data: (sma, species, ecc, time) ---
-            x_matrix = self.output.y.reshape(self.n_sma_bins, n_species, self.n_ecc_bins, n_time)
-
-            # --- Project to altitude shells over time ---
-            n_eff = np.zeros((self.n_shells, n_species, n_time))  # (alt/shell, species, time)
-            for s in range(n_species):
-                for t_idx, _ in enumerate(self.output.t):
-                    snap = x_matrix[:, s, :, t_idx]  # (sma, ecc)
-                    cube = np.zeros((self.n_sma_bins, n_species, self.n_ecc_bins))
-                    cube[:, s, :] = snap
-                    alt_proj = self.sma_ecc_mat_to_altitude_mat(cube)  # (alt, species)
-                    n_eff[:, s, t_idx] = alt_proj[:, s]
-
-            self.output.y_alt = n_eff  # shape: (n_alt_shells, n_species, n_time)
 
             # --- Prepare indicator results dict ONCE (not inside loops) ---
             if not hasattr(self, 'indicator_results') or self.indicator_results is None:
@@ -1737,38 +1615,6 @@ class ScenarioProperties:
 
 
         return 
-    
-    def propagate(self, population, times, launch=None, time_idx=None):
-        """
-            This will use the equations that have been built already by the model, and then integrate the differential equations
-            over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
-
-            :param population: Initial population
-            :param times: Times to integrate over
-            :[optional] launch: Launch rates
-            :[optional] time: Time, this will be used to extract the JB2008 density data
-
-            :return: results_matrix
-        """
-        # check to see if the equations have already been lamdified
-        if self.equations is None:
-            self.equations = self.lambdify_equations()
-
-        # if launch is not None:
-        #     full_lambda_flattened = self.lambdify_launch(launch)
-
-        output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
-                            args=(self.equations, times, launch, time_idx), 
-                            t_eval=times, method=self.integrator)
-        
-        if output.success:
-            # Extract the results at the specified time points
-            results_matrix = output.y.T  # Transpose to make it [time, variables]
-            return results_matrix
-        else:
-            print(f"Model run failed: {output.message}")
-            return None
-
         
     def population_shell_for_OPUS(self, t, N, equations, times, launch, time_idx):
         dN_dt = np.zeros_like(N)
@@ -1902,7 +1748,7 @@ class ScenarioProperties:
 
         return dN_dt
     
-    def propagate(self, population, times, launch=None):
+    def propagate(self, population, times, launch=None, elliptical=False):
         """
             This will use the equations that have been built already by the model, and then integrate the differential equations
             over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
@@ -1913,24 +1759,61 @@ class ScenarioProperties:
 
             :return: results_matrix
         """
-        # check to see if the equations have already been lamdified
-        if self.equations is None:
-            self.equations = self.lambdify_equations()
+        if not elliptical:
+            # check to see if the equations have already been lamdified
+            if self.equations is None:
+                self.equations = self.lambdify_equations()
 
-        # if launch is not None:
-        #     full_lambda_flattened = self.lambdify_launch(launch)
+            output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
+                                args=(self.equations, times, launch), 
+                                t_eval=times, method=self.integrator)
+            
+            if output.success:
+                # Extract the results at the specified time points
+                results_matrix = output.y.T  # Transpose to make it [time, variables]
+                return results_matrix, None 
+            else:
+                print(f"Model run failed: {output.message}")
+                return None
 
-        output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
-                            args=(self.equations, times, launch), 
-                            t_eval=times, method=self.integrator)
-        
-        if output.success:
-            # Extract the results at the specified time points
-            results_matrix = output.y.T  # Transpose to make it [time, variables]
-            return results_matrix
-        else:
-            print(f"Model run failed: {output.message}")
-            return None
+        if elliptical:
+            # OPUS provides a one-year launch file. Wrap numeric per-cell rates
+            # into constant callables expected by population_rhs.
+            if launch is not None:
+                launch_rate_functions = np.full((self.n_sma_bins, self.species_length, self.n_ecc_bins), None, dtype=object)
+                for sma in range(self.n_sma_bins):
+                    for species in range(self.species_length):
+                        for ecc in range(self.n_ecc_bins):
+                            try:
+                                rate = float(launch[sma, species, ecc])
+                            except Exception:
+                                rate = 0.0
+                            if np.isfinite(rate) and rate != 0.0:
+                                # constant rate over this one-year propagate window
+                                launch_rate_functions[sma, species, ecc] = (lambda r=rate: (lambda t: r))()
+                            else:
+                                launch_rate_functions[sma, species, ecc] = None
+            else:
+                # Fallback to any precomputed functions
+                launch_rate_functions = getattr(self, 'launch_rate_functions', None)
+
+            output = solve_ivp(
+                fun=self.population_rhs,
+                t_span=(times[0], times[-1]),
+                y0=population.flatten(),
+                t_eval=times,
+                args=(launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, self.n_alt_shells,
+                      self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, 
+                      self.active_species_bool, self.all_species_list, False, True),
+                method = self.integrator # or any other method you prefer
+            )
+
+            # convert back to the original shape, only the final state is needed
+            results_matrix = output.y[:, -1].reshape(self.n_sma_bins, self.species_length, self.n_ecc_bins)
+            results_matrix_alt = self.sma_ecc_mat_to_altitude_mat(results_matrix)
+            
+            return results_matrix, results_matrix_alt
+
 
     def lambdify_equations(self):
         """
@@ -2040,7 +1923,7 @@ class ScenarioProperties:
                 np.sum(entry) if isinstance(entry, np.ndarray) else 0
                 for entry in species_lambda
             )
-            # print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
+            print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
 
         # ============================
         # Reshape for use with [sma, species, ecc]

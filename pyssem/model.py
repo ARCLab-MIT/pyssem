@@ -1,17 +1,19 @@
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
-# from .utils.plotting.plotting import create_plots, results_to_json
-# from .utils.simulation.scen_properties import ScenarioProperties
-# from .utils.simulation.species import Species
-# from .utils.collisions.collisions import create_collision_pairs
-# from .utils.drag.drag import calculate_orbital_lifetimes
-from utils.simulation.scen_properties import ScenarioProperties
-from utils.simulation.species import Species
-from utils.collisions.collisions import create_collision_pairs
-from utils.plotting.plotting import Plots, results_to_json
-from utils.drag.drag import calculate_orbital_lifetimes
-from utils.plotting.SEPDataExport import *
+try:
+    # Prefer package-relative imports when installed as a package
+    from .utils.simulation.scen_properties import ScenarioProperties
+    from .utils.simulation.species import Species
+    from .utils.collisions.collisions import create_collision_pairs
+    from .utils.plotting.plotting import Plots, results_to_json
+    from .utils.drag.drag import calculate_orbital_lifetimes
+    from .utils.plotting.SEPDataExport import *
+except ImportError:
+    # Fallback to local imports when running from within the pyssem/ directory
+    from utils.simulation.scen_properties import ScenarioProperties
+    from utils.simulation.species import Species
+    from utils.collisions.collisions import create_collision_pairs
+    from utils.plotting.plotting import Plots, results_to_json
+    from utils.drag.drag import calculate_orbital_lifetimes
+    from utils.plotting.SEPDataExport import *
 from datetime import datetime
 import json
 import os
@@ -289,7 +291,7 @@ class Model:
             raise RuntimeError(f"Failed to initialize population: {str(e)}")
 
 
-    def build_model(self):
+    def build_model(self, elliptical=False):
         """
             Build the model for the simulation.
         """
@@ -297,13 +299,16 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            self.scenario_properties.build_model()
+            if elliptical:
+                self.scenario_properties.build_model_elliptical()
+            else:
+                self.scenario_properties.build_model()
         
         except Exception as e:
             raise RuntimeError(f"Failed to build model: {str(e)}")
-        
+    
 
-    def propagate(self, times, population, launch=False, time_step=0):
+    def propagate(self, times, population, launch=False, elliptical=False):
         """
             This is when you would like to integrate forward a specific population set. This can be any amount aslong as it follows the same structure of x0 to fit the equations.
 
@@ -315,8 +320,8 @@ class Model:
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            results = self.scenario_properties.propagate(population, times, launch, time_step)
-            return results
+            results_ecc, results_alt = self.scenario_properties.propagate(population, times, launch, elliptical)
+            return results_ecc, results_alt
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
                                                         
