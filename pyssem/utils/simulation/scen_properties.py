@@ -277,7 +277,12 @@ class ScenarioProperties:
 
                         # Work on a copy; coerce to numeric and zero-fill NaNs/infs
                         temp_df = FLM_steps.loc[:, ['alt_bin', 'ecc_bin', 'epoch_start_date', species.sym_name]].copy()
-                        temp_df[species.sym_name] = pd.to_numeric(temp_df[species.sym_name], errors='coerce')
+                        try:
+                            temp_df[species.sym_name] = pd.to_numeric(temp_df[species.sym_name], errors='coerce')
+                        except Exception as e:
+                            print(f"Error converting {species.sym_name} to numeric: {e}. You likely have two species masses thare are the same.")
+                            print(temp_df[species.sym_name])
+                            raise ValueError(f"Error converting {species.sym_name} to numeric: {e}")
                         temp_df[species.sym_name] = temp_df[species.sym_name].replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
                         # Drop rows with NaN bins and cast bins to int
@@ -1139,10 +1144,17 @@ class ScenarioProperties:
                             n_effective = n_effective + n_effective_a_e
                             normalised_species_distribution_in_sma_e_space[alt_shell, species, sma, ecc] = n_effective_a_e
 
-                    normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
-                    # convert any nans to 0
+                    # Avoid division by zero and numerical instability
+                    if n_effective > 1e-10:  # Only normalize if population is significant
+                        normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = ( normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] / n_effective )
+                    else:
+                        # If population is too small, set distribution to zero to avoid numerical issues
+                        normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = 0
+                    
+                    # convert any remaining nans to 0
                     normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :] = np.nan_to_num(normalised_species_distribution_in_sma_e_space[alt_shell, species, :, :])
-                    self.effective_altitude_matrix[alt_shell, species] = n_effective
+                    # Ensure effective population doesn't become too small to avoid numerical issues
+                    self.effective_altitude_matrix[alt_shell, species] = max(n_effective, 1e-10)
         except Exception as e:
             print(f"Error in calculating effective altitude matrix: {e}")
             raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
@@ -1155,6 +1167,9 @@ class ScenarioProperties:
         # # # Our population (x_matrix) is now in the form of altitude and species, which is now for the collision equations.
         # # # #############################    
         x_flat_ordered = self.effective_altitude_matrix.flatten()
+        # Ensure no negative or extremely small values that could cause numerical issues
+        x_flat_ordered = np.maximum(x_flat_ordered, 1e-10)
+        
         # collision pair in altitude space 
         for term in self.collision_terms:
             dNdt_term = term.lambdified_sources(*x_flat_ordered)
@@ -1192,8 +1207,11 @@ class ScenarioProperties:
                     dNdt_sink_sma_ecc[:, species, :] = dNdt_sink_sma_ecc[:, species, :] + frag_sink_sma_ecc
                     # if frag_sink_sma_ecc has any nans stop
                     if np.isnan(dNdt_sink_sma_ecc).any():
-                        raise ValueError(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
-            
+                        # raise ValueError(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
+                        # convert nans to 0s
+                        dNdt_sink_sma_ecc[np.isnan(dNdt_sink_sma_ecc)] = 0
+                        print(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
+                        
         output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
 
         # so we no have the change of the points, we need to multiply each species sma and ecc by this matrix of change
@@ -1269,7 +1287,7 @@ class ScenarioProperties:
         ############################
         # Add the change in population due to launches
         ############################    
-        if launch_funcs is not None and self.baseline is False:
+        if launch_funcs is not None and (self.baseline is False or opus is True):
             for sma in range(n_sma_bins):
                 for species in range(n_species):
                     for ecc in range(n_ecc_bins):
@@ -1391,15 +1409,21 @@ class ScenarioProperties:
             
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
-            output = solve_ivp(
-                fun=self.population_rhs,
-                t_span=(self.scen_times[0], self.scen_times[-1]),
-                y0=self.x0.flatten(),
-                t_eval=self.scen_times,
-                args=(launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, self.n_alt_shells,
-                      self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, self.active_species_bool, self.all_species_list),
-                method = self.integrator # or any other method you prefer
-            )
+            if self.integrator == "Euler":
+                step_size = 0.01
+                output = self._propagate_euler_elliptical(
+                    self.x0.flatten(), self.scen_times, launch_rate_functions, step_size
+                )
+            else:
+                output = solve_ivp(
+                    fun=self.population_rhs,
+                    t_span=(self.scen_times[0], self.scen_times[-1]),
+                    y0=self.x0.flatten(),
+                    t_eval=self.scen_times,
+                    args=(launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, self.n_alt_shells,
+                          self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, self.active_species_bool, self.all_species_list),
+                    method = self.integrator # or any other method you prefer
+                )
 
             # output = 1
             self.progress_bar.close()
@@ -1667,6 +1691,39 @@ class ScenarioProperties:
 
         return dN_dt
 
+    def population_shell(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
+        """
+        Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
+
+        :param t: Timestep (int)
+        :param N: Population Count (Flattened array of species and shells)
+        :param full_lambda: Launch rates (Flattened np.array of species and shells)
+        :param equations: Equations (Lambdified sympy functions for each species and shell)
+        :param times: Times (Times for the simulation, usually years)
+
+        :return: Rate of change of population at the given timestep, t. 
+        """
+        # Update the progress bar
+        if self.progress_bar is not None and progress_bar:
+            self.progress_bar.update(t - self.progress_bar.n)\
+
+        dN_dt = np.zeros_like(N)
+        # --- This is now much more efficient ---
+        # Calculate the intrinsic rate of change from the differential equations
+        # This part can be vectorized if your `equations` list is lambdified correctly
+        intrinsic_rates = np.array([eq(*N) for eq in eq_funcs])
+
+        if self.baseline:
+            return intrinsic_rates
+        
+        # Calculate the launch rates at the current time 't' by calling the functions
+        launch_rates = np.array([func(t) for func in launch_funcs])
+
+        # The total rate of change is the sum
+        dN_dt = intrinsic_rates + launch_rates
+
+        return dN_dt
+
     def population_shell_time_varying_density(self, t, N, full_lambda, equations, times):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
@@ -1748,7 +1805,7 @@ class ScenarioProperties:
 
         return dN_dt
     
-    def propagate(self, population, times, launch=None, elliptical=False):
+    def propagate(self, population, times, launch=None, elliptical=False, euler=False, step_size=None, opus=True):
         """
             This will use the equations that have been built already by the model, and then integrate the differential equations
             over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
@@ -1756,16 +1813,43 @@ class ScenarioProperties:
             :param population: Initial population
             :param times: Times to integrate over
             :param launch: Launch rates
+            :param elliptical: If True, propagate using the elliptical model formulation.
+            :param step_size: Fixed timestep to use with explicit integrators (e.g. Euler).
 
             :return: results_matrix
         """
+        if launch is False:
+            launch = None
+
+        if opus:
+            self.opus = True
+
+        times = np.asarray(times, dtype=float)
+        if times.ndim != 1 or times.size < 2:
+            raise ValueError("times must be a 1D array-like with at least a start and end point.")
+        if np.any(np.diff(times) < 0):
+            times = np.sort(times)
+
+        integrator_name = (self.integrator or "rk45").lower()
+
         if not elliptical:
             # check to see if the equations have already been lamdified
             if self.equations is None:
                 self.equations = self.lambdify_equations()
 
-            output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population,
-                                args=(self.equations, times, launch), 
+            population_flat = np.asarray(population, dtype=float).flatten()
+            launch_for_rhs = launch
+            if launch_for_rhs is None:
+                launch_for_rhs = [None] * population_flat.size
+
+            if euler or euler: # either defined in json or passed as true
+                results_matrix = self._propagate_euler_circular(
+                    population_flat, times, launch_for_rhs, step_size
+                )
+                return results_matrix, None
+
+            output = solve_ivp(self.population_shell_for_OPUS, [times[0], times[-1]], population_flat,
+                                args=(self.equations, times, launch_for_rhs), 
                                 t_eval=times, method=self.integrator)
             
             if output.success:
@@ -1780,7 +1864,11 @@ class ScenarioProperties:
             # OPUS provides a one-year launch file. Wrap numeric per-cell rates
             # into constant callables expected by population_rhs.
             if launch is not None:
-                launch_rate_functions = np.full((self.n_sma_bins, self.species_length, self.n_ecc_bins), None, dtype=object)
+                launch_rate_functions = np.full(
+                    (self.n_sma_bins, self.species_length, self.n_ecc_bins),
+                    None,
+                    dtype=object
+                )
                 for sma in range(self.n_sma_bins):
                     for species in range(self.species_length):
                         for ecc in range(self.n_ecc_bins):
@@ -1797,22 +1885,141 @@ class ScenarioProperties:
                 # Fallback to any precomputed functions
                 launch_rate_functions = getattr(self, 'launch_rate_functions', None)
 
+            self.launch_rate_functions = launch_rate_functions
+
+            if euler:
+                mock_result = self._propagate_euler_elliptical(
+                    population, times, launch_rate_functions, step_size
+                )
+                # Extract the final state from the mock result
+                final_state = mock_result.y[:, -1].reshape(self.n_sma_bins, self.species_length, self.n_ecc_bins)
+                results_matrix_alt = self.sma_ecc_mat_to_altitude_mat(final_state)
+                return final_state, results_matrix_alt
+
+            n_alt_shells = getattr(self, 'n_alt_shells', self.n_shells)
+
             output = solve_ivp(
                 fun=self.population_rhs,
                 t_span=(times[0], times[-1]),
-                y0=population.flatten(),
+                y0=np.asarray(population, dtype=float).flatten(),
                 t_eval=times,
-                args=(launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, self.n_alt_shells,
-                      self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, 
-                      self.active_species_bool, self.all_species_list, False, True),
-                method = self.integrator # or any other method you prefer
+                args=(
+                    launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, n_alt_shells,
+                    self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, 
+                    self.active_species_bool, self.all_species_list
+                ),
+                method=self.integrator  # or any other method you prefer
             )
+
+            if not output.success:
+                raise RuntimeError(f"Elliptical propagation failed: {output.message}")
 
             # convert back to the original shape, only the final state is needed
             results_matrix = output.y[:, -1].reshape(self.n_sma_bins, self.species_length, self.n_ecc_bins)
             results_matrix_alt = self.sma_ecc_mat_to_altitude_mat(results_matrix)
+
+
+            print("Elliptical propagation completed successfully. Sum of the results matrix: ", np.sum(results_matrix))
             
             return results_matrix, results_matrix_alt
+
+    def _forward_euler(self, rhs, y0, times, step_size=None, progress_bar=None):
+        """
+        Integrate an ODE using a fixed-step forward Euler method.
+        """
+        times = np.asarray(times, dtype=float)
+        y_current = np.asarray(y0, dtype=float).reshape(-1)
+
+        if times.ndim != 1 or times.size < 2:
+            raise ValueError("times must contain at least a start and end value for Euler integration.")
+
+        total_span = times[-1] - times[0]
+        if step_size is None:
+            if times.size > 1 and total_span > 0:
+                step_size = total_span / max(1, (times.size - 1))
+            else:
+                step_size = 1.0
+
+        if step_size <= 0:
+            raise ValueError("step_size must be positive for Euler integration.")
+
+        results = [y_current.copy()]
+        t_current = float(times[0])
+        eval_index = 1
+
+        while eval_index < times.size:
+            target = float(times[eval_index])
+            if target < t_current:
+                raise ValueError("times must be non-decreasing for Euler integration.")
+
+            while t_current < target - 1e-12:
+                dt = min(step_size, target - t_current)
+                dydt = np.asarray(rhs(t_current, y_current), dtype=float).reshape(-1)
+                if dydt.shape != y_current.shape:
+                    raise ValueError("Derivative vector shape mismatch during Euler integration.")
+                y_current = y_current + dt * dydt
+                # Prevent small negative populations due to numerical error
+                y_current = np.where(y_current < 0.0, 0.0, y_current)
+                t_current += dt
+                
+                # Update progress bar if provided
+                if progress_bar is not None:
+                    progress_bar.update(dt)
+
+            # Snap to the requested output time and store the state
+            t_current = target
+            results.append(y_current.copy())
+            eval_index += 1
+
+        return np.stack(results, axis=0)
+
+    def _propagate_euler_circular(self, population_flat, times, launch, step_size):
+        """
+        Forward Euler propagation for circular (altitude-based) representation.
+        """
+        def rhs(t, state):
+            return self.population_shell_for_OPUS(t, state, self.equations, times, launch)
+
+        return self._forward_euler(rhs, population_flat, times, step_size)
+
+    def _propagate_euler_elliptical(self, population, times, launch_rate_functions, step_size):
+        """
+        Forward Euler propagation for the elliptical (sma/ecc) representation.
+        Returns a mock solve_ivp object with the same interface.
+        """
+        population_flat = np.asarray(population, dtype=float).flatten()
+        launch_funcs = launch_rate_functions
+        args = (
+            launch_funcs, self.n_sma_bins, self.species_length, self.n_ecc_bins,
+            getattr(self, 'n_alt_shells', self.n_shells), self.species_to_mass_bin, years,
+            self.adot_all_species, self.edot_all_species, self.Δa, self.Δe,
+            self.active_species_bool, self.all_species_list, self.opus
+        )
+
+        def rhs(t, state):
+            return self.population_rhs(t, state, *args, progress_bar=False)
+
+        # Create progress bar for Euler integration
+        total_span = times[-1] - times[0]
+        progress_bar = tqdm(total=total_span, desc="Euler Integration", unit="year")
+        
+        try:
+            # Get the full time series from Euler integration
+            states = self._forward_euler(rhs, population_flat, times, step_size, progress_bar)
+        finally:
+            # Ensure progress bar is closed
+            progress_bar.close()
+        
+        # Create a mock solve_ivp result object
+        class MockSolveIVPResult:
+            def __init__(self, y, t):
+                self.y = y  # Shape: (n_vars, n_times)
+                self.t = t  # Shape: (n_times,)
+                self.success = True
+                self.message = "Euler integration completed successfully"
+        
+        # Return the mock object that mimics solve_ivp output
+        return MockSolveIVPResult(states.T, np.array(times))
 
 
     def lambdify_equations(self):

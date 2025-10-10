@@ -158,7 +158,7 @@ class Model:
             # Create Collision Pairs
             collision_pairs = create_collision_pairs(self.scenario_properties)
             self.scenario_properties.add_collision_pairs(collision_pairs)
-            
+            2
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 # Calculate Orbital Lifetimes if "umpy" is in the indicator variables
@@ -264,14 +264,14 @@ class Model:
             self.scenario_properties.collision_terms = None
             self.scenario_properties.full_Cdot_PMD = None
 
-            with open('scenario-properties-baseline.pkl', 'wb') as f:
+            # with open('scenario-properties-baseline.pkl', 'wb') as f:
 
-                # first remove the lambdified equations as pickle cannot serialize them
-                self.scenario_properties.equations = None
-                self.scenario_properties.coll_eqs_lambd = None
-                self.scenario_properties.full_lambda_flattened = None
+            #     # first remove the lambdified equations as pickle cannot serialize them
+            #     self.scenario_properties.equations = None
+            #     self.scenario_properties.coll_eqs_lambd = None
+            #     self.scenario_properties.full_lambda_flattened = None
             
-                pickle.dump(self.scenario_properties, f)
+            #     pickle.dump(self.scenario_properties, f)
 
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
@@ -308,20 +308,31 @@ class Model:
             raise RuntimeError(f"Failed to build model: {str(e)}")
     
 
-    def propagate(self, times, population, launch=False, elliptical=False):
+    def propagate(self, times, population, launch=None, elliptical=False, use_euler=False, step_size=None, opus=True):
         """
             This is when you would like to integrate forward a specific population set. This can be any amount aslong as it follows the same structure of x0 to fit the equations.
 
             Parameters:
             - times (list): List of times to integrate over.
             - population: One dimensional array, n_species x n_shells.
+            - launch: Launch rates to include during propagation. Defaults to None (no launches).
+            - elliptical (bool): If True, propagate using the elliptical formulation.
+            - use_euler (bool): If True, override the scenario integrator with the explicit Euler
+              scheme for this propagation call.
+            - step_size (float, optional): Fixed timestep to use when `use_euler` is True.
         """
         
         if not isinstance(self.scenario_properties, ScenarioProperties):
             raise ValueError("Invalid scenario properties provided.")
         try:
-            results_ecc, results_alt = self.scenario_properties.propagate(population, times, launch, elliptical)
-            return results_ecc, results_alt
+            launch_arg = None if launch is False else launch
+
+            results = self.scenario_properties.propagate(
+                population, times, launch_arg, elliptical, euler = use_euler, step_size=step_size, opus=opus
+            )
+
+
+            return results
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
                                                         
@@ -345,7 +356,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -377,40 +388,68 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    model.run_model()
+    model.build_model(elliptical=scenario_props.get("elliptical", None))
 
-    data = model.results_to_json()
+    # Print input population size
+    input_population = model.scenario_properties.x0
+    print(f"Input population size: {np.sum(input_population):.6f}")
+    
+    results = model.propagate(times=[0, 1], population=model.scenario_properties.x0, launch=False, elliptical=scenario_props.get("elliptical", 
+    None), use_euler=True, step_size=0.1)
 
-    # # # # Create the figures directory if it doesn't exist
-    main_path = 'figures'
-    if not os.path.exists(main_path):
-        os.makedirs(main_path)
-
-    # Create a subdirectory for the simulation name
-    os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
-    # Save the results to a JSON file
-    with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-        json.dump(data, f, indent=4)
-
-    try:
-        plot_names = simulation_data["plots"]
-        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
-        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
-                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
-                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-                      )
-        # SEPDataExport(model, simulation_data["simulation_name"], 
-        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-        #               )
-    except Exception as e:
-        import traceback
-        print(f"Error in SEPDataExport: {e}")
-        print(traceback.format_exc())
-        print("No plots specified in the simulation configuration file.")
-
-    plot_names = simulation_data["plots"]
-    # Only run plots if the list is not empty
-    if plot_names:
-        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    # Print output population size
+    if results is not None:
+        if isinstance(results, tuple) and len(results) >= 1:
+            # Handle tuple return (results_matrix, results_matrix_alt)
+            results_matrix = results[0]
+            output_population = np.sum(results_matrix)
+            print(f"Output population size: {output_population:.6f}")
+            print(f"Population change: {output_population - np.sum(input_population):.6f}")
+        elif hasattr(results, 'output') and hasattr(results.output, 'y'):
+            # Handle solve_ivp result object
+            output_population = np.sum(results.output.y)
+            print(f"Output population size: {output_population:.6f}")
+            print(f"Population change: {output_population - np.sum(input_population):.6f}")
+        else:
+            print("Results structure:", type(results))
+            if hasattr(results, '__dict__'):
+                print("Results attributes:", list(results.__dict__.keys()))
     else:
-        print("No plots specified - skipping plotting phase.")
+        print("Results is None")
+    # model.run_model()
+
+    # data = model.results_to_json()
+
+    # # # # # Create the figures directory if it doesn't exist
+    # main_path = 'figures'
+    # if not os.path.exists(main_path):
+    #     os.makedirs(main_path)
+
+    # # Create a subdirectory for the simulation name
+    # os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
+    # # Save the results to a JSON file
+    # with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+    #     json.dump(data, f, indent=4)
+
+    # try:
+    #     plot_names = simulation_data["plots"]
+    #     mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+    #     SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+    #                   elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+    #                   output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+    #                   )
+    #     # SEPDataExport(model, simulation_data["simulation_name"], 
+    #     #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+    #     #               )
+    # except Exception as e:
+    #     import traceback
+    #     print(f"Error in SEPDataExport: {e}")
+    #     print(traceback.format_exc())
+    #     print("No plots specified in the simulation configuration file.")
+
+    # plot_names = simulation_data["plots"]
+    # # Only run plots if the list is not empty
+    # if plot_names:
+    #     Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    # else:
+    #     print("No plots specified - skipping plotting phase.")
