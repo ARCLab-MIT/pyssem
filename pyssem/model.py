@@ -158,7 +158,7 @@ class Model:
             # Create Collision Pairs
             collision_pairs = create_collision_pairs(self.scenario_properties)
             self.scenario_properties.add_collision_pairs(collision_pairs)
-            2
+            
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 # Calculate Orbital Lifetimes if "umpy" is in the indicator variables

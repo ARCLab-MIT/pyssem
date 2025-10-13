@@ -11,7 +11,7 @@
       "steps": 100,
       "min_altitude": 200,
       "max_altitude": 2000,
-      "n_shells": 30,
+      "n_shells": 10,
       "launch_function": "Constant",
       "integrator": "Euler",
       "density_model": "static_exp_dens_func",

@@ -10,6 +10,7 @@ from ..launch.launch import ADEPT_traffic_model, SEP_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
 from ..simulation.build_run_model_helpers import *
 from ..indicators.indicators import *
+from ..elliptical.elliptical import *
 import pandas as pd
 import os
 import multiprocessing
@@ -108,12 +109,14 @@ class ScenarioProperties:
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
         R0 = (self.re + R0) * 1000  # Convert to meters and the radius of the earth
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
-        if self.v_imp is not None:
-            self.v_imp_all = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
-        else: 
-            # Calculate v_imp for each orbital shell using the vis viva equation
-            self.v_imp_all = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
-        self.v_imp_all * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
+
+        a = np.broadcast_to(self.sma_HMid_km, self.HMid.shape)  # make sure a matches the shell grid
+        r = self.sma_HMid_km  # radius from Earth center (same as a for circular orbits)
+        # Convert mu from m^3/s^2 to km^3/s^2 for consistent units
+        mu_km = self.mu / 1e9  # convert m^3/s^2 to km^3/s^2
+        self.v_imp_all = vis_viva(a, r, mu=mu_km)   # result is per-shell velocity
+            # self.v_imp_all = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
+        # self.v_imp_all * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
         self.Dhl = self.deltaH * 1000 # thickness of the shell [m]
         self.Dhu = -self.deltaH * 1000 # thickness of the shell [m]
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
