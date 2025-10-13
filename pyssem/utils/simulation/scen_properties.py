@@ -177,6 +177,8 @@ class ScenarioProperties:
         # Launch Scenario
         self.launch_scenario = launch_scenario
 
+        self.opus = False
+
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step
         months_per_step = self.simulation_duration / self.steps
@@ -1993,11 +1995,11 @@ class ScenarioProperties:
             launch_funcs, self.n_sma_bins, self.species_length, self.n_ecc_bins,
             getattr(self, 'n_alt_shells', self.n_shells), self.species_to_mass_bin, years,
             self.adot_all_species, self.edot_all_species, self.Δa, self.Δe,
-            self.active_species_bool, self.all_species_list, self.opus
+            self.active_species_bool, self.all_species_list
         )
 
         def rhs(t, state):
-            return self.population_rhs(t, state, *args, progress_bar=False)
+            return self.population_rhs(t, state, *args, progress_bar=False, opus=self.opus)
 
         # Create progress bar for Euler integration
         total_span = times[-1] - times[0]
@@ -2005,7 +2007,7 @@ class ScenarioProperties:
         
         try:
             # Get the full time series from Euler integration
-            states = self._forward_euler(rhs, population_flat, times, step_size, progress_bar)
+            states = self._forward_euler(rhs, population_flat, times, step_size, progress_bar=progress_bar)
         finally:
             # Ensure progress bar is closed
             progress_bar.close()

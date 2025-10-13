@@ -232,10 +232,7 @@ class Model:
             return umpy
         except Exception as e:
             raise ValueError(f"An error occurred calculating UMPY: {str(e)}")  
-        
-
-        
-
+    
     def run_model(self):
         """
         Execute the simulation model using the provided scenario properties.
@@ -328,7 +325,7 @@ class Model:
             launch_arg = None if launch is False else launch
 
             results = self.scenario_properties.propagate(
-                population, times, launch_arg, elliptical, euler = use_euler, step_size=step_size, opus=opus
+                population, times, launch_arg, elliptical, euler=use_euler, step_size=step_size, opus=opus
             )
 
 
@@ -388,68 +385,68 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    model.build_model(elliptical=scenario_props.get("elliptical", None))
+    # model.build_model(elliptical=scenario_props.get("elliptical", None))
 
-    # Print input population size
-    input_population = model.scenario_properties.x0
-    print(f"Input population size: {np.sum(input_population):.6f}")
+    # # Print input population size
+    # input_population = model.scenario_properties.x0
+    # print(f"Input population size: {np.sum(input_population):.6f}")
     
-    results = model.propagate(times=[0, 1], population=model.scenario_properties.x0, launch=False, elliptical=scenario_props.get("elliptical", 
-    None), use_euler=True, step_size=0.1)
+    # results = model.propagate(times=[0, 1], population=model.scenario_properties.x0, launch=False, elliptical=scenario_props.get("elliptical", 
+    # None), use_euler=True, step_size=0.1)
 
-    # Print output population size
-    if results is not None:
-        if isinstance(results, tuple) and len(results) >= 1:
-            # Handle tuple return (results_matrix, results_matrix_alt)
-            results_matrix = results[0]
-            output_population = np.sum(results_matrix)
-            print(f"Output population size: {output_population:.6f}")
-            print(f"Population change: {output_population - np.sum(input_population):.6f}")
-        elif hasattr(results, 'output') and hasattr(results.output, 'y'):
-            # Handle solve_ivp result object
-            output_population = np.sum(results.output.y)
-            print(f"Output population size: {output_population:.6f}")
-            print(f"Population change: {output_population - np.sum(input_population):.6f}")
-        else:
-            print("Results structure:", type(results))
-            if hasattr(results, '__dict__'):
-                print("Results attributes:", list(results.__dict__.keys()))
-    else:
-        print("Results is None")
-    # model.run_model()
-
-    # data = model.results_to_json()
-
-    # # # # # Create the figures directory if it doesn't exist
-    # main_path = 'figures'
-    # if not os.path.exists(main_path):
-    #     os.makedirs(main_path)
-
-    # # Create a subdirectory for the simulation name
-    # os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
-    # # Save the results to a JSON file
-    # with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-    #     json.dump(data, f, indent=4)
-
-    # try:
-    #     plot_names = simulation_data["plots"]
-    #     mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
-    #     SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
-    #                   elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
-    #                   output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-    #                   )
-    #     # SEPDataExport(model, simulation_data["simulation_name"], 
-    #     #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-    #     #               )
-    # except Exception as e:
-    #     import traceback
-    #     print(f"Error in SEPDataExport: {e}")
-    #     print(traceback.format_exc())
-    #     print("No plots specified in the simulation configuration file.")
-
-    # plot_names = simulation_data["plots"]
-    # # Only run plots if the list is not empty
-    # if plot_names:
-    #     Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    # # Print output population size
+    # if results is not None:
+    #     if isinstance(results, tuple) and len(results) >= 1:
+    #         # Handle tuple return (results_matrix, results_matrix_alt)
+    #         results_matrix = results[0]
+    #         output_population = np.sum(results_matrix)
+    #         print(f"Output population size: {output_population:.6f}")
+    #         print(f"Population change: {output_population - np.sum(input_population):.6f}")
+    #     elif hasattr(results, 'output') and hasattr(results.output, 'y'):
+    #         # Handle solve_ivp result object
+    #         output_population = np.sum(results.output.y)
+    #         print(f"Output population size: {output_population:.6f}")
+    #         print(f"Population change: {output_population - np.sum(input_population):.6f}")
+    #     else:
+    #         print("Results structure:", type(results))
+    #         if hasattr(results, '__dict__'):
+    #             print("Results attributes:", list(results.__dict__.keys()))
     # else:
-    #     print("No plots specified - skipping plotting phase.")
+    #     print("Results is None")
+    model.run_model()
+
+    data = model.results_to_json()
+
+    # # # # Create the figures directory if it doesn't exist
+    main_path = 'figures'
+    if not os.path.exists(main_path):
+        os.makedirs(main_path)
+
+    # Create a subdirectory for the simulation name
+    os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
+    # Save the results to a JSON file
+    with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+        json.dump(data, f, indent=4)
+
+    try:
+        plot_names = simulation_data["plots"]
+        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                      )
+        # SEPDataExport(model, simulation_data["simulation_name"], 
+        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+        #               )
+    except Exception as e:
+        import traceback
+        print(f"Error in SEPDataExport: {e}")
+        print(traceback.format_exc())
+        print("No plots specified in the simulation configuration file.")
+
+    plot_names = simulation_data["plots"]
+    # Only run plots if the list is not empty
+    if plot_names:
+        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    else:
+        print("No plots specified - skipping plotting phase.")
