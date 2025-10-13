@@ -30,18 +30,18 @@ except ImportError:
         raise
 
 try:
-    from utils.plotting.SEPDataExport import *
+    from .utils.plotting.SEPDataExport import *
 except ImportError:
     try:
-        from utils.plotting.SEPDataExport import *
+        from .utils.plotting.SEPDataExport import *
     except ImportError:
         SEPDataExport = None  # optional
 
 try:
-    from utils.plotting.plotting import Plots, results_to_json
+    from .utils.plotting.plotting import Plots, results_to_json
 except ImportError:
     try:
-        from utils.plotting.plotting import Plots, results_to_json
+        from .utils.plotting.plotting import Plots, results_to_json
     except ImportError:
         Plots = None  # optional
 

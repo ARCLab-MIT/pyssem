@@ -1,6 +1,6 @@
 import os
 from model import Model
-from utils.plotting.plotting import Plots, results_to_json
+from .utils.plotting.plotting import Plots, results_to_json
 import json
 import pickle
 import time

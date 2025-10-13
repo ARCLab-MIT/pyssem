@@ -3,7 +3,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from ..handlers.datetime_helper import jd_to_datetime, mjd_to_jd
 import os
+from ..handlers.datetime_helper import jd_to_datetime, mjd_to_jd
+import os
 import numpy as np
+from tqdm import tqdm 
 from tqdm import tqdm 
 
 def find_alt_bin(altitude, scen_properties):
@@ -299,11 +302,15 @@ def assign_species_to_population(T, species_mapping):
     T['species_class'] = "Unknown"
 
     # Apply each mapping rule via exec
-    for rule in species_mapping:
-        try:
-            exec(rule)
-        except Exception as e:
-            print(f"Error applying rule: {rule}\n\t{e}")
+    try:
+        for rule in species_mapping:
+            try:
+                exec(rule)
+            except Exception as e:
+                print(f"Error applying rule: {rule}\n\t{e}")
+    except Exception as e:
+        print(f"Error in species mapping: {e} \n Have you defined the species mapping in the configuration JSON?")
+        exit(1)
 
     # Print summary of resulting species_class assignments
     print("\nSpecies class distribution:")

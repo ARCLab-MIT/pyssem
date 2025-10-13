@@ -1,6 +1,7 @@
 import numpy as np
 import sympy as sp
 from collections import defaultdict
+from ..drag.drag import densityexp
 
 class SymbolicCollisionTerm:
     def __init__(self, s1_idx, s2_idx, eqs_sources, eqs_sinks, fragment_spread_totals):
@@ -15,6 +16,35 @@ class SymbolicCollisionTerm:
 
         # This is for the distribution of the fragments across a, e
         self.fragment_spread_totals = fragment_spread_totals
+
+class StepFunction:
+    """
+    A callable object that acts as a fast, piecewise constant step function
+    for evenly spaced time series data.
+    """
+    def __init__(self, start_time, time_step_duration, rate_values):
+        self.start_time = start_time
+        self.time_step_duration = time_step_duration
+        self.rate_values = np.array(rate_values)
+        self.num_steps = len(rate_values)
+
+    def __call__(self, t):
+        """
+        This makes the object callable, e.g., func(t).
+        It finds the correct index for time 't' and returns the corresponding rate.
+        """
+        # If t is outside the defined time range, return 0
+        if t < self.start_time or t >= self.start_time + self.num_steps * self.time_step_duration:
+            return 0.0
+
+        # Calculate the index for the time step
+        # This is extremely fast because the steps are uniform.
+        index = int((t - self.start_time) / self.time_step_duration)
+        
+        # Clamp the index to be within the valid range of the array
+        index = min(index, self.num_steps - 1)
+        
+        return self.rate_values[index]
 
 def process_species_terms(scenario_props):
     """
@@ -264,3 +294,35 @@ def prepare_launch_functions(scenario_props):
                 launch_rate_functions.append(lambda t: 0.0)
     
     return launch_rate_functions
+
+# Constants
+hours = 3600.0
+days = 24.0 * hours
+years = 365.25 * days
+
+def get_dadt(a_current, e_current, p):
+        re   = p['req']
+        mu   = p['mu']
+        n0   = np.sqrt(mu) * a_current ** -1.5
+        a_minus_re = a_current - re
+        rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
+        # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
+        C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+        
+        beta = (np.sqrt(3)/2)*e_current
+        ang  = np.arctan(beta)
+        sec2 = 1.0 / np.cos(ang) ** 2
+        return -(4 / np.sqrt(3)) * (a_current**2 * n0 * C_0 / e_current) * np.tan(ang) * sec2
+
+def get_dedt(a_current, e_current, p):
+    re   = p['req']
+    mu   = p['mu']
+    n0   = np.sqrt(mu) * a_current ** -1.5
+    beta = (np.sqrt(3)/2) * e_current
+    a_minus_re = a_current - re
+    rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
+    # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
+    C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+
+    sec2 = 1.0 / np.cos(np.arctan(beta)) ** 2
+    return -e_current * n0 * a_current * C_0 * sec2
