@@ -327,8 +327,7 @@ class Model:
             results = self.scenario_properties.propagate(
                 population, times, launch_arg, elliptical, euler=use_euler, step_size=step_size, opus=opus
             )
-
-
+ 
             return results
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
