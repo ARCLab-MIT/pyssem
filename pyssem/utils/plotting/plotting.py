@@ -218,51 +218,61 @@ class Plots:
         plt.close()
 
     def heatmaps_species(self):
-        # Implementation for heatmaps_species plot
-        # Plot heatmap for each species
-        # Use the solve_ivp object directly (fallback logic in __init__ ensures this is correct)
-        n_time_points = len(self.output.t)
-        cols = 3
-        rows = (self.n_species + cols - 1) // cols
+        """
+        Legacy heatmap output replaced with a combined time-series view that keeps the
+        gridded aesthetic and graduated colour palette from the previous version,
+        while presenting the evolution of each species as a line plot.
+        """
+        if self.n_species == 0 or len(self.output.t) == 0:
+            fig = plt.figure(figsize=(6, 2))
+            plt.text(0.5, 0.5, "No species data available.", ha='center', va='center')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.savefig(f'{self.main_path}/{self.simulation_name}/heatmaps_species.png', dpi=150)
+            plt.close(fig)
+            return
 
-        fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=(4 * cols, 6 * rows))
-        axs = np.atleast_2d(axs)  # Ensure axs is always 2D
+        time_values = np.asarray(self.output.t, dtype=float)
+        if hasattr(self.scenario_properties, 'start_date'):
+            try:
+                start_year = self.scenario_properties.start_date.year
+                x_values = start_year + time_values
+                x_label = 'Year'
+            except AttributeError:
+                x_values = time_values
+                x_label = 'Time'
+        else:
+            x_values = time_values
+            x_label = 'Time'
 
-        for i, species_name in enumerate(self.species_names):
-            row = i // cols
-            col = i % cols
-            ax = axs[row, col]
+        colour_map = plt.cm.get_cmap('viridis', max(self.n_species, 3))
 
-            start_idx = i * self.num_shells
+        fig, ax = plt.subplots(figsize=(12, 7))
+        ax.set_title('Population Over Time by Species')
+        ax.set_xlabel(x_label)
+        ax.set_ylabel('Population')
+
+        # Light grid background reminiscent of the heatmap layout
+        ax.set_facecolor('#f7f7f7')
+        ax.grid(True, linestyle='--', linewidth=0.6, alpha=0.5)
+
+        for idx, species_name in enumerate(self.species_names):
+            start_idx = idx * self.num_shells
             end_idx = start_idx + self.num_shells
-            # Use the solve_ivp object directly (fallback logic in __init__ ensures this is correct)
-            data_per_species = self.output.y[start_idx:end_idx, :]
+            totals = np.sum(self.output.y[start_idx:end_idx, :], axis=0)
+            ax.plot(
+                x_values,
+                totals,
+                color=colour_map(idx),
+                linewidth=2,
+                label=species_name
+            )
 
-            # Get time range for extent (fallback logic in __init__ ensures this is correct)
-            time_min, time_max = self.output.t[0], self.output.t[-1]
-            
-            cax = ax.imshow(data_per_species, aspect='auto', origin='lower',
-                            extent=[time_min, time_max, 0, self.num_shells],
-                            interpolation='nearest')
-            fig.colorbar(cax, ax=ax, label='Number of Objects')
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Orbital Shell')
-            ax.set_title(species_name)
-            ax.set_xticks(np.linspace(time_min, time_max, num=5))
-            ax.set_yticks(np.arange(0, self.num_shells, max(1, self.num_shells // 5)))
-            # Handle both Model and ScenarioProperties objects for HMid access
-            if hasattr(self.scenario_properties, 'HMid'):
-                hmid = self.scenario_properties.HMid
-            else:
-                hmid = self.scenario_properties.scenario_properties.HMid
-            ax.set_yticklabels([f'{alt:.0f}' for alt in hmid[::max(1, self.num_shells // 5)]])
-
-        # Hide any unused axes
-        for i in range(self.n_species, rows * cols):
-            fig.delaxes(axs.flatten()[i])
+        ax.legend(loc='upper right', frameon=True, framealpha=0.9)
+        ax.set_xlim(x_values[0], x_values[-1])
 
         plt.tight_layout()
-        plt.savefig(f'{self.main_path}/{self.simulation_name}/heatmaps_species.png')
+        plt.savefig(f'{self.main_path}/{self.simulation_name}/heatmaps_species.png', dpi=150)
         plt.close(fig)
 
     # def evolution_of_species_gif(self):
