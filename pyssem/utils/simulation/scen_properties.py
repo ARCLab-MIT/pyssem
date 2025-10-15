@@ -549,6 +549,18 @@ class ScenarioProperties:
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
             os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
 
+        if not os.path.exists(launch_file_path):
+            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
+                    
+            download_file_from_google_drive(file_id, launch_file_path)
+
+            # Check to see if the file has been downloaded
+            if os.path.exists(launch_file_path):
+                filepath = launch_file_path
+                print('File downloaded successfully.')
+            else:
+                print('Failed to download the file.')
+
         # Check to see if launch_file_path exists
         if os.path.exists(launch_file_path):
             if launch_file == 'adept':
@@ -556,17 +568,7 @@ class ScenarioProperties:
                     filepath = launch_file_path
                 else:
                     print('As no file is provided. Downloading a launch file...:')
-                    file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
                     
-                    download_file_from_google_drive(file_id, launch_file_path)
-
-                    # Check to see if the file has been downloaded
-                    if os.path.exists(launch_file_path):
-                        filepath = launch_file_path
-                        print('File downloaded successfully.')
-                    else:
-                        print('Failed to download the file.')
-
                 # Example usage: print the filepath to verify
                 print("Filepath:", filepath)
                     
