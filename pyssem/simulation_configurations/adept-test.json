@@ -1,5 +1,5 @@
 {
-    "simulation_name": "Elliptical-test-elliptical",
+    "simulation_name": "adept-test-frag-spread",
     "id": "1234567890",
     "owner": "Indigo Brownhall",
     "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -11,14 +11,14 @@
       "steps": 100,
       "min_altitude": 200,
       "max_altitude": 2000,
-      "n_shells": 10,
+      "n_shells": 26,
       "launch_function": "Constant",
       "integrator": "Euler",
       "density_model": "static_exp_dens_func",
       "LC": 0.1,
       "v_imp": 10.0,
       "fragment_spreading": false,
-      "parallel_processing": false,
+      "parallel_processing": true,
       "baseline": false,
       "launch_scenario": "adept",
       "indicator_variables": [
@@ -33,13 +33,14 @@
     "plots": [
       "all_plots"
     ],
-    "SEP_mapping": [
-      "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1), 'species_class'] = 'Su'",
-      "T.loc[(T['obj_type'] == 2) & (T['mass'] <= 20) & (T['phase'] == 2), 'species_class'] = 'Sns'",
-      "T.loc[(T['obj_type'] == 2) & (T['phase'] == 2) & (T['maneuverable'] == 1) & T['const_name'].notna(), 'species_class'] = 'S'",
-      "T.loc[(T['obj_type'] >= 3) & (T['diam_char'] >= 0.05), 'species_class'] = 'N'",
-      "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
-    ],
+    "SEP_mapping": { 
+        "Non-station-keeping Satellite": "Su",
+        "Rocket Body": "B",
+        "Station-keeping Satellite": "S",
+        "Coordinated Satellite": "S",
+        "Debris": "N",
+        "Candidate Satellite": "S"
+    },
     "species": [
       {
         "sym_name": "S",

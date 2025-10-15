@@ -540,19 +540,41 @@ class ScenarioProperties:
                 SEP 6 H: Intensive Space Demand (High Sustainability Effort) 
         """
 
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
+        if launch_file == 'adept':
+            launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        else:
+            launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
         
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
             os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
 
         # Check to see if launch_file_path exists
-        if not os.path.exists(launch_file_path):
-            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
-        
-        print('Using launch file:', launch_file_path)
+        if os.path.exists(launch_file_path):
+            if launch_file == 'adept':
+                if os.path.exists(launch_file_path):
+                    filepath = launch_file_path
+                else:
+                    print('As no file is provided. Downloading a launch file...:')
+                    file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
+                    
+                    download_file_from_google_drive(file_id, launch_file_path)
 
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+                    # Check to see if the file has been downloaded
+                    if os.path.exists(launch_file_path):
+                        filepath = launch_file_path
+                        print('File downloaded successfully.')
+                    else:
+                        print('Failed to download the file.')
+
+                # Example usage: print the filepath to verify
+                print("Filepath:", filepath)
+                    
+                [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+            else:
+                [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+        else:
+            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0
