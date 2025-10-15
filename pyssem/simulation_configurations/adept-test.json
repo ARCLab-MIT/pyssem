@@ -1,5 +1,5 @@
 {
-    "simulation_name": "adept-test-frag-spread",
+    "simulation_name": "adept-test",
     "id": "1234567890",
     "owner": "Indigo Brownhall",
     "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -13,7 +13,7 @@
       "max_altitude": 2000,
       "n_shells": 26,
       "launch_function": "Constant",
-      "integrator": "Euler",
+      "integrator": "BDF",
       "density_model": "static_exp_dens_func",
       "LC": 0.1,
       "v_imp": 10.0,
@@ -27,7 +27,7 @@
         "active_loss_per_species",
         "active_loss_per_species_percentage"
       ],
-      "elliptical": true,
+      "elliptical": false,
       "eccentricity_bins":  [0.0, 0.0001, 0.00023269181687763618, 0.0005414548164181542, 0.001259921049894874, 0.0029317331822241717, 0.006821903207721965, 0.015874010519682003, 0.036937523489595184, 0.08595059451754268, 1]
     },
     "plots": [
