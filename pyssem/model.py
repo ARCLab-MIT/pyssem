@@ -352,7 +352,7 @@ class Model:
     
 
 if __name__ == "__main__":
-    with open(os.path.join('pyssem', 'simulation_configurations', 'adept-test.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'iadc.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
