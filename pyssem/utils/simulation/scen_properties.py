@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d, make_interp_spline
 from tqdm import tqdm
 import sympy as sp
 from ..drag.drag import *
-from ..launch.launch import ADEPT_traffic_model, SEP_traffic_model
+from ..launch.launch import ADEPT_traffic_model, SEP_traffic_model, IADC_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
 from ..simulation.build_run_model_helpers import *
 from ..indicators.indicators import *
@@ -439,6 +439,16 @@ class ScenarioProperties:
                                                                                                     percentage = False, 
                                                                                                     per_species = False, 
                                                                                                     per_pair = True))
+                elif indicator == "catastrophic_collisions_per_species_altitude":
+                    self.indicator_variables_list.append(make_catastrophic_collisions_per_species_altitude(self, 
+                                                                                                            percentage = False, 
+                                                                                                            per_species = True, 
+                                                                                                            per_pair = False))
+                elif indicator == "catastrophic_collisions_per_species_altitude_per_pair":
+                    self.indicator_variables_list.append(make_catastrophic_collisions_per_species_altitude_per_pair(self, 
+                                                                                                                    percentage = False, 
+                                                                                                                    per_species = False, 
+                                                                                                                    per_pair = True))
                 elif indicator == "umpy":
                     self.indicator_variables_list.append(make_umpy_indicator(self,
                                                                              X=4
@@ -542,6 +552,8 @@ class ScenarioProperties:
 
         if launch_file == 'adept':
             launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        elif launch_file == 'iadc':
+            launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'iadc2009_initial_plus_repeating.csv')
         else:
             launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
         
@@ -573,6 +585,8 @@ class ScenarioProperties:
                 print("Filepath:", filepath)
                     
                 [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+            elif launch_file == 'iadc':
+                 [x0, FLM_steps] = IADC_traffic_model(self, launch_file_path)
             else:
                 [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
         else:

@@ -104,7 +104,7 @@ def process_species_pair(args):
         alt_nums_3d = np.zeros((scen_properties.n_shells, len(debris_species), scen_properties.n_shells))
         
         for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits
-            dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
+            dv1, dv2 = 7.5, 7.5 # for now we are going to assume the same velocity. 
             try:
                 results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
                 frags_made[dv_index, :] = results[0] # nums is the number of fragments related to the shell of dv_index (same shell)
@@ -139,7 +139,7 @@ def process_species_pair(args):
         # Basic SSEM 
         #########
         for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits 
-            dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
+            dv1, dv2 = 7.5, 7.5 # for now we are going to assume the same velocity. 
             try:
                 results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
                 frags_made[dv_index, :] = results[0]

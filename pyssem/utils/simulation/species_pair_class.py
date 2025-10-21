@@ -113,6 +113,8 @@ class SpeciesPairClass:
                         # Multiply gammas, phi, and the sum_matrix element-wise
                         eq = -gammas[:, 0].multiply_elementwise(phi_matrix).multiply_elementwise(sum_matrix)
 
+                        self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq
+
                         # Plotting (similar to MATLAB's imagesc)
                         # plt.figure(100)
                         # plt.clf()
@@ -125,10 +127,10 @@ class SpeciesPairClass:
                     except Exception as e:
                         if np.any(fragsMadeDV == 0):
                             eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
-                            continue
+                            self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq
                         # print(f"Error in creating debris matrix: {e}")
                 
-                self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq
+                
             elif model_type == 'elliptical':
                 eq = gamma.multiply_elementwise(phi_matrix).multiply_elementwise(species1.sym).multiply_elementwise(species2.sym)
                 if i < 2:
@@ -144,28 +146,36 @@ class SpeciesPairClass:
                 self.eqs[:, eq_index] = self.eqs[:, eq_index] + eq  
             
 
-    def is_catastrophic(self, mass1, mass2, vels):
-        """
-        Determines if a collision is catastropic or non-catastrophic by calculating the 
-        relative kinetic energy. If the energy is greater than 40 J/g, the collision is
-        catastrophic from Johnson et al. 2001 (Collision Section)
+    # def is_catastrophic(self, mass1, mass2, vels):
+    #     """
+    #     Determines if a collision is catastropic or non-catastrophic by calculating the 
+    #     relative kinetic energy. If the energy is greater than 40 J/g, the collision is
+    #     catastrophic from Johnson et al. 2001 (Collision Section)
 
-        Args:
-            mass1 (float): mass of species 1, kg
-            mass2 (float): mass of species 2, kg
-            vels (np.ndarray): array of the relative velocities (km/s) for each shell
+    #     Args:
+    #         mass1 (float): mass of species 1, kg
+    #         mass2 (float): mass of species 2, kg
+    #         vels (np.ndarray): array of the relative velocities (km/s) for each shell
         
-        Returns:
-            shell-wise list of bools (true if catastrophic, false if not catastrophic)
-        """
+    #     Returns:
+    #         shell-wise list of bools (true if catastrophic, false if not catastrophic)
+    #     """
 
-        if mass1 <= mass2:
-            smaller_mass = mass1
-        else:
-            smaller_mass = mass2
+    #     if mass1 <= mass2:
+    #         smaller_mass = mass1
+    #     else:
+    #         smaller_mass = mass2
         
-        smaller_mass_g = smaller_mass * (1000) # kg to g
-        energy = [0.5 * smaller_mass * (v)**2 for v in vels] # Need to also convert km/s to m/s
-        is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
+    #     smaller_mass_g = smaller_mass * (1000) # kg to g
+    #     energy = [0.5 * smaller_mass * (v)**2 for v in vels] # Need to also convert km/s to m/s
+    #     is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
 
-        return is_catastrophic
+    #     return is_catastrophic
+
+    
+    def is_catastrophic(self, mass1, mass2, dv_kms):
+        m_proj = min(mass1, mass2)           # kg
+        M_targ = max(mass1, mass2)           # kg
+        v_ms = np.asarray(dv_kms, float) * 1000.0
+        Q_J_per_g = 0.5 * m_proj * (v_ms**2) / (M_targ * 1000.0)
+        return Q_J_per_g >= 40.0, Q_J_per_g                  # NumPy boolean array

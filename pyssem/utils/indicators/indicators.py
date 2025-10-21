@@ -20,7 +20,7 @@ class Indicator:
             self.indicator_idxs = None
             self.indicators = []  
 
-def make_indicator_struct(obj, name, ind_type, species, eqs=None):
+def make_indicator_struct(obj, name, ind_type, species, eqs=None, catastrophic=False):
     """
     Helper function that creates an indicator variable structure.
     This is intended to be called during the build_model method
@@ -70,7 +70,16 @@ def make_indicator_struct(obj, name, ind_type, species, eqs=None):
         # For indicators, we want positive collision counts, so we take the absolute value
         # Use the gamma value directly to match the main collision equations
         gamma_value = pair.gammas[0]  # First column of gamma matrix (single value)
-        eqs = -gamma_value * intrinsic_collisions  # Negative of negative gamma gives positive collision count
+
+        if catastrophic:
+            if np.any(pair.catastrophic):
+                 eqs = -gamma_value * intrinsic_collisions  # Negative of negative gamma gives positive collision count
+            else:
+                eqs = sp.zeros_like(intrinsic_collisions)  # Zero matrix if no catastrophic collisions
+        else:
+             eqs = -gamma_value * intrinsic_collisions  # Negative of negative gamma gives positive collision count
+
+       
 
     elif ind_type == "mitigated conjunction":
         if len(species) != 2:
@@ -426,6 +435,89 @@ def make_collisions_per_species_altitude_per_pair(scen_properties, percentage, p
 
             # Get all collision pairs involving this species
             for pair in scen_properties.collision_pairs:
+                species_1_name = pair.species1.sym_name
+                species_2_name = pair.species2.sym_name
+                if species_name == species_1_name or species_name == species_2_name:
+                    ind_name = f"collisions_{species_1_name}_{species_2_name}_per_altitude"
+                    spec_pair = [species_1_name, species_2_name]
+                    col_indicator = make_indicator_struct(dummy_obj, ind_name, "collision", spec_pair)
+                    
+                    # Apply percentage conversion if requested
+                    if percentage:
+                        species_totals = species.sym
+                        col_indicator.eqs = 100 * col_indicator.eqs.multiply_elementwise(sp.Matrix(species_totals).applyfunc(lambda x: 1 / x))
+                        ind_name = f"collisions_{species_1_name}_{species_2_name}_per_altitude_percentage"
+                        col_indicator.name = ind_name
+                    
+                    all_col_indicators.append(col_indicator)
+    
+    return all_col_indicators
+
+def make_catastrophic_collisions_per_species_altitude(scen_properties, percentage, per_species, per_pair):
+    """
+    This function returns an array with a list of indicators
+    corresponding to the collisions per species per altitude.
+    Creates one indicator per species that sums all collisions at each altitude shell.
+    """
+    dummy_obj = scen_properties
+    all_col_indicators = []
+
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            species_name = species.sym_name
+            spec_col_indicators = []
+
+            # Get all collision pairs involving this species
+            for pair in scen_properties.collision_pairs:
+                # Check if ANY of the catastrophic flags are True
+                if not hasattr(pair, 'catastrophic') or not np.any(pair.catastrophic):
+                    continue  # Skip this pair if no catastrophic collisions
+                
+                species_1_name = pair.species1.sym_name
+                species_2_name = pair.species2.sym_name
+                if species_name == species_1_name or species_name == species_2_name:
+                    ind_name = f"collisions_{species_1_name}_{species_2_name}"
+                    spec_pair = [species_1_name, species_2_name]
+                    col_indicator = make_indicator_struct(dummy_obj, ind_name, "collision", spec_pair)
+                    spec_col_indicators.append(col_indicator)
+            
+            # Sum all collision equations for this species
+            ag_col_eqs = sp.zeros(scen_properties.n_shells, 1)
+            for col_ind in spec_col_indicators:
+                ag_col_eqs += col_ind.eqs
+            
+            # Apply percentage conversion if requested
+            if percentage:
+                species_totals = species.sym
+                ag_col_eqs = 100 * ag_col_eqs.multiply_elementwise(sp.Matrix(species_totals).applyfunc(lambda x: 1 / x))
+                ind_name = f"{species_name}_catastrophic_collisions_per_altitude_percentage"
+            else:
+                ind_name = f"{species_name}_catastrophic_collisions_per_altitude"
+            
+            spec_ag_col_indc = make_indicator_struct(dummy_obj, ind_name, "manual", [species], ag_col_eqs)
+            all_col_indicators.append(spec_ag_col_indc)
+    
+    return all_col_indicators
+
+def make_catastrophic_collisions_per_species_altitude_per_pair(scen_properties, percentage, per_species, per_pair):
+    """
+    This function returns an array with a list of indicators
+    corresponding to the collisions per species per altitude per pair.
+    Creates separate indicators for each species pair at each altitude.
+    """
+    dummy_obj = scen_properties
+    all_col_indicators = []
+
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            species_name = species.sym_name
+
+            # Get all collision pairs involving this species
+            for pair in scen_properties.collision_pairs:
+                # Check if ANY of the catastrophic flags are True
+                if not hasattr(pair, 'catastrophic') or not np.any(pair.catastrophic):
+                    continue  # Skip this pair if no catastrophic collisions
+                
                 species_1_name = pair.species1.sym_name
                 species_2_name = pair.species2.sym_name
                 if species_name == species_1_name or species_name == species_2_name:

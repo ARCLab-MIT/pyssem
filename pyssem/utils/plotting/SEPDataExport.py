@@ -69,6 +69,8 @@ class SEPDataExport:
             self.create_3d_collision_heatmaps()
             # Create enhanced collision visualizations
             self.create_enhanced_collision_plots()
+            # Create catastrophic collision plots
+            self.create_catastrophic_collision_plots()
         
         self.compute_metrics()
         self.plot_altitude_heatmap_comparison()
@@ -314,10 +316,10 @@ class SEPDataExport:
         return cum
 
     def plot_cumulative_collisions_by_prefix(self) -> tuple[np.ndarray, dict]:
-        # Try new collision indicator method first
+        # Try new collision indicator method first (including catastrophic)
         inds_new = {
             n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
-            if 'collisions_per_altitude' in n and 'percentage' not in n and 'pair' not in n
+            if ('collisions_per_altitude' in n or 'catastrophic_collisions_per_species_altitude' in n) and 'percentage' not in n and 'pair' not in n
         }
         
         # Fallback to old method if new indicators not found
@@ -335,6 +337,8 @@ class SEPDataExport:
             # Extract prefix based on indicator type
             if 'collisions_per_altitude' in name:
                 prefix = name.replace('_collisions_per_altitude', '')
+            elif 'catastrophic_collisions_per_species_altitude' in name:
+                prefix = name.replace('_catastrophic_collisions_per_species_altitude', '')
             else:
                 prefix = name.split('_')[0]
                 
@@ -400,10 +404,10 @@ class SEPDataExport:
         import numpy as np
         import matplotlib.pyplot as plt
 
-        # Try new collision indicator method first - look for pairwise collision indicators
+        # Try new collision indicator method first - look for pairwise collision indicators (including catastrophic)
         inds_new = {
             n: d for n, d in self.scenario_properties.indicator_results.get('indicators', {}).items()
-            if 'collisions_' in n and '_per_altitude' in n and 'percentage' not in n and not n.endswith('_collisions_per_altitude')
+            if (('collisions_' in n and '_per_altitude' in n) or 'catastrophic_collisions_per_species_altitude_per_pair' in n) and 'percentage' not in n and not n.endswith('_collisions_per_altitude')
         }
         
         # Fallback to old method if new indicators not found
@@ -425,6 +429,8 @@ class SEPDataExport:
                 base = name.replace('collisions_', '').split('_per_altitude')[0].split('_')[0]
             elif 'collisions_per_altitude_per_pair' in name:
                 base = name.replace('_collisions_per_altitude_per_pair', '').split('__')[0]
+            elif 'catastrophic_collisions_per_species_altitude_per_pair' in name:
+                base = name.replace('_catastrophic_collisions_per_species_altitude_per_pair', '').split('__')[0]
             else:
                 base = name.replace('_pair_collisions', '').split('__')[0]
             available_prefixes.add(base)
@@ -438,6 +444,8 @@ class SEPDataExport:
                     base = name.replace('collisions_', '').split('_per_altitude')[0].split('_')[0]
                 elif 'collisions_per_altitude_per_pair' in name:
                     base = name.replace('_collisions_per_altitude_per_pair', '').split('__')[0]
+                elif 'catastrophic_collisions_per_species_altitude_per_pair' in name:
+                    base = name.replace('_catastrophic_collisions_per_species_altitude_per_pair', '').split('__')[0]
                 else:
                     base = name.replace('_pair_collisions', '').split('__')[0]
                     
@@ -597,10 +605,10 @@ class SEPDataExport:
         # Collect all collision data in one comprehensive dataset
         all_collision_data = []
         
-        # Process aggregate collisions by species - try new method first
+        # Process aggregate collisions by species - try new method first (including catastrophic)
         aggregate_indicators = {
             n: d for n, d in inds.items()
-            if 'collisions_per_altitude' in n and 'percentage' not in n and 'pair' not in n
+            if ('collisions_per_altitude' in n or 'catastrophic_collisions_per_species_altitude' in n) and 'percentage' not in n and 'pair' not in n
         }
         
         # Fallback to old method if new indicators not found
@@ -615,6 +623,8 @@ class SEPDataExport:
                 # Extract species name based on indicator type
                 if 'collisions_per_altitude' in indicator_name:
                     species_name = indicator_name.replace('_collisions_per_altitude', '')
+                elif 'catastrophic_collisions_per_species_altitude' in indicator_name:
+                    species_name = indicator_name.replace('_catastrophic_collisions_per_species_altitude', '')
                 else:
                     species_name = indicator_name.split('_')[0]
                 
@@ -649,10 +659,10 @@ class SEPDataExport:
             except Exception as e:
                 print(f"Warning: Could not process aggregate altitude data for {indicator_name}: {e}")
         
-        # Process pairwise collisions by altitude - try new method first
+        # Process pairwise collisions by altitude - try new method first (including catastrophic)
         pairwise_indicators = {
             n: d for n, d in inds.items()
-            if 'collisions_per_altitude_per_pair' in n and 'percentage' not in n
+            if ('collisions_per_altitude_per_pair' in n or 'catastrophic_collisions_per_species_altitude_per_pair' in n) and 'percentage' not in n
         }
         
         # Fallback to old method if new indicators not found
@@ -667,6 +677,8 @@ class SEPDataExport:
                 # Extract species pair names based on indicator type
                 if 'collisions_per_altitude_per_pair' in indicator_name:
                     base_name = indicator_name.replace('_collisions_per_altitude_per_pair', '')
+                elif 'catastrophic_collisions_per_species_altitude_per_pair' in indicator_name:
+                    base_name = indicator_name.replace('_catastrophic_collisions_per_species_altitude_per_pair', '')
                 else:
                     base_name = indicator_name.replace('_pair_collisions', '')
                     
@@ -1948,3 +1960,38 @@ class SEPDataExport:
         
         except Exception as e:
             print(f"✗ Error creating species subplots: {e}")
+
+    def create_catastrophic_collision_plots(self):
+        """
+        Create catastrophic collision plots using the new plotting methods from plotting.py.
+        """
+        try:
+            # Import the plotting methods from the main plotting module
+            from .plotting import Plots
+            
+            # Create a temporary Plots instance to access the catastrophic plotting methods
+            plots_instance = Plots(
+                scenario_properties=self.scenario_properties,
+                plots=[],  # Empty list since we're calling methods directly
+                simulation_name=self.simulation_name,
+                main_path=self.base_path
+            )
+            
+            # Create catastrophic collision summary plots
+            print("Creating catastrophic collision summary plots...")
+            plots_instance.catastrophic_collision_summary()
+            
+            # Create total catastrophic collisions sum plot
+            print("Creating total catastrophic collisions sum plot...")
+            plots_instance.total_catastrophic_collisions_sum()
+            
+            # Create catastrophic collisions vs altitude plot
+            print("Creating catastrophic collisions vs altitude plot...")
+            plots_instance.catastrophic_collisions_vs_altitude()
+            
+            print("✓ Catastrophic collision plots created successfully")
+            
+        except Exception as e:
+            print(f"✗ Error creating catastrophic collision plots: {e}")
+            import traceback
+            print(traceback.format_exc())

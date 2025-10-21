@@ -532,6 +532,367 @@ class Plots:
         
         print(f"Collision plots saved to: {collision_dir}")
     
+    def total_objects_by_altitude(self):
+        """
+        Bar chart of total objects per altitude bin at the final timestep.
+        X-axis: altitude bin midpoints (km) from `HMid`.
+        Y-axis: total objects in each bin (summed across all species).
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        # Resolve altitude bin midpoints
+        if hasattr(self.scenario_properties, 'HMid'):
+            altitude_midpoints_km = np.asarray(self.scenario_properties.HMid, dtype=float)
+        else:
+            # Fallback: derive from min/max and n_shells if needed
+            altitude_midpoints_km = np.linspace(
+                float(self.scenario_properties.min_altitude),
+                float(self.scenario_properties.max_altitude),
+                int(self.num_shells)
+            )
+
+        # Final timestep index
+        final_idx = -1
+
+        # Reshape y to (n_species, n_shells, n_time)
+        n_time = self.output.y.shape[1]
+        y_reshaped = self.output.y.reshape(self.n_species, self.num_shells, n_time)
+
+        # Sum across species at final timestep → (n_shells,)
+        totals_per_shell = np.sum(y_reshaped[:, :, final_idx], axis=0)
+
+        # Plot
+        plt.figure(figsize=(12, 6))
+        bar_width = max(1.0, (altitude_midpoints_km[1] - altitude_midpoints_km[0]) * 0.8) if len(altitude_midpoints_km) > 1 else 10.0
+        plt.bar(altitude_midpoints_km, totals_per_shell, width=bar_width, align='center', edgecolor='black')
+        plt.xlabel('Altitude (km)')
+        plt.ylabel('Objects per bin')
+        plt.title('Total Objects by Altitude Bin (final timestep)')
+        plt.grid(True, axis='y', alpha=0.3)
+        plt.tight_layout()
+
+        out_dir = f'{self.main_path}/{self.simulation_name}'
+        os.makedirs(out_dir, exist_ok=True)
+        plt.savefig(f'{out_dir}/total_objects_by_altitude.png', dpi=150)
+        plt.close()
+
+    def total_objects_large_diameter(self):
+        """
+        Time series plot of total objects with diameter >10cm (radius >5cm).
+        Filters species by radius property and sums populations over time.
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        # Get species properties to filter by radius
+        species_properties = []
+        if hasattr(self.scenario_properties, 'species_cells'):
+            # Access species from species_cells dictionary
+            for species_group in self.scenario_properties.species_cells.values():
+                if isinstance(species_group, list):
+                    species_properties.extend(species_group)
+                else:
+                    species_properties.append(species_group)
+        elif hasattr(self.scenario_properties, 'species'):
+            # Access species from species list
+            if isinstance(self.scenario_properties.species, dict):
+                for species_group in self.scenario_properties.species.values():
+                    species_properties.extend(species_group)
+            else:
+                species_properties = self.scenario_properties.species
+
+        # Filter species with radius > 5cm (diameter > 10cm)
+        large_species_indices = []
+        for i, species in enumerate(species_properties):
+            if hasattr(species, 'radius') and species.radius is not None:
+                if species.radius > 0.05:  # 5cm in meters
+                    large_species_indices.append(i)
+
+        if not large_species_indices:
+            # No large species found, create empty plot
+            fig = plt.figure(figsize=(10, 6))
+            plt.text(0.5, 0.5, "No species with diameter >10cm found.", ha='center', va='center')
+            plt.axis('off')
+            plt.tight_layout()
+            out_dir = f'{self.main_path}/{self.simulation_name}'
+            os.makedirs(out_dir, exist_ok=True)
+            plt.savefig(f'{out_dir}/total_objects_large_diameter.png', dpi=150)
+            plt.close(fig)
+            return
+
+        # Calculate total large objects over time
+        total_large_objects = np.zeros_like(self.output.t)
+        
+        for species_idx in large_species_indices:
+            start_idx = species_idx * self.num_shells
+            end_idx = start_idx + self.num_shells
+            # Sum across all shells for this species
+            species_total = np.sum(self.output.y[start_idx:end_idx, :], axis=0)
+            total_large_objects += species_total
+
+        # Plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.output.t, total_large_objects, linewidth=2, color='blue')
+        plt.xlabel('Time')
+        plt.ylabel('Total Objects (diameter >10cm)')
+        plt.title('Total Objects with Diameter >10cm Over Time')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        out_dir = f'{self.main_path}/{self.simulation_name}'
+        os.makedirs(out_dir, exist_ok=True)
+        plt.savefig(f'{out_dir}/total_objects_large_diameter.png', dpi=150)
+        plt.close()
+
+    def catastrophic_collision_summary(self):
+        """
+        Create collision summary plots for catastrophic collisions only.
+        Similar to collision_plots but filtered for catastrophic collisions.
+        """
+        print("Generating catastrophic collision summary plots...")
+        
+        # Create collision directory
+        collision_dir = f'{self.main_path}/{self.simulation_name}/collisions'
+        os.makedirs(collision_dir, exist_ok=True)
+        
+        # Check if we have indicator variables for catastrophic collisions
+        if (hasattr(self.scenario_properties, 'indicator_results') and 
+            self.scenario_properties.indicator_results is not None):
+            self._create_catastrophic_collision_plots(collision_dir)
+        
+        print(f"Catastrophic collision plots saved to: {collision_dir}")
+
+    def _create_catastrophic_collision_plots(self, collision_dir):
+        """
+        Create collision plots from indicator variables, filtered for catastrophic collisions.
+        """
+        try:
+            indicators = self.scenario_properties.indicator_results.get('indicators', {})
+            
+            # Filter for catastrophic collision indicators
+            catastrophic_indicators = {}
+            for indicator_name, time_data in indicators.items():
+                if 'catastrophic' in indicator_name.lower() or 'collision' in indicator_name.lower():
+                    catastrophic_indicators[indicator_name] = time_data
+            
+            if not catastrophic_indicators:
+                print("No catastrophic collision indicators found.")
+                return
+            
+            # Create 2x2 subplot layout
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+            
+            # 1. Total Catastrophic Collisions Over Time
+            total_collisions = np.zeros(len(self.output.t))
+            for indicator_name, time_data in catastrophic_indicators.items():
+                times = np.array(list(time_data.keys()))
+                for time in times:
+                    time_idx = np.argmin(np.abs(self.output.t - time))
+                    data_matrix = time_data[time]
+                    if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                        total_collisions[time_idx] += np.sum(data_matrix)
+                    else:
+                        total_collisions[time_idx] += np.sum(data_matrix)
+            
+            ax1.plot(self.output.t, total_collisions, 'r-', linewidth=2, label='Total Catastrophic Collisions')
+            ax1.set_xlabel('Time (years)')
+            ax1.set_ylabel('Cumulative Collisions')
+            ax1.set_title('Total Catastrophic Collisions Over Time')
+            ax1.grid(True, alpha=0.3)
+            ax1.legend()
+            
+            # 2. Species-Specific Catastrophic Collisions
+            species_collisions = {}
+            for indicator_name, time_data in catastrophic_indicators.items():
+                if 'per_species' in indicator_name or any(sp in indicator_name for sp in self.species_names):
+                    times = np.array(list(time_data.keys()))
+                    species_name = indicator_name.split('_')[0] if '_' in indicator_name else indicator_name
+                    species_collisions[species_name] = np.zeros(len(self.output.t))
+                    
+                    for time in times:
+                        time_idx = np.argmin(np.abs(self.output.t - time))
+                        data_matrix = time_data[time]
+                        if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                            species_collisions[species_name][time_idx] = np.sum(data_matrix)
+                        else:
+                            species_collisions[species_name][time_idx] = np.sum(data_matrix)
+            
+            colors = plt.cm.tab10(np.linspace(0, 1, len(species_collisions)))
+            for i, (species, collisions) in enumerate(species_collisions.items()):
+                ax2.plot(self.output.t, collisions, color=colors[i], linewidth=2, label=species)
+            
+            ax2.set_xlabel('Time (years)')
+            ax2.set_ylabel('Cumulative Collisions')
+            ax2.set_title('Species-Specific Catastrophic Collisions')
+            ax2.grid(True, alpha=0.3)
+            ax2.legend()
+            
+            # 3. Final Collision Counts by Species
+            final_counts = {}
+            for species, collisions in species_collisions.items():
+                final_counts[species] = collisions[-1]
+            
+            species_names = list(final_counts.keys())
+            counts = list(final_counts.values())
+            
+            bars = ax3.bar(species_names, counts, color=colors[:len(species_names)])
+            ax3.set_xlabel('Species')
+            ax3.set_ylabel('Final Collision Count')
+            ax3.set_title('Final Catastrophic Collision Counts by Species')
+            ax3.tick_params(axis='x', rotation=45)
+            
+            # Add value labels on bars
+            for bar, count in zip(bars, counts):
+                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1, 
+                        f'{count:.1f}', ha='center', va='bottom')
+            
+            # 4. Collision Rate Over Time
+            if len(self.output.t) > 1:
+                dt = np.diff(self.output.t)
+                collision_rate = np.diff(total_collisions) / dt
+                ax4.plot(self.output.t[1:], collision_rate, 'g-', linewidth=2, label='Collision Rate')
+                ax4.set_xlabel('Time (years)')
+                ax4.set_ylabel('Collision Rate (collisions/year)')
+                ax4.set_title('Catastrophic Collision Rate Over Time')
+                ax4.grid(True, alpha=0.3)
+                ax4.legend()
+            
+            plt.tight_layout()
+            plt.savefig(f'{collision_dir}/collision_summary_catastrophic.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+        except Exception as e:
+            print(f"Error creating catastrophic collision plots: {e}")
+
+    def total_catastrophic_collisions_sum(self):
+        """
+        Create a plot showing the total sum of all catastrophic collisions over time.
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+        
+        # Check if we have indicator variables
+        if not (hasattr(self.scenario_properties, 'indicator_results') and 
+                self.scenario_properties.indicator_results is not None):
+            print("No indicator results found for catastrophic collisions.")
+            return
+        
+        indicators = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Filter for catastrophic collision indicators
+        catastrophic_indicators = {}
+        for indicator_name, time_data in indicators.items():
+            if 'catastrophic' in indicator_name.lower() or 'collision' in indicator_name.lower():
+                catastrophic_indicators[indicator_name] = time_data
+        
+        if not catastrophic_indicators:
+            print("No catastrophic collision indicators found.")
+            return
+        
+        # Calculate total catastrophic collisions over time
+        total_collisions = np.zeros(len(self.output.t))
+        
+        for indicator_name, time_data in catastrophic_indicators.items():
+            times = np.array(list(time_data.keys()))
+            for time in times:
+                time_idx = np.argmin(np.abs(self.output.t - time))
+                data_matrix = time_data[time]
+                if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                    total_collisions[time_idx] += np.sum(data_matrix)
+                else:
+                    total_collisions[time_idx] += np.sum(data_matrix)
+        
+        # Plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.output.t, total_collisions, 'r-', linewidth=3, label='Total Catastrophic Collisions')
+        plt.xlabel('Time (years)')
+        plt.ylabel('Cumulative Catastrophic Collisions')
+        plt.title('Total Sum of Catastrophic Collisions Over Time')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        
+        out_dir = f'{self.main_path}/{self.simulation_name}'
+        os.makedirs(out_dir, exist_ok=True)
+        plt.savefig(f'{out_dir}/total_catastrophic_collisions_sum.png', dpi=150)
+        plt.close()
+
+    def catastrophic_collisions_vs_altitude(self):
+        """
+        Create catastrophic collisions vs altitude plot with 100km bins.
+        Shows cumulative catastrophic collisions per 100km altitude bin.
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+        
+        # Check if we have indicator variables
+        if not (hasattr(self.scenario_properties, 'indicator_results') and 
+                self.scenario_properties.indicator_results is not None):
+            print("No indicator results found for catastrophic collisions.")
+            return
+        
+        indicators = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Filter for catastrophic collision indicators with altitude data
+        altitude_indicators = {}
+        for indicator_name, time_data in indicators.items():
+            if ('catastrophic' in indicator_name.lower() and 
+                ('altitude' in indicator_name.lower() or 'per_altitude' in indicator_name.lower())):
+                altitude_indicators[indicator_name] = time_data
+        
+        if not altitude_indicators:
+            print("No catastrophic collision altitude indicators found.")
+            return
+        
+        # Get altitude bins (100km bins)
+        min_alt = self.scenario_properties.min_altitude
+        max_alt = self.scenario_properties.max_altitude
+        altitude_bins = np.arange(min_alt, max_alt + 100, 100)  # 100km bins
+        altitude_centers = (altitude_bins[:-1] + altitude_bins[1:]) / 2
+        
+        # Calculate cumulative collisions per altitude bin
+        cumulative_collisions = np.zeros(len(altitude_centers))
+        
+        for indicator_name, time_data in altitude_indicators.items():
+            # Get final time step data
+            final_time = max(time_data.keys())
+            data_matrix = time_data[final_time]
+            
+            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                # Sum across time or other dimensions to get per-altitude values
+                altitude_collisions = np.sum(data_matrix, axis=0) if data_matrix.shape[0] > 1 else data_matrix.flatten()
+            else:
+                altitude_collisions = data_matrix.flatten()
+            
+            # Map to 100km bins
+            for i, alt_center in enumerate(altitude_centers):
+                # Find corresponding altitude shell
+                alt_shell_idx = int((alt_center - min_alt) / (max_alt - min_alt) * len(altitude_collisions))
+                alt_shell_idx = min(alt_shell_idx, len(altitude_collisions) - 1)
+                cumulative_collisions[i] += altitude_collisions[alt_shell_idx]
+        
+        # Plot
+        plt.figure(figsize=(12, 8))
+        plt.plot(altitude_centers, cumulative_collisions, 'b-', linewidth=2, marker='o', markersize=4)
+        plt.xlabel('Altitude (km)')
+        plt.ylabel('Cumulative Catastrophic Collisions / 100km bin')
+        plt.title('Catastrophic Collisions vs Altitude')
+        plt.grid(True, alpha=0.3)
+        plt.xlim(min_alt, max_alt)
+        
+        # Add vertical lines for major altitude markers
+        for alt in np.arange(200, max_alt + 1, 200):
+            if min_alt <= alt <= max_alt:
+                plt.axvline(x=alt, color='gray', linestyle='--', alpha=0.5)
+        
+        plt.tight_layout()
+        
+        out_dir = f'{self.main_path}/{self.simulation_name}'
+        os.makedirs(out_dir, exist_ok=True)
+        plt.savefig(f'{out_dir}/catastrophic_collisions_vs_altitude.png', dpi=150)
+        plt.close()
+    
     def _create_3d_collision_plots(self, collision_dir):
         """
         Create 3D collision plots from collision pair data.

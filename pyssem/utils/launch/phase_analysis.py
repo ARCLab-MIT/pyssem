@@ -36,18 +36,18 @@ def create_phase_timeline_plots():
     active_satellites = df[df['obj_type'] == 2].copy()
     print(f"After obj_type filter: {len(active_satellites)}")
     
-    # Filter for date range 2020-2030 (more specific with months)
-    # Start from January 2020
+    # Filter for date range 2023-2028 (more specific with months)
+    # Start from January 2023
     active_satellites = active_satellites[
-        (active_satellites['year_start'] > 2020) | 
-        ((active_satellites['year_start'] == 2020) & (active_satellites['month_start'] >= 1))
+        (active_satellites['year_start'] > 2023) | 
+        ((active_satellites['year_start'] == 2023) & (active_satellites['month_start'] >= 1))
     ]
-    # End before January 2031
+    # End before January 2029
     active_satellites = active_satellites[
-        (active_satellites['year_start'] < 2030) | 
-        ((active_satellites['year_start'] == 2030) & (active_satellites['month_start'] <= 12))
+        (active_satellites['year_start'] < 2028) | 
+        ((active_satellites['year_start'] == 2028) & (active_satellites['month_start'] <= 12))
     ]
-    print(f"After date range filter (Jan 2020 - Dec 2030): {len(active_satellites)}")
+    print(f"After date range filter (Jan 2023 - Dec 2028): {len(active_satellites)}")
     
     # Replace NaN constellation names with a placeholder
     active_satellites['const_name'] = active_satellites['const_name'].fillna('Unassigned')
@@ -114,15 +114,15 @@ def create_phase_timeline_plots():
         print("\nNo valid dates found. Trying alternative approach...")
         # Reset to original data with all filters including phase
         active_satellites = df[df['obj_type'] == 2].copy()
-        # Start from January 2020
+        # Start from January 2023
         active_satellites = active_satellites[
-            (active_satellites['year_start'] > 2020) | 
-            ((active_satellites['year_start'] == 2020) & (active_satellites['month_start'] >= 1))
+            (active_satellites['year_start'] > 2023) | 
+            ((active_satellites['year_start'] == 2023) & (active_satellites['month_start'] >= 1))
         ]
-        # End before January 2031
+        # End before January 2029
         active_satellites = active_satellites[
-            (active_satellites['year_start'] < 2030) | 
-            ((active_satellites['year_start'] == 2030) & (active_satellites['month_start'] <= 12))
+            (active_satellites['year_start'] < 2028) | 
+            ((active_satellites['year_start'] == 2028) & (active_satellites['month_start'] <= 12))
         ]
         active_satellites['const_name'] = active_satellites['const_name'].fillna('Unassigned')
         active_satellites = active_satellites[active_satellites['const_name'] == 'Unassigned']
@@ -209,8 +209,8 @@ def create_phase_timeline_plots():
         # Set y-axis to show satellite IDs
         plt.yticks(range(len(plot_ids)), [f'ID {id}' for id in plot_ids])
         
-        # Limit x-axis to 2020-2030
-        plt.xlim(2020, 2030)
+        # Limit x-axis to 2023-2028
+        plt.xlim(2023, 2028)
         
         # Rotate x-axis labels for better readability
         plt.xticks(rotation=45)
@@ -238,6 +238,91 @@ def create_phase_timeline_plots():
     
     print(f"\nAnalysis complete! Created {num_plots} plots.")
     
+    # Create bar chart for Phase 3 start dates
+    print("\nCreating bar chart for Phase 3 start dates...")
+    
+    # Filter for Phase 3 satellites in the 2023-2028 range
+    phase3_satellites = active_satellites[active_satellites['phase'] == 3].copy()
+    
+    # Count satellites with Phase 3 starting between 2023-2024 (before 2025 and after 2022)
+    print("\n=== Phase 3 Start Date Analysis ===")
+    phase3_2023_2024 = phase3_satellites[
+        (phase3_satellites['year_start'] >= 2023) & 
+        (phase3_satellites['year_start'] <= 2024)
+    ]
+    
+    print(f"Satellites with Phase 3 starting between 2023-2024: {len(phase3_2023_2024)}")
+    
+    if len(phase3_2023_2024) > 0:
+        # Show breakdown by year
+        year_breakdown = phase3_2023_2024['year_start'].value_counts().sort_index()
+        print("\nBreakdown by year:")
+        for year, count in year_breakdown.items():
+            print(f"  {year}: {count} satellites")
+        
+        # Show breakdown by month for each year
+        print("\nBreakdown by month:")
+        for year in sorted(phase3_2023_2024['year_start'].unique()):
+            year_data = phase3_2023_2024[phase3_2023_2024['year_start'] == year]
+            month_breakdown = year_data['month_start'].value_counts().sort_index()
+            print(f"  {year}:")
+            for month, count in month_breakdown.items():
+                month_name = pd.to_datetime(f"{year}-{month:02d}-01").strftime('%B')
+                print(f"    {month_name} ({month:02d}): {count} satellites")
+    else:
+        print("No satellites found with Phase 3 starting between 2023-2024")
+    
+    if len(phase3_satellites) > 0:
+        # Create date strings for Phase 3 start dates
+        phase3_satellites['start_date_str'] = (
+            phase3_satellites['year_start'].astype(str) + '-' + 
+            phase3_satellites['month_start'].astype(str).str.zfill(2) + '-01'
+        )
+        
+        # Convert to datetime for proper sorting
+        phase3_satellites['start_date_dt'] = pd.to_datetime(phase3_satellites['start_date_str'], errors='coerce')
+        
+        # Remove any invalid dates
+        phase3_satellites = phase3_satellites.dropna(subset=['start_date_dt'])
+        
+        if len(phase3_satellites) > 0:
+            # Count occurrences by date
+            date_counts = phase3_satellites['start_date_dt'].value_counts().sort_index()
+            
+            # Create the bar chart
+            plt.figure(figsize=(12, 6))
+            date_counts.plot(kind='bar', color='green', alpha=0.7)
+            plt.title('Phase 3 Start Dates (2023-2028)', fontsize=14, fontweight='bold')
+            plt.xlabel('Date', fontsize=12)
+            plt.ylabel('Number of Satellites', fontsize=12)
+            plt.xticks(rotation=45)
+            plt.grid(True, alpha=0.3)
+            
+            # Format x-axis labels to show year-month
+            ax = plt.gca()
+            ax.set_xticklabels([date.strftime('%Y-%m') for date in date_counts.index])
+            
+            plt.tight_layout()
+            
+            # Save the bar chart
+            bar_chart_path = os.path.join(figures_dir, 'phase3_start_dates_bar_chart.png')
+            plt.savefig(bar_chart_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"Bar chart saved to: {bar_chart_path}")
+            print(f"Found {len(date_counts)} unique Phase 3 start dates")
+            print(f"Total Phase 3 satellites: {len(phase3_satellites)}")
+            
+            # Print summary statistics
+            print(f"\nPhase 3 Start Date Summary:")
+            print(f"Date range: {date_counts.index.min().strftime('%Y-%m')} to {date_counts.index.max().strftime('%Y-%m')}")
+            print(f"Most active date: {date_counts.idxmax().strftime('%Y-%m')} ({date_counts.max()} satellites)")
+            print(f"Average satellites per date: {date_counts.mean():.1f}")
+        else:
+            print("No valid Phase 3 start dates found in the 2023-2028 range.")
+    else:
+        print("No Phase 3 satellites found in the 2023-2028 range.")
+
     # Print summary statistics
     print("\n=== Phase Summary ===")
     phase_counts = active_satellites['phase'].value_counts().sort_index()
