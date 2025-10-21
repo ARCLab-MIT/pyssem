@@ -10,6 +10,7 @@ from ..launch.launch import ADEPT_traffic_model, SEP_traffic_model
 from ..handlers.handlers import download_file_from_google_drive
 from ..simulation.build_run_model_helpers import *
 from ..indicators.indicators import *
+from ..elliptical.elliptical import *
 import pandas as pd
 import os
 import multiprocessing
@@ -108,12 +109,14 @@ class ScenarioProperties:
         self.deltaH = np.diff(R0)[0]  # thickness of the shell [km]
         R0 = (self.re + R0) * 1000  # Convert to meters and the radius of the earth
         self.V = 4 / 3 * pi * np.diff(R0**3)  # volume of the shells [m^3]
-        if self.v_imp is not None:
-            self.v_imp_all = self.v_imp * np.ones_like(self.V)  # impact velocity [km/s] Shell-wise
-        else: 
-            # Calculate v_imp for each orbital shell using the vis viva equation
-            self.v_imp_all = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
-        self.v_imp_all * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
+
+        a = np.broadcast_to(self.sma_HMid_km, self.HMid.shape)  # make sure a matches the shell grid
+        r = self.sma_HMid_km  # radius from Earth center (same as a for circular orbits)
+        # Convert mu from m^3/s^2 to km^3/s^2 for consistent units
+        mu_km = self.mu / 1e9  # convert m^3/s^2 to km^3/s^2
+        self.v_imp_all = vis_viva(a, r, mu=mu_km)   # result is per-shell velocity
+            # self.v_imp_all = np.sqrt(2 * self.mu / (self.HMid * 1000)) / 1000  # impact velocity [km/s] Shell-wise
+        # self.v_imp_all * 1000 * (24 * 3600 * 365.25)  # impact velocity [m/year]
         self.Dhl = self.deltaH * 1000 # thickness of the shell [m]
         self.Dhu = -self.deltaH * 1000 # thickness of the shell [m]
         self.options = {'reltol': 1.e-4, 'abstol': 1.e-4}  # Integration options # these are likely to change
@@ -537,19 +540,43 @@ class ScenarioProperties:
                 SEP 6 H: Intensive Space Demand (High Sustainability Effort) 
         """
 
-        launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
+        if launch_file == 'adept':
+            launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data', 'x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv')
+        else:
+            launch_file_path = os.path.join('pyssem', 'utils', 'launch', 'data',f'ref_scen_{launch_file}.csv')
         
         # Check to see if the data folder exists, if not, create it
         if not os.path.exists(os.path.join('pyssem', 'utils', 'launch', 'data')):
             os.makedirs(os.path.join('pyssem', 'utils', 'launch', 'data'))
 
-        # Check to see if launch_file_path exists
         if not os.path.exists(launch_file_path):
-            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
-        
-        print('Using launch file:', launch_file_path)
+            file_id = '1O8EAyGhydH0Qj2alZEeEoj0dJLy7c5KE'
+                    
+            download_file_from_google_drive(file_id, launch_file_path)
 
-        [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+            # Check to see if the file has been downloaded
+            if os.path.exists(launch_file_path):
+                filepath = launch_file_path
+                print('File downloaded successfully.')
+            else:
+                print('Failed to download the file.')
+
+        # Check to see if launch_file_path exists
+        if os.path.exists(launch_file_path):
+            if launch_file == 'adept':
+                if os.path.exists(launch_file_path):
+                    filepath = launch_file_path
+                else:
+                    print('As no file is provided. Downloading a launch file...:')
+                    
+                # Example usage: print the filepath to verify
+                print("Filepath:", filepath)
+                    
+                [x0, FLM_steps] = ADEPT_traffic_model(self, filepath)
+            else:
+                [x0, FLM_steps] = SEP_traffic_model(self, launch_file_path)
+        else:
+            raise FileNotFoundError(f"Launch file {launch_file_path} does not exist. Please provide a valid launch file.")
 
         # Store as part of the class, as it is needed for the run_model()
         self.x0 = x0

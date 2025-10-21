@@ -517,7 +517,7 @@ def find_species_bin(row, scen_properties, species_cells):
     return None  # No match found
 
 
-def ADEPT_traffic_model(scen_properties, file_path):
+def ADEPT_traffic_model(scen_properties, file_path, baseline=False):
     """
     From an initial population and future model csv, this function will create for the starting population, 
     then one for each time step in the future model.
@@ -546,14 +546,7 @@ def ADEPT_traffic_model(scen_properties, file_path):
     T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
 
     # Map species type based on object class
-    species_dict = {
-        "Non-station-keeping Satellite": "Su",
-        "Rocket Body": "B",
-        "Station-keeping Satellite": "S",
-        "Coordinated Satellite": "S",
-        "Debris": "N",
-        "Candidate Satellite": "S"
-    }
+    species_dict = scen_properties.SEP_mapping
 
     T['species_class'] = T['obj_class'].map(species_dict)
 
@@ -585,20 +578,52 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
-    # Create a pivot table, keep alt_bin
-    df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+    if getattr(scen_properties, 'elliptical', False):
+        # Elliptical handling mirrors SEP: build 3D x0_summary [alt_bin, species, ecc_bin]
+        ecc_edges = np.array(scen_properties.eccentricity_bins)
+        x0 = x0.copy()
+        x0['ecc_bin'] = pd.cut(x0['ecc'], bins=ecc_edges, labels=False, include_lowest=True)
 
-    # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
-    x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
-    x0_summary.index.name = 'alt_bin'
+        n_shells = scen_properties.n_shells
+        n_species = len(scen_properties.species_names)
+        n_ecc_bins = len(ecc_edges) - 1
 
-    # Merge the two dataframes
-    for column in df.columns:
-        if column in x0_summary.columns:
-            x0_summary[column] = df[column]
+        x0_summary = np.zeros((n_shells, n_species, n_ecc_bins), dtype=int)
+        species_name_to_index = {name: idx for idx, name in enumerate(scen_properties.species_names)}
 
-    # fill NaN with 0
-    x0_summary.fillna(0, inplace=True)
+        skipped = 0
+        for _, row in x0.iterrows():
+            alt_bin = row['alt_bin']
+            ecc_bin = row['ecc_bin']
+            species_idx = species_name_to_index.get(row['species'], None)
+
+            if pd.isna(alt_bin) or pd.isna(ecc_bin) or species_idx is None:
+                skipped += 1
+                continue
+
+            alt_bin_i = int(alt_bin)
+            ecc_bin_i = int(ecc_bin)
+            if 0 <= alt_bin_i < n_shells and 0 <= ecc_bin_i < n_ecc_bins:
+                x0_summary[alt_bin_i, int(species_idx), ecc_bin_i] += 1
+            else:
+                skipped += 1
+        if skipped:
+            print(f"[ADEPT] Skipped {skipped} rows with out-of-range or NaN bins in x0.")
+    else:
+        # Create a pivot table, keep alt_bin
+        df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
+
+        # Create a new data frame with column names like scenario_properties.species_sym_names and rows of length n_shells
+        x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
+        x0_summary.index.name = 'alt_bin'
+
+        # Merge the two dataframes
+        for column in df.columns:
+            if column in x0_summary.columns:
+                x0_summary[column] = df[column]
+
+        # fill NaN with 0
+        x0_summary.fillna(0, inplace=True)
 
     if baseline:
         # No need to calculate the launch model
@@ -614,16 +639,40 @@ def ADEPT_traffic_model(scen_properties, file_path):
 
     for i, (start, end) in tqdm(enumerate(zip(time_steps[:-1], time_steps[1:])), total=len(time_steps)-1, desc="Processing Time Steps"):
         flm_step = T_new[(T_new['epoch_start_datime'] >= start) & (T_new['epoch_start_datime'] < end)]
-        flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
 
-        # All objects aren't always in shells, so you need to these back in. 
-        flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
+        if getattr(scen_properties, 'elliptical', False):
+            # Bin eccentricity for launch window as well
+            ecc_edges = np.array(scen_properties.eccentricity_bins)
+            flm_step = flm_step.copy()
+            flm_step['ecc_bin'] = pd.cut(flm_step['ecc'], bins=ecc_edges, labels=False, include_lowest=True)
+            # Drop rows with invalid bins before grouping to avoid NaNs in indices
+            flm_step = flm_step[flm_step['alt_bin'].notna() & flm_step['ecc_bin'].notna()]
 
-        flm_summary.reset_index(inplace=True)
-        flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+            # Group with ecc bin and species
+            flm_summary = flm_step.groupby(['alt_bin', 'ecc_bin', 'species']).size()
+            flm_summary = flm_summary.unstack(fill_value=0)
 
-        flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
-        flm_steps = pd.concat([flm_steps, flm_summary])
+            # Ensure all combinations of alt_bin x ecc_bin exist
+            all_alt_ecc_bins = pd.MultiIndex.from_product(
+                [range(scen_properties.n_shells), range(len(ecc_edges) - 1)],
+                names=['alt_bin', 'ecc_bin']
+            )
+            flm_summary = flm_summary.reindex(all_alt_ecc_bins, fill_value=0)
+
+            flm_summary = flm_summary.reset_index()
+            flm_summary['epoch_start_date'] = start
+            flm_steps = pd.concat([flm_steps, flm_summary], ignore_index=True)
+        else:
+            flm_summary = flm_step.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+
+            # All objects aren't always in shells, so you need to these back in. 
+            flm_summary = flm_summary.reindex(range(0, scen_properties.n_shells), fill_value=0)
+
+            flm_summary.reset_index(inplace=True)
+            flm_summary.rename(columns={'index': 'alt_bin'}, inplace=True)
+
+            flm_summary['epoch_start_date'] = start  # Add the start date to the table for reference
+            flm_steps = pd.concat([flm_steps, flm_summary])
     
     return x0_summary, flm_steps
 
