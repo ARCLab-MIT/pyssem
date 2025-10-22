@@ -287,7 +287,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
 
     return spec_man_indc
 
-def make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
+def  make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
     """
     Calculates the indicator variable for number of active spacecraft lost in each orbit shell
     to collision events in a given year. 

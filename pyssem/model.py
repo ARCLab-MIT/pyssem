@@ -158,7 +158,7 @@ class Model:
             # Create Collision Pairs
             collision_pairs = create_collision_pairs(self.scenario_properties)
             self.scenario_properties.add_collision_pairs(collision_pairs)
-            2
+            
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
                 # Calculate Orbital Lifetimes if "umpy" is in the indicator variables
@@ -167,6 +167,7 @@ class Model:
                 self.scenario_properties.build_indicator_variables()     
 
             # Initial population of species and any launches
+
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             
             return species_list
@@ -189,9 +190,9 @@ class Model:
         except Exception as e:
             raise ValueError(f"An error occurred calculating collisions: {str(e)}")
         
-    def opus_active_loss_setup(self, fringe_species):
+    def opus_collisions_setup(self, fringe_species, maneuvers = False):
         """
-        The OPUS economic model requires an indicator variable to be correctly configured: "actactive_loss_per_species" to be a proxy for probability of collision. 
+        The OPUS economic model requires an indicator variable to be correctly configured: "collisions_per_species_altitude" to be a proxy for probability of collision. 
 
         This function find the correct economic indicator, lambdify the equations for numpy, then add it to its own variable for easy access.
 
@@ -215,7 +216,7 @@ class Model:
             raise NameError("Indicator variables not found. Please ensure that the indicator variables are provided in the configuration JSON. If you are an OPUS user please use 'active_loss_per_species'")
         
         try:
-            self.scenario_properties.configure_active_satellite_loss(fringe_species)
+            self.scenario_properties.configure_active_satellite_loss(fringe_species, maneuvers)
         except Exception as e:
             raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
     
@@ -353,7 +354,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'OPUS_new.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -413,8 +414,10 @@ if __name__ == "__main__":
     #             print("Results attributes:", list(results.__dict__.keys()))
     # else:
     #     print("Results is None")
-    model.run_model()
+    # model.build_model()
+    # model.run_model()
 
+    model.opus_collisions_setup(fringe_species="Su")
     data = model.results_to_json()
 
     # # # # Create the figures directory if it doesn't exist
