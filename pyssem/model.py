@@ -354,7 +354,7 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'OPUS_new.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'bond-pot.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -385,6 +385,8 @@ if __name__ == "__main__":
     species = simulation_data["species"]
 
     species_list = model.configure_species(species)
+
+    model.run_model()
 
     # model.build_model(elliptical=scenario_props.get("elliptical", None))
 
@@ -417,7 +419,7 @@ if __name__ == "__main__":
     # model.build_model()
     # model.run_model()
 
-    model.opus_collisions_setup(fringe_species="Su")
+    # model.opus_collisions_setup(fringe_species="Su")
     data = model.results_to_json()
 
     # # # # Create the figures directory if it doesn't exist

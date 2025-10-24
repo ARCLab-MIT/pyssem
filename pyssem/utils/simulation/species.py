@@ -287,6 +287,11 @@ class Species:
                 # Don't create a debris species
                 continue
 
+            debris_name = f"N_{properties.mass}kg"
+            # check if the species is already in the debris list
+            if any(deb_spec.sym_name == debris_name for deb_spec in self.species['debris']):
+                continue
+
             # Change the relevant properties to make it a debris
             debris_species_template = copy.deepcopy(self.species['debris'][0])  
             debris_species_template.mass = properties.mass
@@ -296,7 +301,7 @@ class Species:
             debris_species_template.beta = properties.beta
             debris_species_template.radius = properties.radius
             debris_species_template.trackable = properties.trackable  # large debris is trackable
-            debris_species_template.sym_name = f"N_{properties.mass}kg"
+            debris_species_template.sym_name = debris_name
             debris_species_template.bstar = properties.bstar
 
             self.species['debris'].append(debris_species_template)
@@ -399,7 +404,7 @@ class Species:
                             else:
                                 # If the active species is not elliptical, set the debris species with the smallest eccentricity value
                                 deb_spec.pmd_func = pmd_func_derelict
-                                deb_spec.pmd_linked_species = []                
+                                # deb_spec.pmd_linked_species = []                
                                 deb_spec.pmd_linked_species.append(active_spec)
                                 print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
                                 found_mass_match_debris = True
@@ -415,9 +420,15 @@ class Species:
 
         # Find the species in self.species and update the pmd_linked_species property
         for deb_spec in debris_species:
-            for spec in self.species['active']:
-                if spec.sym_name == deb_spec.sym_name:
-                    spec.pmd_linked_species = deb_spec.pmd_linked_species
+            # for spec in self.species['active']:
+            #     if spec.sym_name == deb_spec.sym_name:
+            #         spec.pmd_linked_species = deb_spec.pmd_linked_species
+            for linked_species in deb_spec.pmd_linked_species:
+                for active_species in self.species['active']:
+                    if linked_species.sym_name == active_species.sym_name:
+                        active_species.pmd_linked_species = deb_spec
+
+        return
 
     def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
         """

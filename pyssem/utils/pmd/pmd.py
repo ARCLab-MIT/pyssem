@@ -62,12 +62,19 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
     Cpmddot = zeros(scen_properties.n_shells, 1)
 
     # Iterate over each shell and calculate the PMD rate
-    for i, species in enumerate(species_properties.pmd_linked_species):
+    # for i, species in enumerate(species_properties.pmd_linked_species):
+    #     Pm = species.Pm # 0 = no Pmd, 1 = full Pm
+        
+    #     # Failed PMD contribution for each linked species
+    #     for k in range(scen_properties.n_shells):
+    #         Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+    for species in species_properties.pmd_linked_species:
         Pm = species.Pm # 0 = no Pmd, 1 = full Pm
         
         # Failed PMD contribution for each linked species
         for k in range(scen_properties.n_shells):
-            Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+            Cpmddot[k, 0] += (1 - Pm) / species.deltat * species.sym[k]
+
 
     return Cpmddot
 

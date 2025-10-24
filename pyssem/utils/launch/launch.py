@@ -452,7 +452,17 @@ def SEP_traffic_model(scen_properties, file_path):
         # === Standard 2D case: DataFrame [alt_bin, species] ===
         df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
         x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
-        x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # Replace the problematic line with:
+        df_pivot = df.reindex(columns=x0_summary.columns, fill_value=0)
+
+        # Check for and handle duplicate columns
+        if df_pivot.columns.duplicated().any():
+            # Sum duplicate columns
+            df_pivot = df_pivot.groupby(df_pivot.columns, axis=1).sum()
+
+        # Then update
+        x0_summary.update(df_pivot)
 
     if scen_properties.baseline:
         return x0_summary, None
