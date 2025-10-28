@@ -453,7 +453,7 @@ class ScenarioProperties:
             self.indicator_variables_list = []
             return
         
-    def configure_active_satellite_loss(self, fringe_satellites):
+    def configure_active_satellite_loss(self, fringe_satellites, maneuvers = False):
         """
             This will find the equations that have been created by the active_loss_per_species, then lambdify the equations and save them separately. 
 
@@ -471,22 +471,50 @@ class ScenarioProperties:
         ]
 
         # there should only be one item
-        if len(fringe_satellite_items) != 1:
-            raise ValueError("There should only be one fringe satellite. Multiple found.")
+        # if len(fringe_satellite_items) != 1:
+        #     raise ValueError("There should only be one fringe satellite. Multiple found.")
         
-        fringe_satellite_items = fringe_satellite_items[0].eqs
+        # get the index of the species
+        species_index = self.species_names.index(fringe_satellites)
 
-        # Lambdify the equations
-        simplified_eqs = sp.simplify(fringe_satellite_items)
+        # Get the index of collisions_per_species_altitude in the indicator variables
+        collisions_altitude_index = self.indicator_variables.index("collisions_per_species_altitude")
+        if isinstance(self.indicator_variables_list[collisions_altitude_index], list):
+            fringe_satellite_items = self.indicator_variables_list[collisions_altitude_index][species_index].eqs
+        else:
+            fringe_satellite_items = self.indicator_variables_list[collisions_altitude_index].eqs
+
+        simplified_eqs_collisions = sp.simplify(fringe_satellite_items)
+
+        # next get the location of ca_man_struct
+        if maneuvers:
+            maneuvers_index = self.indicator_variables.index("ca_man_struct")
+            if isinstance(self.indicator_variables_list[maneuvers_index], list):
+                ca_man_struct_eqs = self.indicator_variables_list[maneuvers_index][species_index].eqs
+            else:
+                ca_man_struct_eqs = self.indicator_variables_list[maneuvers_index].eqs
+            
+            simpliified_eqa_cams = sp.simplify(ca_man_struct_eqs)
 
         # Save as part of a dictionary
         if hasattr(self, 'fringe_active_loss'):
+            # Ensure the sub-dictionaries exist
+            if 'collisions' not in self.fringe_active_loss:
+                self.fringe_active_loss['collisions'] = {}
+            if 'maneuvers' not in self.fringe_active_loss:
+                self.fringe_active_loss['maneuvers'] = {}
+            
             # Add to the dictionary
-            self.fringe_active_loss[fringe_satellites] = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+            self.fringe_active_loss['collisions'][fringe_satellites] = sp.lambdify(self.all_symbolic_vars, simplified_eqs_collisions, 'numpy')
+            if maneuvers:
+                self.fringe_active_loss['maneuvers'][fringe_satellites] = sp.lambdify(self.all_symbolic_vars, simpliified_eqa_cams, 'numpy')
+
         else:
             # Create the dictionary
-            self.fringe_active_loss = {}
-            self.fringe_active_loss[fringe_satellites] = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+            self.fringe_active_loss = {'collisions': {}, 'maneuvers': {}}
+            self.fringe_active_loss['collisions'][fringe_satellites] = sp.lambdify(self.all_symbolic_vars, simplified_eqs_collisions, 'numpy')
+            if maneuvers:
+                self.fringe_active_loss['maneuvers'][fringe_satellites] = sp.lambdify(self.all_symbolic_vars, simpliified_eqa_cams, 'numpy')
                     
         return
     
