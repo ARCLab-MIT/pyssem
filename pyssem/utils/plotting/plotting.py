@@ -893,6 +893,304 @@ class Plots:
         plt.savefig(f'{out_dir}/catastrophic_collisions_vs_altitude.png', dpi=150)
         plt.close()
     
+    # ===== IADC study comparison utilities and plots =====
+    def _load_iadc_study(self):
+        """
+        Load digitized IADC study datasets (population, cumulative collisions, altitude distribution).
+        Returns a dict with keys 'dd', 'cc', 'aa'.
+        """
+        try:
+            base_dir = os.path.dirname(__file__)
+            iadc_path = os.path.join(base_dir, 'iadc_study.json')
+            with open(iadc_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading IADC study data: {e}")
+            return None
+
+    @staticmethod
+    def _split_dd_groups(dd_array: np.ndarray, threshold_year: float = 2010.5) -> list:
+        """
+        Split dd (population) into agency groups using year < threshold as group starts.
+        Emulates MATLAB logic using indices where x < 2010.5 as cut points.
+        """
+        if dd_array.size == 0:
+            return []
+        years = dd_array[:, 0]
+        cut_idxs = np.where(years < threshold_year)[0]
+        if cut_idxs.size == 0:
+            return [dd_array]
+        groups = []
+        for idx, start in enumerate(cut_idxs):
+            if idx == cut_idxs.size - 1:
+                g = dd_array[start:, :]
+            else:
+                g = dd_array[start:cut_idxs[idx + 1], :]
+            # Fix first row to common start per MATLAB script
+            first = np.array([[2008.5, 17076.0]])
+            g = g.copy()
+            g[0, :] = first
+            groups.append(g)
+        return groups
+
+    @staticmethod
+    def _split_decreasing_groups(arr: np.ndarray) -> list:
+        """
+        Split an array into groups when x decreases (for cc and aa datasets).
+        Keeps the first common point as group prefix for cc; for aa, uses raw groups.
+        """
+        if arr.size == 0:
+            return []
+        years = arr[:, 0]
+        # indices where sequence decreases
+        dec_idxs = np.where(np.diff(years) < 0)[0]
+        # group starts are dec_idx+1; include 0 as implicit start
+        starts = np.concatenate(([0], dec_idxs + 1))
+        groups = []
+        for i, s in enumerate(starts):
+            e = starts[i + 1] if i + 1 < len(starts) else len(arr)
+            g = arr[s:e, :]
+            groups.append(g)
+        return groups
+
+    def _compute_total_large_over_time(self):
+        """
+        Compute our simulation's total objects over time for diameter >10 cm (radius >5 cm).
+        Returns (t, total_series).
+        """
+        # Repurpose logic from total_objects_large_diameter but return data instead of plotting
+        species_properties = []
+        if hasattr(self.scenario_properties, 'species_cells'):
+            for species_group in self.scenario_properties.species_cells.values():
+                if isinstance(species_group, list):
+                    species_properties.extend(species_group)
+                else:
+                    species_properties.append(species_group)
+        elif hasattr(self.scenario_properties, 'species'):
+            if isinstance(self.scenario_properties.species, dict):
+                for species_group in self.scenario_properties.species.values():
+                    species_properties.extend(species_group)
+            else:
+                species_properties = self.scenario_properties.species
+
+        large_species_indices = []
+        for i, species in enumerate(species_properties):
+            if hasattr(species, 'radius') and species.radius is not None:
+                if species.radius > 0.05:
+                    large_species_indices.append(i)
+
+        total_large_objects = np.zeros_like(self.output.t)
+        for species_idx in large_species_indices:
+            start_idx = species_idx * self.num_shells
+            end_idx = start_idx + self.num_shells
+            species_total = np.sum(self.output.y[start_idx:end_idx, :], axis=0)
+            total_large_objects += species_total
+        return np.asarray(self.output.t, dtype=float), np.asarray(total_large_objects, dtype=float)
+
+    def _compute_cumulative_catastrophic_collisions(self):
+        """
+        Compute cumulative catastrophic collisions over time from indicator variables.
+        Returns (t, cumulative_collisions).
+        """
+        if not (hasattr(self.scenario_properties, 'indicator_results') and 
+                self.scenario_properties.indicator_results is not None):
+            # Return zeros if no indicator data
+            return np.asarray(self.output.t, dtype=float), np.zeros_like(self.output.t, dtype=float)
+        
+        indicators = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Filter for catastrophic collision indicators
+        catastrophic_indicators = {}
+        for indicator_name, time_data in indicators.items():
+            if 'catastrophic' in indicator_name.lower() or 'collision' in indicator_name.lower():
+                catastrophic_indicators[indicator_name] = time_data
+        
+        if not catastrophic_indicators:
+            return np.asarray(self.output.t, dtype=float), np.zeros_like(self.output.t, dtype=float)
+        
+        # Calculate total catastrophic collisions over time
+        total_collisions = np.zeros(len(self.output.t))
+        
+        for indicator_name, time_data in catastrophic_indicators.items():
+            times = np.array(list(time_data.keys()))
+            for time in times:
+                time_idx = np.argmin(np.abs(self.output.t - time))
+                data_matrix = time_data[time]
+                if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                    total_collisions[time_idx] += np.sum(data_matrix)
+                else:
+                    total_collisions[time_idx] += np.sum(data_matrix)
+        
+        return np.asarray(self.output.t, dtype=float), np.asarray(total_collisions, dtype=float)
+
+    def _compute_collisions_by_altitude(self):
+        """
+        Compute catastrophic collisions by altitude using the same logic as catastrophic_collisions_vs_altitude.
+        Returns (altitude_centers, collisions_per_altitude).
+        """
+        if not (hasattr(self.scenario_properties, 'indicator_results') and 
+                self.scenario_properties.indicator_results is not None):
+            # Return empty arrays if no indicator data
+            return np.array([]), np.array([])
+        
+        indicators = self.scenario_properties.indicator_results.get('indicators', {})
+        
+        # Filter for catastrophic collision indicators with altitude data
+        altitude_indicators = {}
+        for indicator_name, time_data in indicators.items():
+            if ('catastrophic' in indicator_name.lower() and 
+                ('altitude' in indicator_name.lower() or 'per_altitude' in indicator_name.lower())):
+                altitude_indicators[indicator_name] = time_data
+        
+        if not altitude_indicators:
+            return np.array([]), np.array([])
+        
+        # Get altitude bins (100km bins)
+        min_alt = self.scenario_properties.min_altitude
+        max_alt = self.scenario_properties.max_altitude
+        altitude_bins = np.arange(min_alt, max_alt + 100, 100)  # 100km bins
+        altitude_centers = (altitude_bins[:-1] + altitude_bins[1:]) / 2
+        
+        # Calculate cumulative collisions per altitude bin
+        cumulative_collisions = np.zeros(len(altitude_centers))
+        
+        for indicator_name, time_data in altitude_indicators.items():
+            # Get final time step data
+            final_time = max(time_data.keys())
+            data_matrix = time_data[final_time]
+            
+            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
+                # Sum across time or other dimensions to get per-altitude values
+                altitude_collisions = np.sum(data_matrix, axis=0) if data_matrix.shape[0] > 1 else data_matrix.flatten()
+            else:
+                altitude_collisions = data_matrix.flatten()
+            
+            # Map to 100km bins
+            for i, alt_center in enumerate(altitude_centers):
+                # Find corresponding altitude shell
+                alt_shell_idx = int((alt_center - min_alt) / (max_alt - min_alt) * len(altitude_collisions))
+                alt_shell_idx = min(alt_shell_idx, len(altitude_collisions) - 1)
+                cumulative_collisions[i] += altitude_collisions[alt_shell_idx]
+        
+        return altitude_centers, cumulative_collisions
+
+    def iadc_study(self):
+        """
+        Generate comparison plots between current simulation and digitized IADC study:
+        - Population >10cm over time vs agencies
+        - Cumulative catastrophic collisions over time vs agencies
+        - Catastrophic collisions per altitude band (qualitative comparison)
+        """
+        data = self._load_iadc_study()
+        if not data:
+            return
+
+        out_dir = f'{self.main_path}/{self.simulation_name}'
+        os.makedirs(out_dir, exist_ok=True)
+
+        # Get simulation start year for time conversion
+        start_year = 2008
+        if hasattr(self.scenario_properties, 'start_date'):
+            try:
+                start_year = self.scenario_properties.start_date.year
+            except AttributeError:
+                start_year = 2008
+
+        # 1) Population comparison (dd)
+        try:
+            dd = np.asarray(data.get('dd', []), dtype=float)
+            dd_groups = self._split_dd_groups(dd)
+            yrs = np.arange(2008.0, 2208.0 + 0.0001, 0.1)
+            dinterp = []
+            for g in dd_groups:
+                x = g[:, 0]
+                y = g[:, 1]
+                # pchip-like monotone cubic not in numpy; use linear as robust fallback
+                y_interp = np.interp(yrs, x, y)
+                dinterp.append(y_interp)
+
+            # our series - convert time from 0-based to start from 2008
+            t_sim, y_sim = self._compute_total_large_over_time()
+            t_sim_years = start_year + t_sim
+
+            plt.figure(figsize=(12, 6))
+            for arr in dinterp:
+                plt.plot(yrs, arr, linewidth=1.2)
+            # overlay our simulation
+            plt.plot(t_sim_years, y_sim, color='k', linewidth=2.0, label='pySSEM (this run)')
+            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'pySSEM'], loc='best')
+            plt.ylabel('Total population >10 cm')
+            plt.xlabel('Time (year)')
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(f'{out_dir}/iadc_population_comparison.png', dpi=150)
+            plt.close()
+        except Exception as e:
+            print(f"Error creating IADC population comparison: {e}")
+
+        # 2) Cumulative catastrophic collisions comparison (cc)
+        try:
+            cc = np.asarray(data.get('cc', []), dtype=float)
+            cc_groups = self._split_decreasing_groups(cc)
+            yrs = np.arange(2008.0, 2208.0 + 0.0001, 0.1)
+            cinterp = []
+            for i, g in enumerate(cc_groups):
+                # prepend the first common point cc(1,:) per MATLAB logic
+                if g.shape[0] == 0:
+                    continue
+                g_with_first = np.vstack([cc[0, :], g]) if not np.allclose(g[0, :], cc[0, :]) else g
+                x = g_with_first[:, 0]
+                y = g_with_first[:, 1]
+                y_interp = np.interp(yrs, x, y)
+                cinterp.append(y_interp)
+
+            # Get our simulation's cumulative catastrophic collisions
+            t_sim, y_sim_collisions = self._compute_cumulative_catastrophic_collisions()
+            t_sim_years = start_year + t_sim
+
+            plt.figure(figsize=(12, 6))
+            for arr in cinterp:
+                plt.plot(yrs, arr, linewidth=1.2)
+            # overlay our simulation
+            plt.plot(t_sim_years, y_sim_collisions, color='k', linewidth=2.0, label='pySSEM (this run)')
+            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'pySSEM'], loc='upper left')
+            plt.ylabel('Cumulative catastrophic collisions')
+            plt.xlabel('Time (year)')
+            plt.ylim(0, 60)
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(f'{out_dir}/iadc_collisions_comparison.png', dpi=150)
+            plt.close()
+        except Exception as e:
+            print(f"Error creating IADC collisions comparison: {e}")
+
+        # 3) Collision altitude distributions (aa)
+        try:
+            aa = np.asarray(data.get('aa', []), dtype=float)
+            aa_groups = self._split_decreasing_groups(aa)
+            
+            # Get our simulation's collision altitude data
+            alt_sim, collisions_sim = self._compute_collisions_by_altitude()
+            
+            plt.figure(figsize=(12, 6))
+            for g in aa_groups:
+                if g.shape[0] == 0:
+                    continue
+                plt.plot(g[:, 0], g[:, 1], linewidth=1.2)
+            # overlay our simulation
+            plt.plot(alt_sim, collisions_sim, color='k', linewidth=2.0, marker='o', markersize=4, label='pySSEM (this run)')
+            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'pySSEM'], loc='upper left')
+            plt.ylabel('Total catastrophic collisions')
+            plt.xlabel('Altitude (km)')
+            plt.xlim(0, 2000)
+            plt.ylim(0, 10)
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(f'{out_dir}/iadc_collisions_altitude.png', dpi=150)
+            plt.close()
+        except Exception as e:
+            print(f"Error creating IADC collision altitude comparison: {e}")
+    
     def _create_3d_collision_plots(self, collision_dir):
         """
         Create 3D collision plots from collision pair data.
