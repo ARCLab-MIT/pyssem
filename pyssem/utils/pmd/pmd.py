@@ -91,3 +91,36 @@ def pmd_func_opus(t, h, species_properties, scen_properties):
     Cpmddot = zeros(scen_properties.n_shells, 1)
     
     return Cpmddot
+
+def pmd_func_sat_sym(t, h, species_properties, scen_properties):
+    # Initialize Cpmddot as a symbolic zero matrix
+    Cpmddot = zeros(scen_properties.n_shells, 1) 
+
+    # one per species
+    # species_properties.deltat = symbols(f"deltat_{species_properties.sym_name}")
+
+    # Iterate over each shell and calculate the PMD rate
+    for k in range(scen_properties.n_shells):
+        species_properties.deltat = symbols(f"deltat_{species_properties.sym_name}{k+1}")
+        Cpmddot[k, 0] = (-1 / species_properties.deltat) * species_properties.sym[k]
+    
+    return Cpmddot
+
+def pmd_func_derelict_sym(t, h, species_properties, scen_properties):
+    # Initialize Cpmddot as a symbolic zero matrix
+    Cpmddot = zeros(scen_properties.n_shells, 1)
+
+    # Iterate over each shell and calculate the PMD rate
+    for i, species in enumerate(species_properties.pmd_linked_species):
+
+        # one per species
+        # species.deltat = symbols(f"deltat_{species.sym_name}") 
+        # Pm = symbols(f"Pm_{species.sym_name}")
+
+        # Failed PMD contribution for each linked species
+        for k in range(scen_properties.n_shells):
+            species.deltat = symbols(f"deltat_{species.sym_name}{k+1}") 
+            Pm = symbols(f"Pm_{species.sym_name}{k+1}") 
+            Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+
+    return Cpmddot
