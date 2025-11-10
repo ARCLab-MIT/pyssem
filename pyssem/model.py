@@ -371,9 +371,9 @@ class Model:
 
 if __name__ == "__main__":
 
-    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
-    # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -405,10 +405,13 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
+    ###============================================================
     ### To use symbolic equations for policy roses jup. notebook
     ### (note: load the correct .json file)
     # results = model.build_sym_model()
+    ###============================================================
 
+    ###============================================================
     ### To use numerical equations as per standard pySSEM
 
     # model.build_model(elliptical=scenario_props.get("elliptical", None))
@@ -439,6 +442,7 @@ if __name__ == "__main__":
     #             print("Results attributes:", list(results.__dict__.keys()))
     # else:
     #     print("Results is None")
+
     model.run_model()
 
     data = model.results_to_json()
@@ -476,3 +480,4 @@ if __name__ == "__main__":
         Plots(model, plot_names, simulation_data["simulation_name"], main_path)
     else:
         print("No plots specified - skipping plotting phase.")
+    ###============================================================

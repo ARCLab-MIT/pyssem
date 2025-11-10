@@ -1,5 +1,5 @@
 {
-  "simulation_name": "SEP2-for-maya-sym",
+  "simulation_name": "SEP2-test-merging-sym",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -43,8 +43,8 @@
         "trackable": true,
         "deltat": [],
         "Pm": [],
-        "alpha": 0.1,
-        "alpha_active": 0.01,
+        "alpha": 0.2,
+        "alpha_active": 0.1,
         "slotted": false, 
         "slotting_effectiveness": 0,
         "drag_effected": false,

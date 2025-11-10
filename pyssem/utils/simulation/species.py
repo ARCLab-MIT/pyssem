@@ -411,9 +411,7 @@ class Species:
                 if not found_mass_match_debris:
                     if spec_mass == deb_spec.mass:
                         if active_spec.pmd_func == pmd_func_opus:
-                            deb_spec.pmd_func = pmd_func_opus
-                        elif active_spec.Pm == []: # if no pm, then it will be replaced by sym
-                            deb_spec.pmd_func = pmd_func_derelict_sym
+                            deb_spec.pmd_func = pmd_func_opus                        
                         else:
                             if active_spec.elliptical:
                                 # find the closest eccentricity bin to current eccentricity
@@ -432,7 +430,10 @@ class Species:
                                     found_mass_match_debris = True
                             else:
                                 # If the active species is not elliptical, set the debris species with the smallest eccentricity value
-                                deb_spec.pmd_func = pmd_func_derelict
+                                if active_spec.Pm == []: # if no pm, then it will be replaced by sym
+                                    deb_spec.pmd_func = pmd_func_derelict_sym
+                                else:
+                                    deb_spec.pmd_func = pmd_func_derelict
                                 deb_spec.pmd_linked_species = []                
                                 deb_spec.pmd_linked_species.append(active_spec)
                                 print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
