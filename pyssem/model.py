@@ -303,6 +303,25 @@ class Model:
         
         except Exception as e:
             raise RuntimeError(f"Failed to build model: {str(e)}")
+        
+
+    def build_sym_model(self):
+        """
+            Build symbolic the model to use symbolic equations for policy jupyter notebook.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+            self.scenario_properties.build_sym_model()
+
+            # save the scenario properties to a pickle file
+            with open('test_3_species_sym.pkl', 'wb') as f:            
+                pickle.dump(self.scenario_properties, f)
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to build model: {str(e)}")
     
 
     def propagate(self, times, population, launch=None, elliptical=False, use_euler=False, step_size=None, opus=True):
@@ -353,6 +372,8 @@ class Model:
 if __name__ == "__main__":
 
     with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -383,6 +404,12 @@ if __name__ == "__main__":
     species = simulation_data["species"]
 
     species_list = model.configure_species(species)
+
+    ### To use symbolic equations for policy roses jup. notebook
+    ### (note: load the correct .json file)
+    # results = model.build_sym_model()
+
+    ### To use numerical equations as per standard pySSEM
 
     # model.build_model(elliptical=scenario_props.get("elliptical", None))
 
