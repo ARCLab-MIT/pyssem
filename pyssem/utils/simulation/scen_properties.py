@@ -156,6 +156,7 @@ class ScenarioProperties:
         self.drag_term_cur = None
         self.sym_drag = False
         self.coll_eqs_lambd = None # Used for OPUS when only collision equations are required
+        self.full_control = sp.Matrix([])
         
         # Outputs
         self.output = None
@@ -1045,29 +1046,6 @@ class ScenarioProperties:
             self.equations += self.full_drag
             self.sym_drag = True 
 
-        # Get the equations in the correct format for lambdification
-        if self.time_dep_density:
-            # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
-            drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
-            drag_current_flattened = [self.drag_term_cur[i, j] for j in range(self.drag_term_cur.cols) for i in range(self.drag_term_cur.rows)]
-
-            self.drag_upper_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_upper_flattened]
-            self.drag_cur_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_current_flattened]
-
-            # Set up time varying density 
-            self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
-                                                                                                                                       ))
-            
-            # This will change when jb2008 is updated
-            available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
-            available_altitudes.sort()
-
-            self.nearest_altitude_mapping = precompute_nearest_altitudes(available_altitudes)
-
-            self.prev_t = -1  # Initialize to an invalid time
-            self.prev_rho = None
-
         # Make Integrated Indicator Variables if passed
         if hasattr(self, 'integrated_indicator_var_list'):
             integrated_indicator_var_list = self.integrated_indicator_var_list
@@ -1102,7 +1080,7 @@ class ScenarioProperties:
         # collisions_flattened = [self.full_coll[i, j] for j in range(self.full_coll.cols) for i in range(self.full_coll.rows)]
         # self.coll_eqs_lambd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in collisions_flattened]
 
-        self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
+        # self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()       
 
         return
     
