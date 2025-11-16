@@ -599,9 +599,14 @@ def make_umpy_indicator(scen_properties, X=4, indicator_name="umpy_indicator"):
                     # Usual UMPY formula for inactive species
                     pop_ij  = species.sym[shell_idx]             # population in shell i
                     life_ij = species.orbital_lifetimes[shell_idx]
-                    umpy_factor = ((sp.exp(X * (life_ij / scen_properties.simulation_duration)) - 1)
+                    if scen_properties.opus:
+                        duration = 100
+                    else:
+                        duration = scen_properties.simulation_duration
+
+                    umpy_factor = ((sp.exp(X * (life_ij / duration)) - 1)
                                 / (sp.exp(X) - 1))
-                    umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / scen_properties.simulation_duration
+                    umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / duration
                 else:
                     # If active, just add zero
                     umpy_eqs[shell_idx] += 0

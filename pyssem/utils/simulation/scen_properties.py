@@ -180,7 +180,10 @@ class ScenarioProperties:
         # Launch Scenario
         self.launch_scenario = launch_scenario
 
-        self.opus = False
+        if 'OPUS' in self.SEP_mapping:
+            self.opus = True
+        else: 
+            self.opus = False
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step

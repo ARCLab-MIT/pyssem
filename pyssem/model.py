@@ -156,8 +156,8 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            collision_pairs = create_collision_pairs(self.scenario_properties)
-            self.scenario_properties.add_collision_pairs(collision_pairs)
+            # collision_pairs = create_collision_pairs(self.scenario_properties)
+            # self.scenario_properties.add_collision_pairs(collision_pairs)
             
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -384,34 +384,6 @@ if __name__ == "__main__":
 
     species_list = model.configure_species(species)
 
-    # model.build_model(elliptical=scenario_props.get("elliptical", None))
-
-    # # Print input population size
-    # input_population = model.scenario_properties.x0
-    # print(f"Input population size: {np.sum(input_population):.6f}")
-    
-    # results = model.propagate(times=[0, 1], population=model.scenario_properties.x0, launch=False, elliptical=scenario_props.get("elliptical", 
-    # None), use_euler=True, step_size=0.1)
-
-    # # Print output population size
-    # if results is not None:
-    #     if isinstance(results, tuple) and len(results) >= 1:
-    #         # Handle tuple return (results_matrix, results_matrix_alt)
-    #         results_matrix = results[0]
-    #         output_population = np.sum(results_matrix)
-    #         print(f"Output population size: {output_population:.6f}")
-    #         print(f"Population change: {output_population - np.sum(input_population):.6f}")
-    #     elif hasattr(results, 'output') and hasattr(results.output, 'y'):
-    #         # Handle solve_ivp result object
-    #         output_population = np.sum(results.output.y)
-    #         print(f"Output population size: {output_population:.6f}")
-    #         print(f"Population change: {output_population - np.sum(input_population):.6f}")
-    #     else:
-    #         print("Results structure:", type(results))
-    #         if hasattr(results, '__dict__'):
-    #             print("Results attributes:", list(results.__dict__.keys()))
-    # else:
-    #     print("Results is None")
     model.run_model()
 
     data = model.results_to_json()
@@ -430,10 +402,15 @@ if __name__ == "__main__":
     try:
         plot_names = simulation_data["plots"]
         mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
-        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+        sep_export = SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
                       elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
                       output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
                       )
+        
+        # Create all SEP export plots
+        print("Creating SEP data export plots...")
+        sep_export.create_catastrophic_collision_plots()
+        sep_export.create_launch_analysis_plots()
         # SEPDataExport(model, simulation_data["simulation_name"], 
         #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
         #               )

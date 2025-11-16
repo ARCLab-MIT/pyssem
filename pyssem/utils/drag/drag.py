@@ -330,10 +330,17 @@ def calculate_orbital_lifetimes(scenario_properties):
                 species.orbital_lifetimes = np.cumsum(shell_marginal_residence_times)
                 
                 # Maximum orbital lifetime is the simulation duration
-                species.orbital_lifetimes = np.minimum(
+                if scenario_properties.opus:
+                    species.orbital_lifetimes = np.minimum(
                     species.orbital_lifetimes,
-                    scenario_properties.simulation_duration
+                    100
                 )
     
+                else:
+                    species.orbital_lifetimes = np.minimum(
+                        species.orbital_lifetimes,
+                        scenario_properties.simulation_duration
+                    )
+        
     return scenario_properties.species
 

@@ -1995,3 +1995,30 @@ class SEPDataExport:
             print(f"✗ Error creating catastrophic collision plots: {e}")
             import traceback
             print(traceback.format_exc())
+
+    def create_launch_analysis_plots(self):
+        """
+        Create launch analysis plots using the new plotting methods from plotting.py.
+        """
+        try:
+            # Import the plotting methods from the main plotting module
+            from .plotting import Plots
+            
+            # Create a temporary Plots instance to access the launch plotting methods
+            plots_instance = Plots(
+                scenario_properties=self.scenario_properties,
+                plots=[],  # Empty list since we're calling methods directly
+                simulation_name=self.simulation_name,
+                main_path=self.base_path
+            )
+            
+            # Create launch analysis plots
+            print("Creating launch analysis plots...")
+            plots_instance.launch_analysis()
+            
+            print("✓ Launch analysis plots created successfully")
+            
+        except Exception as e:
+            print(f"✗ Error creating launch analysis plots: {e}")
+            import traceback
+            print(traceback.format_exc())

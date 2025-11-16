@@ -1275,6 +1275,222 @@ class Plots:
         except Exception as e:
             print(f"Error creating collision indicator plots: {e}")
 
+    def launch_analysis(self):
+        """
+        Create launch analysis plots showing yearly launch counts per species.
+        """
+        if not hasattr(self.scenario_properties, 'FLM_steps') or self.scenario_properties.FLM_steps is None:
+            print("Warning: No FLM_steps data available for launch analysis")
+            return
+        
+        # Create launch subfolder
+        launch_dir = os.path.join(self.main_path, self.simulation_name, 'launch')
+        os.makedirs(launch_dir, exist_ok=True)
+        
+        # Process FLM_steps data
+        df = self.scenario_properties.FLM_steps.copy()
+        df['epoch_start_date'] = pd.to_datetime(df['epoch_start_date'])
+        
+        # Sum across all alt_bin values (i.e., group by epoch_start_date)
+        grouped = df.groupby('epoch_start_date').sum(numeric_only=True)
+        
+        # Identify species columns of interest based on actual species names
+        # Look for constellation satellites (S), non-constellation satellites (Su), 
+        # non-maneuverable satellites (Sns), and rocket bodies (B)
+        s_cols = [col for col in grouped.columns if col == 'S']
+        su_cols = [col for col in grouped.columns if col.startswith('Su')]
+        sns_cols = [col for col in grouped.columns if col.startswith('Sns')]
+        b_cols = [col for col in grouped.columns if col.startswith('B')]
+        
+        # If no grouped species found, use individual species
+        if not s_cols and not su_cols and not sns_cols and not b_cols:
+            # Use all species columns except epoch_start_date and alt_bin
+            species_cols = [col for col in grouped.columns if col not in ['epoch_start_date', 'alt_bin']]
+            grouped['Total_Launches'] = grouped[species_cols].sum(axis=1)
+        else:
+            # Sum within each category
+            if s_cols:
+                grouped['S_total'] = grouped[s_cols].sum(axis=1)
+            if su_cols:
+                grouped['Su_total'] = grouped[su_cols].sum(axis=1)
+            if sns_cols:
+                grouped['Sns_total'] = grouped[sns_cols].sum(axis=1)
+            if b_cols:
+                grouped['B_total'] = grouped[b_cols].sum(axis=1)
+        
+        # Create individual species plots
+        self._create_individual_species_launch_plots(grouped, launch_dir)
+        
+        # Create combined species plot
+        self._create_combined_species_launch_plot(grouped, launch_dir)
+        
+        # Create summary statistics
+        self._create_launch_summary_stats(grouped, launch_dir)
+
+    def _create_individual_species_launch_plots(self, grouped_data, launch_dir):
+        """
+        Create individual launch plots for each species category.
+        """
+        # Check if we have grouped species or individual species
+        if 'Total_Launches' in grouped_data.columns:
+            # Individual species mode - create plots for each species
+            species_cols = [col for col in grouped_data.columns if col not in ['epoch_start_date', 'alt_bin']]
+            
+            for species in species_cols:
+                if species in grouped_data.columns and grouped_data[species].sum() > 0:
+                    plt.figure(figsize=(12, 6))
+                    plt.plot(grouped_data.index, grouped_data[species], linewidth=2, marker='o', markersize=4)
+                    
+                    plt.xlabel('Year')
+                    plt.ylabel('Number of Launches')
+                    plt.title(f'Yearly Launch Counts - {species}')
+                    plt.grid(True, alpha=0.3)
+                    plt.tight_layout()
+                    
+                    # Save plot
+                    filename = f'launch_counts_{species}.png'
+                    filepath = os.path.join(launch_dir, filename)
+                    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    
+                    print(f"Created launch plot: {filename}")
+        else:
+            # Grouped species mode
+            species_categories = ['S_total', 'Su_total', 'Sns_total', 'B_total']
+            species_labels = ['S (Constellation Satellites)', 'Su (Non-Constellation Satellites)', 
+                             'Sns (Non-Maneuverable Satellites)', 'B (Rocket Bodies)']
+            
+            for category, label in zip(species_categories, species_labels):
+                if category in grouped_data.columns and grouped_data[category].sum() > 0:
+                    plt.figure(figsize=(12, 6))
+                    plt.plot(grouped_data.index, grouped_data[category], linewidth=2, marker='o', markersize=4)
+                    
+                    plt.xlabel('Year')
+                    plt.ylabel('Number of Launches')
+                    plt.title(f'Yearly Launch Counts - {label}')
+                    plt.grid(True, alpha=0.3)
+                    plt.tight_layout()
+                    
+                    # Save plot
+                    filename = f'launch_counts_{category.lower()}.png'
+                    filepath = os.path.join(launch_dir, filename)
+                    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    
+                    print(f"Created launch plot: {filename}")
+
+    def _create_combined_species_launch_plot(self, grouped_data, launch_dir):
+        """
+        Create a combined plot showing all species categories together.
+        """
+        plt.figure(figsize=(14, 8))
+        
+        # Check if we have grouped species or individual species
+        if 'Total_Launches' in grouped_data.columns:
+            # Individual species mode - plot all species
+            species_cols = [col for col in grouped_data.columns if col not in ['epoch_start_date', 'alt_bin']]
+            colors = plt.cm.tab10(np.linspace(0, 1, len(species_cols)))
+            
+            for species, color in zip(species_cols, colors):
+                if species in grouped_data.columns and grouped_data[species].sum() > 0:
+                    plt.plot(grouped_data.index, grouped_data[species], 
+                            label=species, linewidth=2, marker='o', markersize=4, color=color)
+            
+            plt.title('Yearly Launch Counts by Species')
+        else:
+            # Grouped species mode
+            species_categories = ['S_total', 'Su_total', 'Sns_total', 'B_total']
+            species_labels = ['S (Constellation)', 'Su (Non-Constellation)', 
+                             'Sns (Non-Maneuverable)', 'B (Rocket Bodies)']
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+            
+            for category, label, color in zip(species_categories, species_labels, colors):
+                if category in grouped_data.columns and grouped_data[category].sum() > 0:
+                    plt.plot(grouped_data.index, grouped_data[category], 
+                            label=label, linewidth=2, marker='o', markersize=4, color=color)
+            
+            plt.title('Yearly Launch Counts by Species Category')
+        
+        plt.xlabel('Year')
+        plt.ylabel('Number of Launches')
+        plt.legend(title='Species Type')
+        plt.grid(True, alpha=0.3)
+        plt.yscale('log')
+        plt.tight_layout()
+        
+        # Save plot
+        filepath = os.path.join(launch_dir, 'launch_counts_combined.png')
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print("Created combined launch plot: launch_counts_combined.png")
+
+    def _create_launch_summary_stats(self, grouped_data, launch_dir):
+        """
+        Create summary statistics and save to CSV.
+        """
+        # Check if we have grouped species or individual species
+        if 'Total_Launches' in grouped_data.columns:
+            # Individual species mode - create stats for each species
+            species_cols = [col for col in grouped_data.columns if col not in ['epoch_start_date', 'alt_bin']]
+            summary_stats = []
+            
+            for species in species_cols:
+                if species in grouped_data.columns:
+                    data = grouped_data[species]
+                    stats = {
+                        'Species': species,
+                        'Total_Launches': data.sum(),
+                        'Average_Per_Year': data.mean(),
+                        'Max_Yearly_Launches': data.max(),
+                        'Min_Yearly_Launches': data.min(),
+                        'Years_With_Launches': (data > 0).sum(),
+                        'First_Launch_Year': data[data > 0].index.min().year if (data > 0).any() else None,
+                        'Last_Launch_Year': data[data > 0].index.max().year if (data > 0).any() else None
+                    }
+                    summary_stats.append(stats)
+        else:
+            # Grouped species mode
+            species_categories = ['S_total', 'Su_total', 'Sns_total', 'B_total']
+            species_labels = ['S (Constellation)', 'Su (Non-Constellation)', 
+                             'Sns (Non-Maneuverable)', 'B (Rocket Bodies)']
+            
+            summary_stats = []
+            for category, label in zip(species_categories, species_labels):
+                if category in grouped_data.columns:
+                    data = grouped_data[category]
+                    stats = {
+                        'Species': label,
+                        'Total_Launches': data.sum(),
+                        'Average_Per_Year': data.mean(),
+                        'Max_Yearly_Launches': data.max(),
+                        'Min_Yearly_Launches': data.min(),
+                        'Years_With_Launches': (data > 0).sum(),
+                        'First_Launch_Year': data[data > 0].index.min().year if (data > 0).any() else None,
+                        'Last_Launch_Year': data[data > 0].index.max().year if (data > 0).any() else None
+                    }
+                    summary_stats.append(stats)
+        
+        # Create DataFrame and save
+        summary_df = pd.DataFrame(summary_stats)
+        csv_path = os.path.join(launch_dir, 'launch_summary_statistics.csv')
+        summary_df.to_csv(csv_path, index=False)
+        
+        # Print summary
+        print("\nLaunch Summary Statistics:")
+        print("=" * 50)
+        for stats in summary_stats:
+            print(f"\n{stats['Species']}:")
+            print(f"  Total Launches: {stats['Total_Launches']:,.0f}")
+            print(f"  Average per Year: {stats['Average_Per_Year']:.1f}")
+            print(f"  Max Yearly: {stats['Max_Yearly_Launches']:,.0f}")
+            print(f"  Years with Launches: {stats['Years_With_Launches']}")
+            if stats['First_Launch_Year']:
+                print(f"  First Launch: {stats['First_Launch_Year']}")
+                print(f"  Last Launch: {stats['Last_Launch_Year']}")
+        
+        print(f"\nSummary statistics saved to: {csv_path}")
+
     def all_plots(self):
         """
         Run all plot functions, irrespective of the plots list.

@@ -320,6 +320,8 @@ class Species:
                     species.pmd_func = pmd_func_derelict
                 elif species.pmd_func == "pmd_func_sat":
                     species.pmd_func = pmd_func_sat
+                elif species.pmd_func == "pmd_func_iadc":
+                    species.pmd_func = pmd_func_iadc
                 else:
                     species.pmd_func = pmd_func_none
 
@@ -418,6 +420,10 @@ class Species:
             for spec in self.species['active']:
                 if spec.sym_name == deb_spec.sym_name:
                     spec.pmd_linked_species = deb_spec.pmd_linked_species
+                elif '_' not in spec.sym_name: # it might not have the mass in the sym name
+                    possible_deb_name = f"N_{spec.mass}kg"
+                    if deb_spec.sym_name == possible_deb_name:
+                        spec.pmd_linked_species = deb_spec.pmd_linked_species
 
     def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
         """
