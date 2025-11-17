@@ -3,7 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+<<<<<<< HEAD
 from ..simulation.scen_properties import ScenarioProperties
+=======
+from utils.simulation.scen_properties import ScenarioProperties
+>>>>>>> amos-vnv
 
 
 class SEPDataExport:

@@ -5,6 +5,322 @@ from sympy import symbols, Matrix
 from tqdm import tqdm
 from .NASA_SBM_Evolve import evolve_bins_circular, evolve_bins_elliptical
 from ..simulation.species_pair_class import SpeciesPairClass
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import numpy as np
+import multiprocessing as mp
+import math
+import random
+
+
+def func_Am(d, ObjClass):
+    """
+    Calculates the area-to-mass ratio for spacecraft fragments based on NASA's new breakup model of evolve 4.0.
+    
+    Parameters:
+    d : ndarray
+        Array of diameters in meters.
+    ObjClass : int or float
+        Object class indicating whether the object is a rocket body or not.
+    
+    Returns:
+    out : ndarray
+        Area-to-mass ratio for each fragment.
+    """
+    numObj = d.size
+    logds = np.log10(d)
+    amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
+
+    if 4.5 < ObjClass < 8.5:  # Rocket-body related
+        for ind, logd in enumerate(logds):
+            alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_for_rocket_body(logd)
+            amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+    else:  # Not rocket body
+        for ind, logd in enumerate(logds):
+            alpha, mu1, sigma1, mu2, sigma2 = calculate_amsms_not_rocket_body(logd)
+            amsms[ind, :] = [alpha, mu1, sigma1, mu2, sigma2]
+
+    N1 = amsms[:, 1] + amsms[:, 2] * np.random.randn(numObj)
+    N2 = amsms[:, 3] + amsms[:, 4] * np.random.randn(numObj)
+
+    out = 10 ** (amsms[:, 0] * N1 + (1 - amsms[:, 0]) * N2)
+
+    return out
+
+def func_dv(Am, mode):
+    """
+    Calculate the change in velocity (delta-v) for debris fragments based on their area-to-mass ratio.
+
+    This will tell you velocity based off H. Kilnkrad - "Space Debris: Models and Risk Analysis" (2006).
+    Equation 3.42 (Coefficients) and 3.44 (Full Equation)
+
+    Args:
+        Am (np.ndarray): Area-to-mass ratio of fragments.
+        mode (str): Mode of calculation, e.g., 'col' for collision-induced delta-v or 'exp' for explosions
+
+    Returns:
+        np.ndarray: Calculated delta-v values for each fragment.
+    """
+    # ensure Am is a list of floats
+    if isinstance(Am, (int, float)):
+        Am_list = [float(Am)]
+    else:
+        Am_list = [float(x) for x in Am]
+
+    sigma = 0.4
+    result = []
+    for am_val in Am_list:
+        if mode == 'col':
+            mu_val = 0.9 * math.log10(am_val) + 2.9
+        elif mode == 'exp':
+            mu_val = 1.85 * math.log10(am_val) + 1.85
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+        # add Gaussian noise
+        N_val = mu_val + sigma * random.gauss(0, 1)
+        result.append(10 ** N_val)
+
+    # return scalar if single input, else list
+    return result[0] if len(result) == 1 else result
+
+def calculate_amsms_for_rocket_body(logd):
+    """
+    Calculate alpha, mu1, sigma1, mu2, sigma2 for rocket body related objects.
+    """
+    # alpha calculation
+    if logd <= -1.4:
+        alpha = 1
+    elif -1.4 < logd < 0:
+        alpha = 1 - 0.3571 * (logd + 1.4)
+    else:
+        alpha = 0.5
+
+    # mu1 calculation
+    if logd <= -0.5:
+        mu1 = -0.45
+    elif -0.5 < logd < 0:
+        mu1 = -0.45 - 0.9 * (logd + 0.5)
+    else:
+        mu1 = -0.9
+
+    # sigma1 is constant
+    sigma1 = 0.55
+
+    # mu2 is constant
+    mu2 = -0.9
+
+    # sigma2 calculation
+    if logd <= -1.0:
+        sigma2 = 0.28
+    elif -1 < logd < 0.1:
+        sigma2 = 0.28 - 0.1636 * (logd + 1)
+    else:
+        sigma2 = 0.1
+
+    return alpha, mu1, sigma1, mu2, sigma2
+
+def calculate_amsms_not_rocket_body(logd):
+    """
+    Calculate alpha, mu1, sigma1, mu2, sigma2 for non-rocket body related objects.
+    """
+    # alpha calculation
+    if logd <= -1.95:
+        alpha = 0
+    elif -1.95 < logd < 0.55:
+        alpha = 0.3 + 0.4 * (logd + 1.2)
+    else:
+        alpha = 1
+
+    # mu1 calculation
+    if logd <= -1.1:
+        mu1 = -0.6
+    elif -1.1 < logd < 0:
+        mu1 = -0.6 - 0.318 * (logd + 1.1)
+    else:
+        mu1 = -0.95
+
+    # sigma1 calculation
+    if logd <= -1.3:
+        sigma1 = 0.1
+    elif -1.3 < logd < -0.3:
+        sigma1 = 0.1 + 0.2 * (logd + 1.3)
+    else:
+        sigma1 = 0.3
+
+    # mu2 calculation
+    if logd <= -0.7:
+        mu2 = -1.2
+    elif -0.7 < logd < -0.1:
+        mu2 = -1.2 - 1.333 * (logd + 0.7)
+    else:
+        mu2 = -2.0
+
+    # sigma2 calculation
+    if logd <= -0.5:
+        sigma2 = 0.5
+    elif -0.5 < logd < -0.3:
+        sigma2 = 0.5 - (logd + 0.5)
+    else:
+        sigma2 = 0.3
+
+    return alpha, mu1, sigma1, mu2, sigma2
+
+def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
+    """
+    Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
+    Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
+    diameters of the fragments.
+
+    :param m1: Mass of Object 1 [kg]
+    :type m1: int or float
+    :param m2: Mass of Object 2 [kg]
+    :type m2:  int or float
+    :param r1: Radius of Object 1 [m]
+    :type r1: int or float
+    :param r2: Radius of Object 2 [m]
+    :type r2: int or float
+    :param dv: Collision velocity [km/s] of species 1
+    :type dv1: int or float
+    :param dv: Collision velocity [km/s] of species 2
+    :type dv2: int or float
+    :param binC: bin center for mass binning
+    :type binC: int or float
+    :param binE: bin edges for mass binning
+    :type binE: int or float
+    :param binW: bin widths for mass binning
+    :type binW: int or float
+    :param LBdiam:  Lower bound of Characteristic Length
+    :type LBdiam: int or float
+    :param RBflag: for area to mass ratio (func_Am.m), 1: RB; 0: not RB (default) (optional, defaults to 0)
+    :type RBflag: int, optional
+    :param sto: _stochastic flag (default: 1) (optional) (0 for deterministic, not implemented yet) 
+    :type sto: int, optional
+    :raises ValueError: _description_
+    :return: _description_
+    :rtype: _type_
+    """
+    # Super sampling ratio
+    SS = 20
+    MU = 398600.4418  # km^3/s^2
+    RE = 6378.1  # km
+    altNums = None
+
+    # Bin Center is given
+    if len(binC) > 0 and len(binE) == 0 and len(binW) == 0: 
+        LBm = binC[0] - (binC[1] - binC[0]) / 2  
+        UBm = binC[-1] + (binC[-1] - binC[-2]) / 2 
+        binEd = [LBm] + list((np.array(binC[:-1]) + np.array(binC[1:])) / 2) + [UBm]
+    
+    # Bin Edges are given
+    elif len(binC) > 0 and len(binW) > 0 and len(binE) == 0: 
+        binEd1 = binC - binW / 2
+        binEd2 = binC + binW / 2
+        binEd = np.sort(np.concatenate((binEd1, binEd2)))
+        
+        # Check for overlapping bin edges
+        if any(np.diff(binC) < binW):
+            errinds = np.where(np.diff(binC) < binW)[0]
+            raise ValueError(f"Overlapping bin edges between bin centered at {binC[errinds[0]]:.1f} and {binC[errinds[0] + 1]:.1f}")
+
+    # Bin Widths are given     
+    elif len(binE) > 0 and len(binC) == 0 and len(binW) == 0:
+        binEd = np.sort(binE)
+        
+    else:
+        raise ValueError(f"Wrong setup for bins given (binC empty: {len(binC) == 0}; binE empty: {len(binE) == 0}; binW empty: {len(binW) == 0})")
+
+    LB = LBdiam
+    objclass = 5 if RBflag == 0 else 0
+
+    # Ensure that m1 > m2, if not swap
+    if m1 < m2:
+        m1, m2 = m2, m1
+        r1, r2 = r2, r1
+
+    # Calculate the relative delta-V
+    if dv1 != dv2:
+        dv = (m1 * dv1 + m2 * dv2) / (m1 + m2)
+    else:
+        dv = dv1
+
+    catastrophe_ratio = (m2*((dv*1000)**2)/(2*m1*1000)) #J/g = kg*(km/s)^2 / g
+
+    # If the specific energy is < 40 J/g: non catastrophic collision
+    if catastrophe_ratio < 40:
+        M = m2 * dv ** 2 # Correction from ODQN [kg*km^2/s^2]    
+        isCatastrophic = 0
+    else: # Catastrophic collision
+        M = m1 + m2
+        isCatastrophic = 1
+
+    num = (0.1 * M ** 0.75 * LB ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
+    numSS = SS * num
+
+    if numSS == 0:  # check if 0 (e.g., if LB = r1)
+        #return np.zeros(len(binEd) - 1), isCatastrophic, []
+        return np.zeros(len(binEd) - 1)
+    
+    # Create PDF of power law distribution, then sample 'num' selections
+    # Only up to 1m, then randomly sample larger objects as quoted above
+    dd_edges = np.logspace(np.log10(LB), np.log10(min(1, 2 * r1)), 500) # logg space, up to either 1m or diameter of the larger object
+    dd_means = 10 ** (np.log10(dd_edges[:-1]) + np.diff(np.log10(dd_edges)) / 2) # Log 10 of diameter edge bins, then mean values of each diameter edge bin (linear as bins are log-spaced)
+    
+    # Cumulative distribution
+    nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  #eq 2.68
+    ndd = np.maximum(0, -np.diff(nddcdf)) # diff to get the PDF count for the bins (dd_edges), if negative, set to 0
+    
+    # Make sure int, 0 to 1, random number for stochastic sampling of fragment diameters
+    repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
+    d_pdf = np.repeat(dd_means, repeat_counts) # PDF of debris objects between LB and 1m.
+
+    try:
+        dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
+    except ValueError: # This is when the probability breaks as the objects are too small
+        dss = 0
+        return np.zeros(len(binEd) - 1)
+
+    # Calculate the mass of objects
+    A = 0.556945 * dss ** 2.0047077 # Equation 2.72
+    Am = func_Am(dss, objclass) # use Am conversion of the larger object
+    m = A/Am
+
+    # Binning via histcounts
+    nums, _ = np.histogram(m, bins=binEd)
+    nums = nums / SS # Correct for super sampling
+
+    # Define binOut based on the option chosen for bin setup
+    binOut = []
+    if binC is not None and binE is None and binW is None:  # Option 1: bin center given; output = edges
+        binOut = binEd
+    elif binE is not None and binC is None and binW is None:  # Option 3: bin edges given; output = centers
+        binOut = binE[:-1] + np.diff(binE) / 2
+
+    # Assing delta-V to spherically random directions
+    if fragment_spreading:
+        dAlt = np.median(np.diff(R02))
+        nShell = len(np.diff(R02))
+
+        # find difference in orbital velocity for shells
+        # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
+        dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
+        dv_values = np.array(func_dv(Am, 'col')) / 1000 # km/s
+        u = np.random.rand(len(dv_values)) * 2 - 1
+        theta = np.random.rand(len(dv_values)) * 2 * np.pi
+
+        v = np.sqrt(1 - u**2)
+        p = np.vstack((v * np.cos(theta), v * np.sin(theta), u)).T
+        dv_vec = p * dv_values[:, np.newaxis]
+
+        hc, _, _ = np.histogram2d(dv_vec.ravel(), np.tile(m, 3), bins=[np.arange(-nShell, nShell + 1) * dDV / 1000, binEd])
+        altNums = hc / (SS * 3)
+
+        if altNums is None:
+            print(hc)  # Check if hc is correct
+            print(SS)  # Check if SS is not zero
+            print(hc.shape)  # Check if hc has the expected shape
+            print(SS * 3)  # Ensure that the denominator is not zero
+
+    return nums, isCatastrophic, binOut, altNums
 
 def process_species_pair(args):    
     i, (s1, s2), scen_properties, debris_species, binE_mass, LBgiven = args

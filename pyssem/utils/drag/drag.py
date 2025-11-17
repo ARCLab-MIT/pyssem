@@ -5,6 +5,7 @@ from scipy.spatial import KDTree
 import json
 import os
 
+<<<<<<< HEAD
 def densityexp(h_km):
     """
     Vallado Table 8-4 exponential density model (vectorized), matching the MATLAB densityexp_vec.
@@ -40,6 +41,104 @@ def densityexp(h_km):
     # Bin index k so that edges[k] <= h < edges[k+1]
     k = np.searchsorted(edges, h, side='right') - 1
 
+=======
+# def densityexp(h):
+#     """
+#     Calculates atmospheric density based on altitude using a exponential model.
+
+#     Args:
+#         h (np.array): Height of orbital shells in m.
+
+#     Returns:
+#         np.ndarray: Atmospheric density in kg/m^3
+#     """
+    
+#     # Convert h to a numpy array for vectorized operations
+#     h = np.array(h)
+
+#     # Initialize the pressure array
+#     p = np.zeros_like(h, dtype=float)
+
+#     # Define altitude layers and corresponding parameters (h0, p0, H) based on Vallado (2013)
+#     layers = [
+#         (0, 1.225, 7.249),
+#         (25, 3.899e-2, 6.349),
+#         (30, 1.774e-2, 6.682),
+#         (40, 3.972e-3, 7.554),
+#         (50, 1.057e-3, 8.382),
+#         (60, 3.206e-4, 7.714),
+#         (70, 8.770e-5, 6.549),
+#         (80, 1.905e-5, 5.799),
+#         (90, 3.396e-6, 5.382),
+#         (100, 5.297e-7, 5.877),
+#         (110, 9.661e-8, 7.263),
+#         (120, 2.438e-8, 9.473),
+#         (130, 8.484e-9, 12.636),
+#         (140, 3.845e-9, 16.149),
+#         (150, 2.070e-9, 22.523),
+#         (180, 5.464e-10, 29.740),
+#         (200, 2.789e-10, 37.105),
+#         (250, 7.248e-11, 45.546),
+#         (300, 2.418e-11, 53.628),
+#         (350, 9.518e-12, 53.298),
+#         (400, 3.725e-12, 58.515),
+#         (450, 1.585e-12, 60.828),
+#         (500, 6.967e-13, 63.822),
+#         (600, 1.454e-13, 71.835),
+#         (700, 3.614e-14, 88.667),
+#         (800, 1.170e-14, 124.64),
+#         (900, 5.245e-15, 181.05),
+#         (1000, 3.019e-15, 268.00),
+#     ]
+
+#     # Calculate density for each altitude value
+#     for h0, p0, H in layers:
+#         mask = (h >= h0) & (h < h0 + 100)
+#         p[mask] = p0 * np.exp((h0 - h[mask]) / H)
+
+#     # Handle altitudes >= 1000 km using the last layer's parameters
+#     h0, p0, H = layers[-1]
+#     mask = h >= 1000
+#     p[mask] = p0 * np.exp((h0 - h[mask]) / H)
+
+#     return p
+
+def densityexp(h_km):
+    """
+    Vallado Table 8-4 exponential density model (vectorized), matching the MATLAB densityexp_vec.
+    
+    Parameters
+    ----------
+    h_km : array_like
+        Altitude above the ellipsoid in **kilometers** (must be >= 0).
+    
+    Returns
+    -------
+    p : ndarray
+        Density in kg/m^3 (matches the MATLAB code as given, where the km^3 conversion is commented out).
+        To convert to kg/km^3, multiply by 1e9.
+    """
+    h = np.asarray(h_km, dtype=float)
+
+    # Lower edges h0 and corresponding (p0, H) for each interval
+    h0 = np.array([   0,    25,    30,    40,    50,    60,    70,    80,    90,   100,
+                     110,   120,   130,   140,   150,   180,   200,   250,   300,   350,
+                     400,   450,   500,   600,   700,   800,   900,  1000], dtype=float)
+    p0 = np.array([1.225, 3.899e-2, 1.774e-2, 3.972e-3, 1.057e-3, 3.206e-4, 8.770e-5, 1.905e-5,
+                   3.396e-6, 5.297e-7, 9.661e-8, 2.438e-8, 8.484e-9, 3.845e-9, 2.070e-9, 5.464e-10,
+                   2.789e-10, 7.248e-11, 2.418e-11, 9.518e-12, 3.725e-12, 1.585e-12, 6.967e-13,
+                   1.454e-13, 3.614e-14, 1.170e-14, 5.245e-15, 3.019e-15], dtype=float)
+    H  = np.array([7.249, 6.349, 6.682, 7.554, 8.382, 7.714, 6.549, 5.799, 5.382, 5.877,
+                   7.263, 9.473, 12.636, 16.149, 22.523, 29.740, 37.105, 45.546, 53.628, 53.298,
+                   58.515, 60.828, 63.822, 71.835, 88.667, 124.64, 181.05, 268.00], dtype=float)
+
+    # Build edges exactly like MATLAB: [0, 25, 30, ..., 1000, Inf]
+    edges = np.concatenate([h0, [np.inf]])
+
+    # Bin index k so that edges[k] <= h < edges[k+1]
+    k = np.searchsorted(edges, h, side='right') - 1
+
+>>>>>>> amos-vnv
     # MATLAB errors if any value is below 0
     if np.any(k < 0):
         raise ValueError("Input altitude h has element(s) below 0 km.")
@@ -55,6 +154,73 @@ def densityexp(h_km):
 
     return p
 
+<<<<<<< HEAD
+=======
+# def densityexp(h):
+#     """
+#     Calculates atmospheric density based on altitude using a 
+#     simple exponential model (Vallado, Table 8-4).
+
+#     Args:
+#         h (array_like): Height above ellipsoid in **kilometres**.
+
+#     Returns:
+#         np.ndarray: Atmospheric density in kg/m³
+#     """
+#     # — make array and sanity check —
+#     h = np.asarray(h, dtype=float)
+#     if np.any(h < 0):
+#         raise ValueError("Altitude must be ≥ 0 km")
+
+#     # — Table of (h0 [km], p0 [kg/m³], H [km]) —
+#     layers = np.array([
+#         (   0, 1.225e+0,   7.249),
+#         (  25, 3.899e-2,   6.349),
+#         (  30, 1.774e-2,   6.682),
+#         (  40, 3.972e-3,   7.554),
+#         (  50, 1.057e-3,   8.382),
+#         (  60, 3.206e-4,   7.714),
+#         (  70, 8.770e-5,   6.549),
+#         (  80, 1.905e-5,   5.799),
+#         (  90, 3.396e-6,   5.382),
+#         ( 100, 5.297e-7,   5.877),
+#         ( 110, 9.661e-8,   7.263),
+#         ( 120, 2.438e-8,   9.473),
+#         ( 130, 8.484e-9,  12.636),
+#         ( 140, 3.845e-9,  16.149),
+#         ( 150, 2.070e-9,  22.523),
+#         ( 180, 5.464e-10, 29.740),
+#         ( 200, 2.789e-10, 37.105),
+#         ( 250, 7.248e-11, 45.546),
+#         ( 300, 2.418e-11, 53.628),
+#         ( 350, 9.518e-12, 53.298),
+#         ( 400, 3.725e-12, 58.515),
+#         ( 450, 1.585e-12, 60.828),
+#         ( 500, 6.967e-13, 63.822),
+#         ( 600, 1.454e-13, 71.835),
+#         ( 700, 3.614e-14, 88.667),
+#         ( 800, 1.170e-14,124.640),
+#         ( 900, 5.245e-15,181.050),
+#         (1000, 3.019e-15,268.000),
+#     ])
+#     h0 = layers[:,0]
+#     p0 = layers[:,1]
+#     H  = layers[:,2]
+
+#     # — find for each h which layer to use —
+#     # np.digitize with bins = h0[1:] gives:
+#     #   idx = 0 for h <  25 km  → layer 0 (h0=0)
+#     #   idx = 1 for 25 ≤ h < 30 km → layer 1 (h0=25)
+#     #   … 
+#     #   idx = 29 for h ≥ 1000 km    → layer 29 (h0=1000)
+#     idx = np.digitize(h, bins=h0[1:], right=False)
+
+#     # — compute density exactly as MATLAB does —
+#     ρ = p0[idx] * np.exp((h0[idx] - h) / H[idx])
+
+#     return ρ
+
+>>>>>>> amos-vnv
 def densityexp_jbvalues(h):
     """
     Returns interpolated atmospheric density values based on reference altitudes and densities.

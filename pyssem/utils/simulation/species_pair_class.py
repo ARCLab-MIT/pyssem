@@ -181,3 +181,40 @@ class SpeciesPairClass:
         is_catastrophic = [True if e/smaller_mass_g > 40 else False for e in energy]
 
         return is_catastrophic
+    
+    def _map_fragments_to_shells_corrected(self, fragment_distribution, n_shells, collision_shell):
+        """
+        Map fragment distribution from velocity bins to shell indices using corrected binning.
+        The collision shell is the center, and fragments spread above and below it.
+        
+        Args:
+            fragment_distribution: 1D array of fragment counts per velocity bin
+            n_shells: Number of shells
+            collision_shell: The shell where the collision occurs (center of distribution)
+            
+        Returns:
+            2D array with shape (n_shells, n_shells) representing fragment distribution
+        """
+        n_velocity_bins = len(fragment_distribution)
+        n_shells_hist = (n_velocity_bins - 1) // 2  # Middle bin index (collision shell)
+        
+        # Create shell mapping for this specific collision
+        shell_totals = np.zeros(n_shells)
+        
+        for hist_bin in range(n_velocity_bins):
+            # Map velocity bin to shell index relative to collision shell
+            shell_idx = collision_shell + (hist_bin - n_shells_hist)
+            
+            # Only include shells that are within bounds
+            if 0 <= shell_idx < n_shells:
+                shell_totals[shell_idx] = fragment_distribution[hist_bin]
+        
+        # Create 2D matrix for the species pair system
+        # Each row represents a source shell, each column represents a destination shell
+        fragsMade2D = np.zeros((n_shells, n_shells))
+        
+        # For this collision at collision_shell, distribute fragments to all shells
+        # based on the shell_totals calculated above
+        fragsMade2D[collision_shell, :] = shell_totals
+        
+        return fragsMade2D

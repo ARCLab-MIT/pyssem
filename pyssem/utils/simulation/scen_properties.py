@@ -444,6 +444,16 @@ class ScenarioProperties:
                     self.indicator_variables_list.append(make_umpy_indicator(self,
                                                                              X=4
                                                                              ))
+                elif indicator == 'collisions_per_species_altitude':
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True, 
+                                                                                    per_pair = False))
+                elif indicator == 'collisions_per_species_altitude_per_pair':
+                    self.indicator_variables_list.append(make_collisions_per_species_altitude_per_pair(self, 
+                                                                                    percentage = False, 
+                                                                                    per_species = True, 
+                                                                                    per_pair = True))
                 elif indicator == "all_col_indicators":
                     self.indicator_variables_list.append(make_all_col_indicators(self))
         
@@ -618,6 +628,48 @@ class ScenarioProperties:
             self.future_launch_model(FLM_steps)
     
     def build_model(self):
+        """
+        Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
+
+        This does not take any arguments, as the ScenarioProperties should now be fully configured. It will go through each species, launch, pmd, drag and collisions equations
+        and add them shape them into a matrix of symbolic expressions. 
+
+        :return: None
+        """
+        from .build_run_model_helpers import (
+            process_species_terms, 
+            process_collision_terms, 
+            process_drag_and_density, 
+            process_integrated_indicators
+        )
+
+        # Process species terms (launch, PMD, drag)
+        self.full_lambda, self.full_Cdot_PMD, self.drag_term_upper, self.drag_term_cur = process_species_terms(self)
+        
+        # Process collision terms
+        self.equations, self.collision_terms, self.full_coll_sink, self.full_coll_source = process_collision_terms(self)
+        
+        # Process drag and density
+        self.full_drag, self.sym_drag = process_drag_and_density(self, self.drag_term_upper, self.drag_term_cur)
+        
+        # Add drag to equations if not time dependent density
+        if not self.time_dep_density:
+            self.equations += self.full_drag
+
+        # Process integrated indicator variables
+        self.num_integrated_indicator_vars, self.full_lambda = process_integrated_indicators(self)
+
+        # Lambdify the equations to be used for Scipy integration
+        if self.baseline:
+            self.store_equations = self.equations
+            self.equations = self.lambdify_equations()
+        else:
+            self.equations, self.full_lambda_flattened = self.lambdify_equations(), self.lambdify_launch()
+            
+        return
+
+
+    def build_model_elliptical(self):
         """
         Build the model for the simulation. This will convert the equations to lambda functions and run the simulation.
 
@@ -1145,7 +1197,8 @@ class ScenarioProperties:
     
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
                       species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe,
-                      drag_affected_bool, all_species_list, progress_bar=True, opus=False):
+                     
+                      drag_affected_bool, all_species_list, progress_bar=True, opus=False, progress_bar=True):
 
         # dt = years * (t - self.t_0)
         # self.t_0 = t
@@ -1284,7 +1337,7 @@ class ScenarioProperties:
 
             dN_all_species[:, species, :] = dN
             
-        # self.t_0 = t # update global variable 
+        self.t_0 = t # update global variable 
         dN_all_species = dN_all_species + output
 
         # #############################
@@ -1351,6 +1404,375 @@ class ScenarioProperties:
 
         :return: None
         """
+        from .build_run_model_helpers import prepare_launch_functions
+        
+        print("Preparing equations for integration (Lambdafying) ...")
+        
+        # Initial Population
+        x0 = self.x0.T.values.flatten()
+
+        # Prepare launch functions (common for both cases)
+        launch_rate_functions = prepare_launch_functions(self)
+
+        if self.time_dep_density:
+            # Drag equations will have to be lamdified separately as they will not be part of equations_flattened
+            drag_upper_flattened = [self.drag_term_upper[i, j] for j in range(self.drag_term_upper.cols) for i in range(self.drag_term_upper.rows)]
+            drag_current_flattened = [self.drag_term_cur[i, j] for j in range(self.drag_term_cur.cols) for i in range(self.drag_term_cur.rows)]
+
+            self.drag_upper_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_upper_flattened]
+            self.drag_cur_lamd = [sp.lambdify(self.all_symbolic_vars, eq, 'numpy') for eq in drag_current_flattened]
+
+            # Set up time varying density 
+            self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
+            
+            # Get available dates from density data to understand the data range
+            available_dates = list(self.density_data.keys())
+            print(f"Available density data dates: {available_dates[:5]}...")  # Show first 5 dates
+            
+            # Use only the available dates from the density data for date mapping
+            # This ensures we don't try to access dates that don't exist in the data
+            available_dates = sorted(self.density_data.keys())
+            self.date_mapping = available_dates
+            
+            # This will change when jb2008 is updated
+            available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
+            available_altitudes.sort()
+
+            self.nearest_altitude_mapping = precompute_nearest_altitudes(available_altitudes)
+
+            self.prev_t = -1  # Initialize to an invalid time
+            self.prev_rho = None
+
+            # Set up progress bar
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations (Time-varying Density)", unit="year")
+            
+            # Integrate with time-varying density
+            output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
+                            args=(launch_rate_functions, self.equations),
+                            t_eval=self.scen_times, method=self.integrator)
+            
+            # Clean up
+            self.drag_upper_lamd = None
+            self.drag_cur_lamd = None
+            self.progress_bar.close()
+            self.progress_bar = None
+
+        else:    
+            # Set up progress bar
+            self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
+            
+            # Integrate with constant density
+            output = solve_ivp(self.population_shell, [self.scen_times[0], self.scen_times[-1]], x0,
+                            args=(launch_rate_functions, self.equations),
+                            t_eval=self.scen_times, method=self.integrator)
+            
+            # Clean up
+            self.progress_bar.close()
+            self.progress_bar = None
+
+        # Check integration success
+        if output.success:
+            print(f"Model run completed successfully.")
+        else:
+            print(f"Model run failed: {output.message}")
+
+        self.output = output
+
+        # Evaluate indicator variables
+        if hasattr(self, 'indicator_variables_list'):
+            print("Evaluating post-processed indicator variables...")
+            self.indicator_results['indicators'] = {}
+
+            for i in self.indicator_variables_list:
+                for indicator_var in i:
+                    try:
+                        simplified_eqs = sp.simplify(indicator_var.eqs)
+                        indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+                        evaluated_indicator_dict = {}
+
+                        # Iterate over states (rows in y) and corresponding time steps (t)
+                        for state, t in zip(self.output.y.T, self.output.t):
+                            # Evaluate the indicator function for the current state
+                            evaluated_value = indicator_fun(*state)
+                            # Store the result in the dictionary with the corresponding time step
+                            evaluated_indicator_dict[t] = evaluated_value
+
+                        # Store the results for this indicator in the results dictionary
+                        self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
+                    except Exception:
+                        print(f"Cannot make indicator for {indicator_var}")
+                        print(Exception)
+
+        return 
+    
+    def make_rate_interpolator(self, times, rates, method="pchip", extrap="hold", smooth=None, values='counts'):
+        """
+        times: 1D array of scenario times (must be increasing)
+        rates: 1D array of launch rates (may contain NaN/inf)
+        method: "pchip" (shape-preserving), "akima" (less ringing), "linear", "spline" (smoothed cubic)
+        extrap: "hold" (constant at ends), "zero" (0 outside), or "extrapolate"
+        smooth: smoothing factor for "spline" (larger -> smoother)
+        """
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe times (average duplicates)
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+
+        # choose interpolator
+        if method == "pchip":
+            base = PchipInterpolator(t, y, extrapolate=(extrap == "extrapolate"))
+            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)   # clamp tiny negatives from numerics
+            return _f
+
+        if method == "akima":
+            base = Akima1DInterpolator(t, y)
+            def _f(tt, base=base, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)
+            return _f
+
+        if method == "linear":
+            base = interp1d(t, y, kind="linear", bounds_error=False,
+                            fill_value=(y[0], y[-1]) if extrap == "hold" else 0.0, assume_sorted=True)
+            return lambda tt, base=base: np.maximum(base(tt), 0.0)
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            
+        """
+        ... (your existing docstring)
+        Extra:
+        - method="bspline" uses scipy.make_interp_spline
+        - k: spline order (1..5), default 3
+        """
+        import numpy as np
+        t = np.asarray(times, float)
+        y = np.asarray(rates, float)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # sort + dedupe
+        order = np.argsort(t)
+        t, y = t[order], y[order]
+        ut, inv = np.unique(t, return_inverse=True)
+        if len(ut) < len(t):
+            y = np.bincount(inv, weights=y) / np.bincount(inv)
+            t = ut
+
+        n = len(t)
+        if n == 0:
+            return lambda tt: np.zeros_like(np.asarray(tt, float))
+        if n == 1:
+            c = float(max(y[0], 0.0))
+            if extrap == "zero":
+                return lambda tt, t0=t[0], c=c: np.where(np.asarray(tt) == t0, c, 0.0)
+            elif extrap == "hold":
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+            else:
+                return lambda tt, c=c: np.asarray(tt, float)*0 + c
+
+        # === NEW: B-spline via make_interp_spline ===
+        if method == "bspline":
+            kk = int(k) if k is not None else 3
+            kk = max(1, min(5, kk))
+
+            # If counts, fit on interval midpoints with rates = counts / dt
+            if values == "counts":
+                if len(t) != len(y) + 1:
+                    raise ValueError("For method='bspline' with values='counts', 'times' must be interval EDGES (len = len(counts)+1).")
+                dt = np.diff(t)
+                t_fit = 0.5 * (t[:-1] + t[1:])          # midpoints
+                y_fit = y / dt                           # rates
+            else:
+                t_fit, y_fit = t, y
+
+            # Natural end conditions to reduce end ringing; set extrapolate only if requested
+            base = make_interp_spline(t_fit, y_fit, k=kk, bc_type="natural",
+                                    extrapolate=(extrap == "extrapolate"))
+
+            t0, tn = t_fit[0], t_fit[-1]
+            y0, yn = float(y_fit[0]), float(y_fit[-1])
+
+            def _f(tt, base=base, t0=t0, tn=tn, y0=y0, yn=yn):
+                tt = np.asarray(tt, float)
+                out = base(tt)
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)  # clamp tiny negatives
+            return _f
+         # ---- NEW: counts -> piecewise-constant rates ----
+        if values == "counts":
+            # times are interval edges: y[k] is count in [t[k], t[k+1])
+            if n < 2:
+                raise ValueError("values='counts' requires at least 2 time edges.")
+            dt = np.diff(t)                    # length n-1
+            r = (y[:-1] / dt)                  # rates in each interval
+            t_edges = t                        # keep full edges for search
+            # build ZOH over intervals
+            def _f_counts(tt, t_edges=t_edges, r=r):
+                tt = np.asarray(tt, float)
+                k = np.searchsorted(t_edges, tt, side='right') - 1  # interval index
+                k = np.clip(k, 0, len(r)-1)
+                out = r[k]
+                if extrap == "zero":
+                    out = np.where((tt < t_edges[0]) | (tt >= t_edges[-1]), 0.0, out)
+                elif extrap == "hold":
+                    left = (tt < t_edges[0])
+                    right = (tt >= t_edges[-1])
+                    out = np.where(left, r[0], out)
+                    out = np.where(right, r[-1], out)
+                return np.maximum(out, 0.0)
+            return _f_counts
+
+        # ---- NEW: ZOH (previous) for provided rates ----
+        if method == "zoh":
+            t0, tn = t[0], t[-1]
+            y0, yn = y[0], y[-1]
+            def _f(tt, t=t, y=y, t0=t0, tn=tn, y0=y0, yn=yn):
+                tt = np.asarray(tt, float)
+                k = np.searchsorted(t, tt, side='right') - 1
+                k = np.clip(k, 0, len(y)-1)
+                out = y[k]
+                if extrap == "zero":
+                    out = np.where((tt < t0) | (tt > tn), 0.0, out)
+                elif extrap == "hold":
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                return np.maximum(out, 0.0)
+            return _f
+
+        if method == "spline":
+            s = 0.0 if smooth is None else float(smooth)
+            # ext=3 -> return 0 outside; override below if "hold"
+            spl = UnivariateSpline(t, y, k=3, s=s, ext=3)
+            if extrap == "hold":
+                def _f(tt, spl=spl, t0=t[0], tn=t[-1], y0=y[0], yn=y[-1]):
+                    tt = np.asarray(tt, float)
+                    out = spl(tt)
+                    out = np.where(tt < t0, y0, out)
+                    out = np.where(tt > tn, yn, out)
+                    return np.maximum(out, 0.0)
+                return _f
+            return lambda tt, spl=spl: np.maximum(spl(tt), 0.0)
+
+        # default fallback
+        base = interp1d(t, y, kind="linear", bounds_error=False, fill_value=0.0, assume_sorted=True)
+        return lambda tt, base=base: np.maximum(base(tt), 0.0)
+    
+    def _zero_padded_spline(self, x, y, bc_type="natural"):
+                """
+                Build a spline f(t) that returns 0 outside [x[0], x[-1]].
+                Handles short series by reducing k automatically.
+                Dedups x by averaging y at duplicate times.
+                """
+                x = np.asarray(x, float)
+                y = np.asarray(y, float)
+
+                # sort & dedup x, average y on duplicates
+                order = np.argsort(x)
+                x = x[order]
+                y = y[order]
+                xu, inv = np.unique(x, return_inverse=True)
+                if xu.size != x.size:
+                    y_agg = np.zeros_like(xu, dtype=float)
+                    counts = np.zeros_like(xu, dtype=float)
+                    np.add.at(y_agg, inv, y)
+                    np.add.at(counts, inv, 1.0)
+                    y = y_agg / counts
+                    x = xu
+
+                # choose spline degree
+                k = int(min(3, max(1, len(x) - 1)))
+                if len(x) == 1:
+                    # constant inside the single support point
+                    v = float(y[0])
+                    t0 = t1 = float(x[0])
+                    def f(tt):
+                        tt = np.asarray(tt, float)
+                        out = np.zeros_like(tt, float)
+                        mask = (tt == t0)  # only defined at that point
+                        out[mask] = v
+                        return out
+                    return f, t0, t1
+
+                spl = make_interp_spline(x, y, k=k, bc_type=bc_type)
+                t0, t1 = float(x[0]), float(x[-1])
+
+                def f(tt):
+                    tt = np.asarray(tt, float)
+                    out = np.zeros_like(tt, float)
+                    mask = (tt >= t0) & (tt <= t1)
+                    if np.any(mask):
+                        out[mask] = spl(tt[mask])
+                    return out
+
+                return f, t0, t1
+    
+    def run_model_elliptical(self):
+        """
+        For each species, integrate the equations of population change for each shell and species.
+
+        The starting point will be, x0, the initial population.
+
+        The launch rate will be first calculated at time t, then the change of population in that species will be calculated using the ODEs. 
+
+        :return: None
+        """
         print("Preparing equations for integration (Lambdafying) ...")
         
         if self.time_dep_density:
@@ -1363,8 +1785,9 @@ class ScenarioProperties:
 
             # Set up time varying density 
             self.density_data = preload_density_data(os.path.join('pyssem', 'utils', 'drag', 'dens_highvar_2000_dens_highvar_2000_lookup.json'))
-            self.date_mapping = precompute_date_mapping(pd.to_datetime(self.start_date), pd.to_datetime(self.end_date) + pd.DateOffset(years=self.simulation_duration
-                                                                                                                                       ))
+            # Use only the available dates from the density data for date mapping
+            available_dates = sorted(self.density_data.keys())
+            self.date_mapping = available_dates
             
             # This will change when jb2008 is updated
             available_altitudes = list(map(int, list(self.density_data['2020-03'].keys())))
@@ -1376,7 +1799,6 @@ class ScenarioProperties:
             self.prev_rho = None
 
 
-            print("Integrating equations...")
             output = solve_ivp(self.population_shell_time_varying_density, [self.scen_times[0], self.scen_times[-1]], x0,
                             args=(self.full_lambda_flattened, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
@@ -1385,6 +1807,43 @@ class ScenarioProperties:
             self.drag_cur_lamd = None
 
         else:
+            # This should change location, but first make the fragments spread distribution
+            for term in self.collision_terms:
+                # === 1. Sum over SMA × ECC for each (shell, mass) bin ===
+                totals = term.fragment_spread_totals.sum(axis=(2, 3), keepdims=True)  # shape: (shell, mass, 1, 1)
+
+                # === 2. Normalize safely using np.where (broadcasting-friendly) ===
+                with np.errstate(invalid='ignore', divide='ignore'):
+                    spread_distribution = np.where(
+                        totals > 0,
+                        term.fragment_spread_totals / totals,
+                        0.0
+                    )
+
+                # === 3. Store for later use ===
+                term.spread_distribution = spread_distribution
+
+                if np.sum(spread_distribution) == 0 and np.sum(totals) != 0:
+                    print(f"Warning: No fragments produced for term {term.name}. Check your collision parameters.")
+
+            # === 1. Setup ===
+            x0_sum = np.sum(self.x0, axis=2)  # shape (n_shells, n_species)
+            flat_vars = self.all_symbolic_vars
+            self.n_sma_bins, n_species, self.n_ecc_bins = self.x0.shape
+            self.n_alt_shells = self.n_shells # remember the shells are in altitude
+
+            # === 2. Lambdify each collision term’s eqs_sources ===
+            for term in self.collision_terms:
+                term.lambdified_sources = sp.lambdify(flat_vars, term.eqs_sources, modules="numpy")
+                term.lambdified_sinks = sp.lambdify(flat_vars, term.eqs_sinks, modules="numpy")
+
+            # Map species index to mass bin index, only for debris
+            species_to_mass_bin = {
+                i: j for j, (i, name) in enumerate(
+                    [(i, name) for i, name in enumerate(self.species_names) if name.startswith("N")]
+                )
+            }
+
             launch_rate_functions = np.full(
                 (self.n_sma_bins,  self.species_length, self.n_ecc_bins), 
                 None, 
@@ -1392,6 +1851,7 @@ class ScenarioProperties:
             )
 
             if not self.baseline:
+                print('Building launch rate interpolators...')
                 for sma in range(self.n_sma_bins):
                     for species in range( self.species_length):
                         for ecc in range(self.n_ecc_bins):
@@ -1533,12 +1993,13 @@ class ScenarioProperties:
                         self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
 
                     except Exception as e:
-                        print(f"Cannot make indicator for {getattr(indicator_var, 'name', '<unnamed>')}")
-                        print(e)
-
-            # --- Make output.y match the non-elliptical plotting layout ---
-            # optional: preserve original solver array
-            self.output.y_sma_ecc = self.output.y
+                        raise ValueError(
+                            f"Failed processing rate_array at [sma={sma}, species={species}, ecc={ecc}]:\n"
+                            f"{rate_array}\n\n{e}"
+                        )
+            # Finally lambdify the equations for integration, this will just be pmd
+            # equations_flattened = [self.equations[i, j] for j in r÷
+            self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
 
             # species-major stacking of shells → (n_species*n_shells, n_time)
             self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,
@@ -1639,42 +2100,88 @@ class ScenarioProperties:
             print(f"Model run completed successfully.")
         else:
             print(f"Model run failed: {output.message}")
+            exit()
 
         self.output = output # Save
 
-        # Indicator Variables
-        # Evaluate non-indicator variables using states
+        ###############
+        # Indicator variables rely on altitude shells to calculate the number of collisions,
+        # Therefore, project (sma,ecc) -> altitude shells (y_alt), then evaluate indicators.
+        ###############
         if hasattr(self, 'indicator_variables_list'):
             print("Evaluating post-processed indicator variables...")
+
+            # --- Dimensions ---
+            n_species = self.species_length
+            print(self.output.y)
+            n_time    = self.output.y.shape[1]
+
+            # --- Unpack and reshape population data: (sma, species, ecc, time) ---
+            x_matrix = self.output.y.reshape(self.n_sma_bins, n_species, self.n_ecc_bins, n_time)
+
+            # --- Project to altitude shells over time ---
+            n_eff = np.zeros((self.n_shells, n_species, n_time))  # (alt/shell, species, time)
+            for s in range(n_species):
+                for t_idx, _ in enumerate(self.output.t):
+                    snap = x_matrix[:, s, :, t_idx]  # (sma, ecc)
+                    cube = np.zeros((self.n_sma_bins, n_species, self.n_ecc_bins))
+                    cube[:, s, :] = snap
+                    alt_proj = self.sma_ecc_mat_to_altitude_mat(cube)  # (alt, species)
+                    n_eff[:, s, t_idx] = alt_proj[:, s]
+
+            self.output.y_alt = n_eff  # shape: (n_alt_shells, n_species, n_time)
+
+            # --- Prepare indicator results dict ONCE (not inside loops) ---
+            if not hasattr(self, 'indicator_results') or self.indicator_results is None:
+                self.indicator_results = {}
             self.indicator_results['indicators'] = {}
 
-            for i in self.indicator_variables_list:
-                # Convert the symbolic equations into a callable function
-                for indicator_var in i:
+            # --- Sanity checks ---
+            y_alt = self.output.y_alt
+            n_shells, n_species_chk, n_time_chk = y_alt.shape
+            if n_shells != self.n_shells or n_species_chk != self.species_length:
+                raise ValueError("Shape mismatch: y_alt dims do not match self.n_shells/self.species_length.")
+            if n_time_chk != len(self.output.t):
+                raise ValueError("Time axis mismatch: len(self.output.t) != y_alt.shape[2].")
+
+            # --- Build symbol→(species_idx, shell_idx) order mapping ---
+            order_map = self._build_symbol_order_map()
+
+            # --- Evaluate each indicator with states ordered as self.all_symbolic_vars ---
+            for group in self.indicator_variables_list:
+                for indicator_var in group:
                     try:
-                        simplified_eqs = sp.simplify(indicator_var.eqs)
-                        indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
+                        eq  = sp.simplify(indicator_var.eqs)
+                        fun = sp.lambdify(self.all_symbolic_vars, eq, 'numpy')
+
                         evaluated_indicator_dict = {}
 
-                        # Iterate over states (rows in y) and corresponding time steps (t)
-                        for state, t in zip(self.output.y.T, self.output.t):
-                            # Evaluate the indicator function for the current state
-                            evaluated_value = indicator_fun(*state)
-                            # Store the result in the dictionary with the corresponding time step
-                            evaluated_indicator_dict[t] = evaluated_value
+                        for t_idx, t in enumerate(self.output.t):
+                            # Build state vector matching self.all_symbolic_vars
+                            state = np.empty(len(order_map), dtype=float)
+                            for j, (sp_idx, sh_idx) in enumerate(order_map):
+                                state[j] = y_alt[sh_idx, sp_idx, t_idx]
 
-                        # Store the results for this indicator in the results dictionary
+                            evaluated_indicator_dict[t] = fun(*state)
+
                         self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
-                    except Exception:
-                        print(f"Cannot make indicator for {indicator_var}")
-                        print(Exception)
 
+                    except Exception as e:
+                        print(f"Cannot make indicator for {getattr(indicator_var, 'name', '<unnamed>')}")
+                        print(e)
+
+            # --- Make output.y match the non-elliptical plotting layout ---
+            # optional: preserve original solver array
+            self.output.y_sma_ecc = self.output.y
+
+            # species-major stacking of shells → (n_species*n_shells, n_time)
+            self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,
+                                                                n_time)
+            
             # print("Indicator variables succesfully ran")
             # print(self.indicator_results['indicators'].keys())
 
-
-        return 
-        
+        return
     def population_shell_for_OPUS(self, t, N, equations, times, launch, time_idx):
         dN_dt = np.zeros_like(N)
 
@@ -1726,6 +2233,38 @@ class ScenarioProperties:
 
         return dN_dt
 
+    def _build_symbol_order_map(self):
+                """
+                Returns a list of (species_idx, shell_idx) in the exact order of self.all_symbolic_vars.
+                shell_idx is 0-based; symbol names are assumed to end with '_<shell>' (1-based in the name).
+                """
+                species_to_idx = {name: i for i, name in enumerate(self.species_names)}
+                order_map = []
+
+                for sym in self.all_symbolic_vars:
+                    name = str(sym)  # e.g., 'N_0.00141372kg_7' or 'S_3'
+                    base, sep, shell_str = name.rpartition('_')
+                    if sep == '' or not shell_str.isdigit():
+                        raise ValueError(f"Symbol '{name}' must end with '_<shell_index>' (1-based).")
+
+                    shell_idx = int(shell_str) - 1  # convert to 0-based
+                    if base not in species_to_idx:
+                        # strict match against species_names to avoid accidental mis-ordering
+                        raise KeyError(f"Symbol base '{base}' not found in species_names {self.species_names}.")
+
+                    species_idx = species_to_idx[base]
+                    if not (0 <= shell_idx < self.n_shells):
+                        raise IndexError(f"Shell index {shell_idx} out of range for symbol '{name}' with n_shells={self.n_shells}.")
+
+                    order_map.append((species_idx, shell_idx))
+
+                # Sanity: number of symbols must match n_shells * n_species
+                expected = self.n_shells * self.species_length
+                if len(order_map) != expected:
+                    raise ValueError(f"Symbol count {len(order_map)} != n_shells*n_species ({expected}).")
+                return order_map
+
+    
     def population_shell(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
@@ -1740,9 +2279,12 @@ class ScenarioProperties:
         """
         # Update the progress bar
         if self.progress_bar is not None and progress_bar:
-            self.progress_bar.update(t - self.progress_bar.n)\
+            self.progress_bar.update(t - self.progress_bar.n)
 
+
+        # NEW IMPLEMENTATION THAT SEEMS WORKING WITH INTERP
         dN_dt = np.zeros_like(N)
+
         # --- This is now much more efficient ---
         # Calculate the intrinsic rate of change from the differential equations
         # This part can be vectorized if your `equations` list is lambdified correctly
@@ -1758,63 +2300,131 @@ class ScenarioProperties:
         dN_dt = intrinsic_rates + launch_rates
 
         return dN_dt
+    
 
-    def population_shell_time_varying_density(self, t, N, full_lambda, equations, times):
+    def population_shell_time_varying_density(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
         :param t: Timestep
         :param N: Population Count
-        :param full_lambda: Launch rates
-        :param equations: Equations
-        :param times: Times
-        :param density_model: Density Model
-        :param R0_km: Altitude of the shells
+        :param launch_funcs: Launch rate functions
+        :param eq_funcs: Equation functions
+        :param progress_bar: Whether to update progress bar
 
         :return: Rate of change of population
         """
         # Update the progress bar
-        if self.progress_bar is not None:
+        if self.progress_bar is not None and progress_bar:
             self.progress_bar.update(t - self.progress_bar.n)
 
-        # Clean the derivative array
+        # print(f"Time: {t}")
         dN_dt = np.zeros_like(N)
 
-        # fetch time-varying density with cache management logic for rho
-        current_t_step = int(t)
-        if current_t_step > self.prev_t:
-            rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
-            self.prev_rho = rho
-            self.prev_t = current_t_step
-        else:
-            rho = self.prev_rho  # Use cached rho
+        if self.time_dep_density:
+            # Cache management logic for rho
+            # For the first year (t <= 1), use a consistent density value
+            # For later years, update more frequently to capture time variations
+            
+            # Update density yearly instead of at each timestep to reduce integration instability
+            current_year = int(t)
+            
+            # Only update density if we've moved to a new year
+            if not hasattr(self, 'last_density_year') or self.last_density_year != current_year:
+                self.last_density_year = current_year
+                
+                # Calculate density for this year - cycle through available data
+                simulation_duration = self.scen_times[-1] - self.scen_times[0]
+                t_percentage = (t - self.scen_times[0]) / simulation_duration * 100
+                
+                # For simulations longer than available data, cycle through the available months
+                # Available data covers 5 months (0-100%), so cycle every 5 months
+                cycle_period = 100  # 5 months = 100% of available data
+                t_percentage = t_percentage % cycle_period
+                
+                t_percentage = max(0, min(100, t_percentage))  # Clamp to 0-100
+                
+                # Calculate density for all shells at this time
+                rho = JB2008_dens_func(t_percentage, self.R0_km.tolist(), self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+                
+                if rho is None or len(rho) == 0:
+                    raise ValueError(f"Failed to get density at t={t}, t_percentage={t_percentage}")
+                
+                # Store the density for this year
+                self.cached_rho = rho
+                print(f"Updated density for year {current_year} (t={t:.2f})")
+            
+            # Use the cached density for this year
+            rho = self.cached_rho
+            
+            # Ensure we got valid density values - no fallbacks
+            if rho is None or len(rho) == 0:
+                raise ValueError(f"JB2008 density data not available at time {t} (t_percentage={t_percentage:.2f})")
 
-        # Apply drag computations
-        for i in range(len(N)):
-            # get appropriate shell index, as the flattened functions iterate over every shell
-            # within a species first (rather than each species in a shell)
-            shell_index = i % self.n_shells
+            # Essential safety checks only
+            if rho is None or len(rho) == 0:
+                raise ValueError(f"Could not obtain density values at time {t}")
+            
+            # Ensure rho is a numpy array and handle any NaN/inf values
+            rho = np.array(rho)
+            if np.any(np.isnan(rho)) or np.any(np.isinf(rho)):
+                raise ValueError(f"Invalid density values (NaN/inf) at time {t}")
+            
+            
+            # No artificial clamping - use raw JB2008 data to preserve natural variations
+            rho_full = np.repeat(rho, self.species_length)
+            species_per_shell = self.species_length
 
-            # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
-            if i < len(N) - 1:
-                current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
-                upper_drag = self.drag_upper_lamd[i](*N) * rho[shell_index + 1]
-                dN_dt[i] += current_drag + upper_drag
-            else:
-                current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
-                dN_dt[i] += current_drag
+            # Apply drag computations with time-varying density
+            for i in range(len(N)):
+                shell_index = i // species_per_shell
+                
+                # Safety check for shell_index
+                if shell_index >= len(rho):
+                    shell_index = len(rho) - 1
+                if shell_index < 0:
+                    shell_index = 0
 
-            # Apply general equation dynamics
-            dN_dt[i] += equations[i](*N)
+                # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
+                try:
+                    # Safety check for drag function availability
+                    if (hasattr(self, 'drag_cur_lamd') and hasattr(self, 'drag_upper_lamd') and 
+                        i < len(self.drag_cur_lamd) and i < len(self.drag_upper_lamd)):
+                        
+                        if i < len(N) - 1 and shell_index + 1 < len(rho):
+                            # For time-dependent density, multiply by ballistic coefficient and density
+                            species_index = i % self.species_length
+                            species_list = [species for group in self.species.values() for species in group]
+                            species = species_list[species_index]
+                            
+                            current_drag = self.drag_cur_lamd[i](*N) * species.beta * rho_full[shell_index]
+                            upper_drag = self.drag_upper_lamd[i](*N) * species.beta * rho_full[shell_index + 1]
+                            dN_dt[i] += current_drag + upper_drag
+                        else:
+                            # For time-dependent density, multiply by ballistic coefficient and density
+                            species_index = i % self.species_length
+                            species_list = [species for group in self.species.values() for species in group]
+                            species = species_list[species_index]
+                            
+                            current_drag = self.drag_cur_lamd[i](*N) * species.beta * rho_full[shell_index]
+                            dN_dt[i] += current_drag
+                except (IndexError, TypeError):
+                    # Skip drag calculation for this index
+                    pass
 
-        if not self.baseline:
+                # Apply general equation dynamics
+                dN_dt[i] += eq_funcs[i](*N)
+
+            if self.baseline:
+                return dN_dt
+        
             # Calculate the launch rates at the current time 't' by calling the functions
             launch_rates = np.array([func(t) for func in launch_funcs])
 
             # The total rate of change is the sum
-            dN_dt += launch_rates
-            
-        return dN_dt
+            dN_dt = dN_dt + launch_rates        
+
+            return dN_dt
     
     def population_shell_for_OPUS(self, t, N, equations, times, launch):
         dN_dt = np.zeros_like(N)
@@ -2074,36 +2684,6 @@ class ScenarioProperties:
 
         return equations
 
-    # def lambdify_launch(self, full_lambda=None):
-    #     """ 
-    #         Convert the Numpy launch rates to Scipy lambdified functions for integration.
-        
-    #     """
-    #     # Launch rates
-    #     # full_lambda_flattened = list(self.full_lambda)  
-    #     full_lambda_flattened = []
-    #     # # Iterate through columns first, then rows
-    #     # for c in range(self.full_lambda.cols):      # Iterate over column indices (0, 1, 2)
-    #     #     for r in range(self.full_lambda.rows):  # Iterate over row indices (0 to 23)
-    #     #         full_lambda_flattened.append(self.full_lambda[r, c])
-
-    #     if full_lambda is None:
-    #         for i in range(len(self.full_lambda)):
-    #             if self.full_lambda[i] is not None:
-    #                 full_lambda_flattened.extend(self.full_lambda[i])
-    #             else:
-    #                 # Append None to the list, length of scenario_properties.n_shells
-    #                 full_lambda_flattened.extend([None]*self.n_shells)
-    #     else:
-    #         for i in range(len(full_lambda)):
-    #             if full_lambda[i] is not None:
-    #                 full_lambda_flattened.extend(full_lambda[i])
-    #             else:
-    #                 # Append None to the list, length of scenario_properties.n_shells
-    #                 full_lambda_flattened.extend([None]*self.n_shells)
-
-    #     return full_lambda_flattened
-
     def lambdify_launch(self, full_lambda=None):
         """ 
             Convert the Numpy launch rates to Scipy lambdified functions for integration.
@@ -2165,7 +2745,7 @@ class ScenarioProperties:
                 np.sum(entry) if isinstance(entry, np.ndarray) else 0
                 for entry in species_lambda
             )
-            print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
+            # print(f"Species: {species_names[i]} — Total Launches: {int(total_launches)}")
 
         # ============================
         # Reshape for use with [sma, species, ecc]
