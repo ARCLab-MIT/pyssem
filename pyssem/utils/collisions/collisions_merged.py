@@ -3,8 +3,9 @@ from itertools import combinations
 import multiprocessing as mp
 from sympy import symbols, Matrix
 from tqdm import tqdm
-from .NASA_SBM_Evolve import evolve_bins_circular, evolve_bins_elliptical
-from ..simulation.species_pair_class import SpeciesPairClass
+import traceback
+from utils.collisions.NASA_SBM_Evolve import evolve_bins_circular, evolve_bins_elliptical
+from utils.simulation.species_pair_class import SpeciesPairClass
 
 def process_species_pair(args):    
     i, (s1, s2), scen_properties, debris_species, binE_mass, LBgiven = args
@@ -46,7 +47,7 @@ def process_species_pair(args):
         RBflag = max(s1.RBflag, s2.RBflag)
 
     # Calculate the number of fragments made for each debris species
-    frags_made = np.zeros((len(scen_properties.v_imp_all), len(debris_species)))
+    frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
     # alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
     # Alt nums is now a 3D array, the first dimension is the collision shells, the second dimension is the debris species, 
     # and the third dimension is where the fragments end up. 
@@ -103,7 +104,7 @@ def process_species_pair(args):
         # Initialize a 3D matrix: [source_shell, debris_species, destination_shell]
         alt_nums_3d = np.zeros((scen_properties.n_shells, len(debris_species), scen_properties.n_shells))
         
-        for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits
+        for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits
             dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
             try:
                 results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
@@ -138,7 +139,7 @@ def process_species_pair(args):
         #########
         # Basic SSEM 
         #########
-        for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits 
+        for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
             dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
             try:
                 results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
