@@ -1197,8 +1197,7 @@ class ScenarioProperties:
     
     def population_rhs(self, t, x_flat, launch_funcs, n_sma_bins, n_species, n_ecc_bins, n_alt_shells,
                       species_to_mass_bin, years, adot_all_species, edot_all_species, Δa, Δe,
-                     
-                      drag_affected_bool, all_species_list, progress_bar=True, opus=False, progress_bar=True):
+                      drag_affected_bool, all_species_list, progress_bar=True, opus=False):
 
         # dt = years * (t - self.t_0)
         # self.t_0 = t
@@ -2104,82 +2103,30 @@ class ScenarioProperties:
 
         self.output = output # Save
 
-        ###############
-        # Indicator variables rely on altitude shells to calculate the number of collisions,
-        # Therefore, project (sma,ecc) -> altitude shells (y_alt), then evaluate indicators.
-        ###############
+        # Evaluate indicator variables
         if hasattr(self, 'indicator_variables_list'):
             print("Evaluating post-processed indicator variables...")
-
-            # --- Dimensions ---
-            n_species = self.species_length
-            print(self.output.y)
-            n_time    = self.output.y.shape[1]
-
-            # --- Unpack and reshape population data: (sma, species, ecc, time) ---
-            x_matrix = self.output.y.reshape(self.n_sma_bins, n_species, self.n_ecc_bins, n_time)
-
-            # --- Project to altitude shells over time ---
-            n_eff = np.zeros((self.n_shells, n_species, n_time))  # (alt/shell, species, time)
-            for s in range(n_species):
-                for t_idx, _ in enumerate(self.output.t):
-                    snap = x_matrix[:, s, :, t_idx]  # (sma, ecc)
-                    cube = np.zeros((self.n_sma_bins, n_species, self.n_ecc_bins))
-                    cube[:, s, :] = snap
-                    alt_proj = self.sma_ecc_mat_to_altitude_mat(cube)  # (alt, species)
-                    n_eff[:, s, t_idx] = alt_proj[:, s]
-
-            self.output.y_alt = n_eff  # shape: (n_alt_shells, n_species, n_time)
-
-            # --- Prepare indicator results dict ONCE (not inside loops) ---
-            if not hasattr(self, 'indicator_results') or self.indicator_results is None:
-                self.indicator_results = {}
             self.indicator_results['indicators'] = {}
 
-            # --- Sanity checks ---
-            y_alt = self.output.y_alt
-            n_shells, n_species_chk, n_time_chk = y_alt.shape
-            if n_shells != self.n_shells or n_species_chk != self.species_length:
-                raise ValueError("Shape mismatch: y_alt dims do not match self.n_shells/self.species_length.")
-            if n_time_chk != len(self.output.t):
-                raise ValueError("Time axis mismatch: len(self.output.t) != y_alt.shape[2].")
-
-            # --- Build symbol→(species_idx, shell_idx) order mapping ---
-            order_map = self._build_symbol_order_map()
-
-            # --- Evaluate each indicator with states ordered as self.all_symbolic_vars ---
-            for group in self.indicator_variables_list:
-                for indicator_var in group:
+            for i in self.indicator_variables_list:
+                for indicator_var in i:
                     try:
-                        eq  = sp.simplify(indicator_var.eqs)
-                        fun = sp.lambdify(self.all_symbolic_vars, eq, 'numpy')
-
+                        simplified_eqs = sp.simplify(indicator_var.eqs)
+                        indicator_fun = sp.lambdify(self.all_symbolic_vars, simplified_eqs, 'numpy')
                         evaluated_indicator_dict = {}
 
-                        for t_idx, t in enumerate(self.output.t):
-                            # Build state vector matching self.all_symbolic_vars
-                            state = np.empty(len(order_map), dtype=float)
-                            for j, (sp_idx, sh_idx) in enumerate(order_map):
-                                state[j] = y_alt[sh_idx, sp_idx, t_idx]
+                        # Iterate over states (rows in y) and corresponding time steps (t)
+                        for state, t in zip(self.output.y.T, self.output.t):
+                            # Evaluate the indicator function for the current state
+                            evaluated_value = indicator_fun(*state)
+                            # Store the result in the dictionary with the corresponding time step
+                            evaluated_indicator_dict[t] = evaluated_value
 
-                            evaluated_indicator_dict[t] = fun(*state)
-
+                        # Store the results for this indicator in the results dictionary
                         self.indicator_results['indicators'][indicator_var.name] = evaluated_indicator_dict
-
-                    except Exception as e:
-                        print(f"Cannot make indicator for {getattr(indicator_var, 'name', '<unnamed>')}")
-                        print(e)
-
-            # --- Make output.y match the non-elliptical plotting layout ---
-            # optional: preserve original solver array
-            self.output.y_sma_ecc = self.output.y
-
-            # species-major stacking of shells → (n_species*n_shells, n_time)
-            self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,
-                                                                n_time)
-            
-            # print("Indicator variables succesfully ran")
-            # print(self.indicator_results['indicators'].keys())
+                    except Exception:
+                        print(f"Cannot make indicator for {indicator_var}")
+                        print(Exception)
 
         return
     def population_shell_for_OPUS(self, t, N, equations, times, launch, time_idx):

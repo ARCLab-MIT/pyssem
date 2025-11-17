@@ -25,7 +25,6 @@ class Plots:
     def __init__(self, scenario_properties: ScenarioProperties, plots: list, 
                  simulation_name: str = None, main_path: str = 'figures'):
         self.scenario_properties = scenario_properties
-<<<<<<< HEAD
         # Handle output attribute access
         if hasattr(scenario_properties, 'output'):
             self.output = scenario_properties.output
@@ -41,28 +40,19 @@ class Plots:
             if hasattr(scenario_properties, 'scenario_properties'):
                 self.output = scenario_properties.scenario_properties.output
                 print(f"Trying scenario_properties.output: {type(self.output)}")
-=======
-        self.output = scenario_properties.output
->>>>>>> amos-vnv
         # Handle both Model and ScenarioProperties objects
         if hasattr(scenario_properties, 'species_length'):
             # Direct ScenarioProperties object
             self.n_species = scenario_properties.species_length
             self.num_shells = scenario_properties.n_shells
             self.species_names = scenario_properties.species_names
-<<<<<<< HEAD
             self.scenario_properties = scenario_properties
-=======
->>>>>>> amos-vnv
         else:
             # For Model objects, get attributes from scenario_properties
             self.n_species = scenario_properties.scenario_properties.species_length
             self.num_shells = scenario_properties.scenario_properties.n_shells
             self.species_names = scenario_properties.scenario_properties.species_names
-<<<<<<< HEAD
             self.scenario_properties = scenario_properties.scenario_properties
-=======
->>>>>>> amos-vnv
         self.plots = plots
         self.simulation_name = simulation_name
         self.main_path = main_path
@@ -71,14 +61,7 @@ class Plots:
         os.makedirs(f'{self.main_path}/{self.simulation_name}', exist_ok=True)
 
         # Handle elliptical attribute access
-<<<<<<< HEAD
         elliptical = self.scenario_properties.elliptical
-=======
-        if hasattr(self.scenario_properties, 'elliptical'):
-            elliptical = self.scenario_properties.elliptical
-        else:
-            elliptical = self.scenario_properties.scenario_properties.elliptical
->>>>>>> amos-vnv
 
         if elliptical:
             # Use the altitude-resolved data directly
@@ -102,15 +85,11 @@ class Plots:
     def total_objects_over_time_by_species(self):
         import numpy as np
         # --- Setup and filtering ---
-<<<<<<< HEAD
         # Handle both Model and ScenarioProperties objects for species_names access
         if hasattr(self.scenario_properties, 'species_names'):
             species_names = list(self.scenario_properties.species_names)
         else:
             species_names = list(self.scenario_properties.scenario_properties.species_names)
-=======
-        species_names = list(self.scenario_properties.species_names)
->>>>>>> amos-vnv
         selected_indices = [i for i, name in enumerate(species_names)
                             if isinstance(name, str) and name and name[0] in ('S', 'N', 'B')]
 
@@ -293,11 +272,7 @@ class Plots:
         ax.set_xlim(x_values[0], x_values[-1])
 
         plt.tight_layout()
-<<<<<<< HEAD
         plt.savefig(f'{self.main_path}/{self.simulation_name}/heatmaps_species.png', dpi=150)
-=======
-        plt.savefig(f'{self.main_path}/{self.simulation_name}/heatmaps_species.png')
->>>>>>> amos-vnv
         plt.close(fig)
 
     # def evolution_of_species_gif(self):

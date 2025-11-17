@@ -1,5 +1,5 @@
 {
-  "simulation_name": "not_elliptical_nshell_15_sp_8",
+  "simulation_name": "elliptical",
   "id": "1234567890",
   "owner": "Indigo Brownhall",
   "description": "This is a simulation file for the first fork of the MOCAT-SSEM Model.",
@@ -20,9 +20,9 @@
     "fragment_spreading": false,
     "parallel_processing": false,
     "baseline": true,
-    "launch_scenario": "OPUSB",
+    "launch_scenario": "SEP2",
     "indicator_variables" : ["collisions_per_species_altitude", "ca_man_struct", "umpy"],
-    "elliptical": false,
+    "elliptical": true,
     "eccentricity_bins":  [0.0, 0.0001, 0.00023269181687763618, 0.0005414548164181542, 0.001259921049894874, 0.0029317331822241717, 0.006821903207721965, 0.015874010519682003, 0.036937523489595184, 0.08595059451754268, 1]
   },
   "plots": [
