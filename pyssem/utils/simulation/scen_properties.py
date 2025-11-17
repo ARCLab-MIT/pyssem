@@ -45,7 +45,7 @@ class ScenarioProperties:
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
                  fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False,
                  indicator_variables: list = None, launch_scenario: str = None, SEP_mapping: str = None,
-                 elliptical: bool = False, eccentricity_bins: list = None
+                 elliptical: bool = False, eccentricity_bins: list = None, opus: bool = False
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -180,7 +180,7 @@ class ScenarioProperties:
         # Launch Scenario
         self.launch_scenario = launch_scenario
 
-        self.opus = False
+        self.opus = opus
 
     def calculate_scen_times_dates(self):
         # Calculate the number of months for each step

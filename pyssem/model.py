@@ -48,7 +48,7 @@ class Model:
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
                         indicator_variables=None, launch_scenario=None, SEP_mapping=None, 
-                        elliptical=False, eccentricity_bins=None):
+                        elliptical=False, eccentricity_bins=None, opus=False):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -112,7 +112,8 @@ class Model:
                 launch_scenario=launch_scenario,
                 SEP_mapping=SEP_mapping,
                 elliptical=elliptical,
-                eccentricity_bins=eccentricity_bins
+                eccentricity_bins=eccentricity_bins,
+                opus=opus
             )
             
         except Exception as e:

@@ -494,6 +494,7 @@ def make_umpy_indicator(scen_properties, X=4, indicator_name="umpy_indicator"):
     :return: A list containing one IndicatorStruct, or multiple if you want per-species
     """
 
+    simulation_duration = scen_properties.simulation_duration if not scen_properties.opus else 100
 
     # One aggregated vector eqs (n_shells x 1) summing across species
     umpy_eqs = sp.zeros(scen_properties.n_shells, 1)
@@ -507,9 +508,9 @@ def make_umpy_indicator(scen_properties, X=4, indicator_name="umpy_indicator"):
                     # Usual UMPY formula for inactive species
                     pop_ij  = species.sym[shell_idx]             # population in shell i
                     life_ij = species.orbital_lifetimes[shell_idx]
-                    umpy_factor = ((sp.exp(X * (life_ij / scen_properties.simulation_duration)) - 1)
+                    umpy_factor = ((sp.exp(X * (life_ij / simulation_duration)) - 1)
                                 / (sp.exp(X) - 1))
-                    umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / scen_properties.simulation_duration
+                    umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / simulation_duration
                 else:
                     # If active, just add zero
                     umpy_eqs[shell_idx] += 0
