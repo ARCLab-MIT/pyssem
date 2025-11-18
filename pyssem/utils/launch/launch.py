@@ -467,8 +467,9 @@ def SEP_traffic_model(scen_properties, file_path):
     if scen_properties.baseline:
         return x0_summary, None
 
-    if 'OPUS' not in file_path and not scen_properties.baseline:
-        raise ValueError("OPUS data is not supported for non-baseline scenarios.")
+    if scen_properties.opus:
+        if 'OPUS' not in file_path and not scen_properties.baseline:
+            raise ValueError("OPUS data is not supported for non-baseline scenarios.")
 
     # Future Launch Model (updated)
     flm_steps = pd.DataFrame()

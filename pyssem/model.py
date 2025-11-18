@@ -261,15 +261,6 @@ class Model:
             self.scenario_properties.collision_terms = None
             self.scenario_properties.full_Cdot_PMD = None
 
-            # with open('scenario-properties-baseline.pkl', 'wb') as f:
-
-            #     # first remove the lambdified equations as pickle cannot serialize them
-            #     self.scenario_properties.equations = None
-            #     self.scenario_properties.coll_eqs_lambd = None
-            #     self.scenario_properties.full_lambda_flattened = None
-            
-            #     pickle.dump(self.scenario_properties, f)
-
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
         
@@ -373,7 +364,7 @@ if __name__ == "__main__":
 
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -404,44 +395,6 @@ if __name__ == "__main__":
     species = simulation_data["species"]
 
     species_list = model.configure_species(species)
-
-    ###============================================================
-    ### To use symbolic equations for policy roses jup. notebook
-    ### (note: load the correct .json file)
-    # results = model.build_sym_model()
-    ###============================================================
-
-    ###============================================================
-    ### To use numerical equations as per standard pySSEM
-
-    # model.build_model(elliptical=scenario_props.get("elliptical", None))
-
-    # # Print input population size
-    # input_population = model.scenario_properties.x0
-    # print(f"Input population size: {np.sum(input_population):.6f}")
-    
-    # results = model.propagate(times=[0, 1], population=model.scenario_properties.x0, launch=False, elliptical=scenario_props.get("elliptical", 
-    # None), use_euler=True, step_size=0.1)
-
-    # # Print output population size
-    # if results is not None:
-    #     if isinstance(results, tuple) and len(results) >= 1:
-    #         # Handle tuple return (results_matrix, results_matrix_alt)
-    #         results_matrix = results[0]
-    #         output_population = np.sum(results_matrix)
-    #         print(f"Output population size: {output_population:.6f}")
-    #         print(f"Population change: {output_population - np.sum(input_population):.6f}")
-    #     elif hasattr(results, 'output') and hasattr(results.output, 'y'):
-    #         # Handle solve_ivp result object
-    #         output_population = np.sum(results.output.y)
-    #         print(f"Output population size: {output_population:.6f}")
-    #         print(f"Population change: {output_population - np.sum(input_population):.6f}")
-    #     else:
-    #         print("Results structure:", type(results))
-    #         if hasattr(results, '__dict__'):
-    #             print("Results attributes:", list(results.__dict__.keys()))
-    # else:
-    #     print("Results is None")
 
     model.run_model()
 
@@ -477,7 +430,7 @@ if __name__ == "__main__":
     plot_names = simulation_data["plots"]
     # Only run plots if the list is not empty
     if plot_names:
+        # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
         Plots(model, plot_names, simulation_data["simulation_name"], main_path)
     else:
         print("No plots specified - skipping plotting phase.")
-    ###============================================================
