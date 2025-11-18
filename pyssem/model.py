@@ -261,15 +261,6 @@ class Model:
             self.scenario_properties.collision_terms = None
             self.scenario_properties.full_Cdot_PMD = None
 
-            # with open('scenario-properties-baseline.pkl', 'wb') as f:
-
-            #     # first remove the lambdified equations as pickle cannot serialize them
-            #     self.scenario_properties.equations = None
-            #     self.scenario_properties.coll_eqs_lambd = None
-            #     self.scenario_properties.full_lambda_flattened = None
-            
-            #     pickle.dump(self.scenario_properties, f)
-
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")
         
@@ -373,7 +364,7 @@ if __name__ == "__main__":
 
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'bond-pot.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
