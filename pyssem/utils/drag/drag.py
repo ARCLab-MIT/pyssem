@@ -51,8 +51,6 @@ def densityexp(h_km):
     # If you want kg/km^3 instead, uncomment the next line:
     # p = p * (1000.0**3)
 
-    
-
     return p
 
 def densityexp_jbvalues(h):

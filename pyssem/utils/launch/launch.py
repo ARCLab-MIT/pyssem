@@ -312,10 +312,6 @@ def assign_species_to_population(T, species_mapping):
         print(f"Error in species mapping: {e} \n Have you defined the species mapping in the configuration JSON?")
         exit(1)
 
-    # Print summary of resulting species_class assignments
-    # print("\nSpecies class distribution:")
-    # print(T['species_class'].value_counts())
-
     try:
         T = T[T['species_class'] != "Unknown"]
         print(f"\n{T['species_class'].value_counts()['Unknown']} objects/rows are being removed.")
@@ -467,8 +463,9 @@ def SEP_traffic_model(scen_properties, file_path):
     if scen_properties.baseline:
         return x0_summary, None
 
-    if 'OPUS' not in file_path and not scen_properties.baseline:
-        raise ValueError("OPUS data is not supported for non-baseline scenarios.")
+    if scen_properties.opus:
+        if 'OPUS' not in file_path and not scen_properties.baseline:
+            raise ValueError("OPUS data is not supported for non-baseline scenarios.")
 
     # Future Launch Model (updated)
     flm_steps = pd.DataFrame()
