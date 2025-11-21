@@ -48,7 +48,7 @@ class Model:
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
                         indicator_variables=None, launch_scenario=None, SEP_mapping=None, 
-                        elliptical=False, eccentricity_bins=None, opus=False):
+                        elliptical=False, eccentricity_bins=None, control=False, opus=False):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -113,6 +113,7 @@ class Model:
                 SEP_mapping=SEP_mapping,
                 elliptical=elliptical,
                 eccentricity_bins=eccentricity_bins,
+                control=control,
                 opus=opus
             )
             
@@ -366,7 +367,8 @@ if __name__ == "__main__":
 
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -391,51 +393,62 @@ if __name__ == "__main__":
         launch_scenario=scenario_props["launch_scenario"],
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
         elliptical=scenario_props.get("elliptical", None),
-        eccentricity_bins=scenario_props.get("eccentricity_bins", None)
+        eccentricity_bins=scenario_props.get("eccentricity_bins", None),
+        control=scenario_props.get("control", False)
     )
 
     species = simulation_data["species"]
 
     species_list = model.configure_species(species)
 
-    model.run_model()
-
-    model.run_model()
-
-    # model.opus_collisions_setup(fringe_species="Su")
-    data = model.results_to_json()
-
-    # # # # Create the figures directory if it doesn't exist
-    main_path = 'figures'
-    if not os.path.exists(main_path):
-        os.makedirs(main_path)
-
-    # Create a subdirectory for the simulation name
-    os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
-    # Save the results to a JSON file
-    with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-        json.dump(data, f, indent=4)
-
-    try:
-        plot_names = simulation_data["plots"]
-        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
-        SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
-                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
-                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-                      )
-        # SEPDataExport(model, simulation_data["simulation_name"], 
-        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-        #               )
-    except Exception as e:
-        import traceback
-        print(f"Error in SEPDataExport: {e}")
-        print(traceback.format_exc())
-        print("No plots specified in the simulation configuration file.")
-
-    plot_names = simulation_data["plots"]
-    # Only run plots if the list is not empty
-    if plot_names:
-        # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
-        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    if model.scenario_properties.control:
+        ###============================================================
+        ### To use symbolic equations for policy roses jup. notebook
+        ### (note: load the correct .json file)
+        results = model.build_sym_model()
+        print('Symbolic model built successfully')
+        ###============================================================
     else:
-        print("No plots specified - skipping plotting phase.")
+        ###============================================================
+        ### To use numerical equations as per standard pySSEM
+        print('Numerical model')
+        model.run_model()
+
+        # model.opus_collisions_setup(fringe_species="Su")
+        data = model.results_to_json()
+
+        # # # # Create the figures directory if it doesn't exist
+        main_path = 'figures'
+        if not os.path.exists(main_path):
+            os.makedirs(main_path)
+
+        # Create a subdirectory for the simulation name
+        os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
+        # Save the results to a JSON file
+        with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+            json.dump(data, f, indent=4)
+
+        try:
+            plot_names = simulation_data["plots"]
+            mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+            SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                        elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+                        output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                        )
+            # SEPDataExport(model, simulation_data["simulation_name"], 
+            #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+            #               )
+        except Exception as e:
+            import traceback
+            print(f"Error in SEPDataExport: {e}")
+            print(traceback.format_exc())
+            print("No plots specified in the simulation configuration file.")
+
+        plot_names = simulation_data["plots"]
+        # Only run plots if the list is not empty
+        if plot_names:
+            # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
+            Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+        else:
+            print("No plots specified - skipping plotting phase.")
+        ###============================================================

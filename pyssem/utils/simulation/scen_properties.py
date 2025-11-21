@@ -45,7 +45,7 @@ class ScenarioProperties:
                  integrator: str, density_model: str, LC: float = 0.1, v_imp: float = None, 
                  fragment_spreading: bool = True, parallel_processing: bool = False, baseline: bool = False,
                  indicator_variables: list = None, launch_scenario: str = None, SEP_mapping: str = None,
-                 elliptical: bool = False, eccentricity_bins: list = None, opus: bool = False
+                 elliptical: bool = False, eccentricity_bins: list = None, control: bool = False, opus: bool = False
                  ):
         """
         Constructor for ScenarioProperties. This is the main focal point for the simulation, nearly all other methods are run from this parent class. 
@@ -156,6 +156,9 @@ class ScenarioProperties:
         self.drag_term_cur = None
         self.sym_drag = False
         self.coll_eqs_lambd = None # Used for OPUS when only collision equations are required
+        
+        # Controllers for symbolic simulation for policy-tecnoeconomic modeling
+        self.control = control
         self.full_control = sp.Matrix([])
         
         # Outputs
