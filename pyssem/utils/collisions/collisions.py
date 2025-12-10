@@ -10,6 +10,21 @@ def process_species_pair(args):
     i, (s1, s2), scen_properties, debris_species, binE_mass, LBgiven = args
     m1, m2 = s1.mass, s2.mass
     r1, r2 = s1.radius, s2.radius
+    
+    # Determine if fragments should be included based on IADC collision rules
+    include_fragments = False
+    s1_name = s1.sym_name
+    s2_name = s2.sym_name
+    
+    # Collisions between satellites and between satellites and large debris were catastrophic.
+    if s1_name == 'S' and s2_name in ['S', 'N_446kg']:
+        include_fragments = False
+    # if a combination of large debris, then include fragments
+    if s1_name in ['N_446kg', 'N_32kg'] and s2_name in ['N_446kg', 'N_32kg']:
+        include_fragments = False
+    # if a combination of medium debris, then include fragments
+    if s1_name == 'N_0.64kg' and s2_name == 'N_0.64kg':
+        include_fragments = False
 
     # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
     gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
@@ -142,7 +157,11 @@ def process_species_pair(args):
             dv1, dv2 = 7.5, 7.5 # for now we are going to assume the same velocity. 
             try:
                 results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
-                frags_made[dv_index, :] = results[0]
+                # frags_made[dv_index, :] = results[0]
+                if not include_fragments:
+                    frags_made[dv_index, :] = 0
+                else:
+                    frags_made[dv_index, :] = results[0]
             except IndexError as ie:
                 alt_nums = None
                 continue
@@ -199,6 +218,21 @@ def create_collision_pairs(scen_properties):
     # debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
     debris_species = [species for species in scen_properties.species['debris']]
 
+
+    # for the iadc paper, there are few rules:
+    # Collisions between satellites and between satellites and large debris were catastrophic.
+    # •
+    # Collisions between medium debris and satellites always led to non-catastrophic collisions: 
+    # in that case, it was assumed that no fragments were generated but that satellites were disabled 
+    # and lost their ability to perform CAMs and PMD maneuvers.
+    # •
+    # Collisions between small debris and satellites or large debris exhibited extremely low specific energy.
+    # •
+    # All other collisions between debris led to catastrophic collisions. 
+    # The number of fragments created in these collisions were calculated accordingly based on 
+    # NASA SBM but since they are usually not modeled or ignored in other debris models, 
+    # these catastrophic collisions were discounted for comparability.
+
     # Calculate the Mass bin edges
     binE_mass = np.zeros(2 * len(debris_species))
     LBgiven = scen_properties.LC
@@ -224,6 +258,26 @@ def create_collision_pairs(scen_properties):
 
     # Collect results
     species_pairs_classes.extend(results)
+
+    # Now we need to add a include_fragments flag to the SpeciesPairClass objects.
+    # large debris is N_446kg and N_32kg
+    # medium debris is N_0.64kg 
+    # small debris is N_7.85e-06kg and N_0.000785kg
+    
+    for species_pair_class in species_pairs_classes:
+        species_pair_class.include_fragments = False
+        s1_name = species_pair_class.species1.sym_name
+        s2_name = species_pair_class.species2.sym_name
+        
+        # Collisions between satellites and between satellites and large debris were catastrophic.
+        if s1_name == 'S' and s2_name in ['S', 'N_446kg', 'N_32kg']:
+            species_pair_class.include_fragments = True
+        # if a combination of large debris, then include fragments
+        if s1_name in ['N_446kg', 'N_32kg'] and s2_name in ['N_446kg', 'N_32kg']:
+            species_pair_class.include_fragments = True
+        # if a combination of medium debris, then include fragments
+        if s1_name == 'N_0.64kg' and s2_name == 'N_0.64kg':
+            species_pair_class.include_fragments = True
 
     return species_pairs_classes
 

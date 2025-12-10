@@ -156,8 +156,8 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            # collision_pairs = create_collision_pairs(self.scenario_properties)
-            # self.scenario_properties.add_collision_pairs(collision_pairs)
+            collision_pairs = create_collision_pairs(self.scenario_properties)
+            self.scenario_properties.add_collision_pairs(collision_pairs)
             
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -258,17 +258,11 @@ class Model:
             self.scenario_properties.equations = None
             self.scenario_properties.lambdify_equations = None
             self.scenario_properties.lambdify_launch = None
-            self.scenario_properties.collision_terms = None
-            self.scenario_properties.full_Cdot_PMD = None
+            # self.scenario_properties.collision_terms = None
+            # self.scenario_properties.full_Cdot_PMD = None
 
-            # with open('scenario-properties-baseline.pkl', 'wb') as f:
-
-            #     # first remove the lambdified equations as pickle cannot serialize them
-            #     self.scenario_properties.equations = None
-            #     self.scenario_properties.coll_eqs_lambd = None
-            #     self.scenario_properties.full_lambda_flattened = None
-            
-            #     pickle.dump(self.scenario_properties, f)
+            with open('scenario-properties-baseline.pkl', 'wb') as f:            
+                pickle.dump(self.scenario_properties, f)
 
         except Exception as e:
             raise RuntimeError(f"Failed to run model: {str(e)}")

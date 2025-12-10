@@ -979,6 +979,7 @@ class Plots:
                 if species.radius > 0.05:
                     large_species_indices.append(i)
 
+
         total_large_objects = np.zeros_like(self.output.t)
         for species_idx in large_species_indices:
             start_idx = species_idx * self.num_shells
@@ -986,6 +987,82 @@ class Plots:
             species_total = np.sum(self.output.y[start_idx:end_idx, :], axis=0)
             total_large_objects += species_total
         return np.asarray(self.output.t, dtype=float), np.asarray(total_large_objects, dtype=float)
+
+    def _compute_initial_total_large(self):
+        """
+        Compute initial total objects >10cm (radius >5cm) from x0.
+        Returns the total count.
+        """
+        # Check if x0 exists
+        if not hasattr(self.scenario_properties, 'x0') or self.scenario_properties.x0 is None:
+            print("Warning: x0 not found in scenario_properties")
+            return 0.0
+        
+        x0 = self.scenario_properties.x0
+        
+        # Debug: print x0 structure
+        if isinstance(x0, pd.DataFrame):
+            print(f"Debug: x0 columns: {list(x0.columns)}")
+            print(f"Debug: x0 shape: {x0.shape}")
+        else:
+            print(f"Warning: x0 is not a DataFrame, type: {type(x0)}")
+            return 0.0
+        
+        # Get species names for objects >10cm (radius >5cm)
+        species_properties = []
+        if hasattr(self.scenario_properties, 'species_cells'):
+            for species_group in self.scenario_properties.species_cells.values():
+                if isinstance(species_group, list):
+                    species_properties.extend(species_group)
+                else:
+                    species_properties.append(species_group)
+        elif hasattr(self.scenario_properties, 'species'):
+            if isinstance(self.scenario_properties.species, dict):
+                for species_group in self.scenario_properties.species.values():
+                    species_properties.extend(species_group)
+            else:
+                species_properties = self.scenario_properties.species
+
+        large_species_names = []
+        for species in species_properties:
+            if hasattr(species, 'radius') and species.radius is not None:
+                radius = species.radius
+                # Handle both scalar and array radii
+                if isinstance(radius, (list, np.ndarray)):
+                    # If any radius in the array is >5cm, include this species
+                    if np.any(np.array(radius) > 0.05):
+                        large_species_names.append(species.sym_name)
+                else:
+                    if radius > 0.05:
+                        large_species_names.append(species.sym_name)
+
+        # Fallback: use hardcoded species names if no radius info
+        if not large_species_names:
+            # For IADC: S, N_446kg, N_32kg, B are >10cm
+            # Also include N_0.64kg (large debris) which might be >10cm
+            large_species_names = ['S', 'N_446kg', 'N_32kg', 'B']
+            # Filter to only species that exist in x0 columns
+            if isinstance(x0, pd.DataFrame):
+                available_species = [s for s in large_species_names if s in x0.columns]
+                if available_species:
+                    large_species_names = available_species
+                    print(f"Debug: Using fallback species names: {large_species_names}")
+                else:
+                    print(f"Warning: None of the fallback species names found in x0 columns")
+                    print(f"Debug: Available x0 columns: {list(x0.columns)}")
+                    return 0.0
+
+        # Sum across large species
+        total_initial = 0.0
+        if isinstance(x0, pd.DataFrame):
+            for species_name in large_species_names:
+                if species_name in x0.columns:
+                    species_total = x0[species_name].sum()
+                    total_initial += species_total
+                    print(f"Debug: {species_name}: {species_total} objects")
+        
+        print(f"Debug: Total initial population >10cm: {total_initial}")
+        return float(total_initial)
 
     def _compute_cumulative_catastrophic_collisions(self):
         """
@@ -1025,54 +1102,269 @@ class Plots:
 
     def _compute_collisions_by_altitude(self):
         """
-        Compute catastrophic collisions by altitude using the same logic as catastrophic_collisions_vs_altitude.
-        Returns (altitude_centers, collisions_per_altitude).
+        Compute catastrophic collisions by altitude from indicator_results.
+
+        Returns:
+            altitude_centers_km : (n_shells,) array of altitude bin midpoints (km)
+            collisions_per_alt  : (n_shells,) array of cumulative catastrophic collisions per bin
         """
-        if not (hasattr(self.scenario_properties, 'indicator_results') and 
+        # 1) Check indicator_results exists
+        if not (hasattr(self.scenario_properties, 'indicator_results') and
                 self.scenario_properties.indicator_results is not None):
-            # Return empty arrays if no indicator data
             return np.array([]), np.array([])
-        
+
         indicators = self.scenario_properties.indicator_results.get('indicators', {})
-        
-        # Filter for catastrophic collision indicators with altitude data
+
+        # 2) Select catastrophic collision indicators with altitude structure
         altitude_indicators = {}
         for indicator_name, time_data in indicators.items():
-            if ('catastrophic' in indicator_name.lower() and 
-                ('altitude' in indicator_name.lower() or 'per_altitude' in indicator_name.lower())):
+            lname = indicator_name.lower()
+            if ('catastrophic' in lname and
+                ('altitude' in lname or 'per_altitude' in lname)):
                 altitude_indicators[indicator_name] = time_data
-        
+
         if not altitude_indicators:
             return np.array([]), np.array([])
-        
-        # Get altitude bins (100km bins)
-        min_alt = self.scenario_properties.min_altitude
-        max_alt = self.scenario_properties.max_altitude
-        altitude_bins = np.arange(min_alt, max_alt + 100, 100)  # 100km bins
-        altitude_centers = (altitude_bins[:-1] + altitude_bins[1:]) / 2
-        
-        # Calculate cumulative collisions per altitude bin
-        cumulative_collisions = np.zeros(len(altitude_centers))
-        
+
+        # 3) Altitude bin centres from scenario_properties (preferred)
+        if hasattr(self.scenario_properties, 'HMid'):
+            altitude_centers = np.asarray(self.scenario_properties.HMid, dtype=float)
+        else:
+            # Fallback: uniform shells between min/max
+            n_shells = int(self.scenario_properties.n_shells)
+            min_alt = float(self.scenario_properties.min_altitude)
+            max_alt = float(self.scenario_properties.max_altitude)
+            edges = np.linspace(min_alt, max_alt, n_shells + 1)
+            altitude_centers = 0.5 * (edges[:-1] + edges[1:])
+
+        n_shells = len(altitude_centers)
+        cumulative_collisions = np.zeros(n_shells, dtype=float)
+
+        # 4) For each indicator, grab the final time and sum to per-altitude values
         for indicator_name, time_data in altitude_indicators.items():
-            # Get final time step data
+            # Find final time key
             final_time = max(time_data.keys())
-            data_matrix = time_data[final_time]
-            
-            if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
-                # Sum across time or other dimensions to get per-altitude values
-                altitude_collisions = np.sum(data_matrix, axis=0) if data_matrix.shape[0] > 1 else data_matrix.flatten()
+            data_matrix = np.asarray(time_data[final_time])
+
+            # Now reduce to shape (n_shells,) – sum over all non-altitude axes.
+            if data_matrix.ndim == 1:
+                # Already 1D – hope it matches n_shells
+                if data_matrix.shape[0] != n_shells:
+                    # Simple rescaling if lengths differ
+                    x_old = np.linspace(0.0, 1.0, data_matrix.shape[0])
+                    x_new = np.linspace(0.0, 1.0, n_shells)
+                    altitude_collisions = np.interp(x_new, x_old, data_matrix)
+                else:
+                    altitude_collisions = data_matrix
+
+            elif data_matrix.ndim == 2:
+                # Heuristic: whichever axis matches n_shells is altitude
+                if data_matrix.shape[0] == n_shells:
+                    # shape (alt, something)
+                    altitude_collisions = np.sum(data_matrix, axis=1)
+                elif data_matrix.shape[1] == n_shells:
+                    # shape (something, alt)
+                    altitude_collisions = np.sum(data_matrix, axis=0)
+                else:
+                    # No obvious altitude axis – skip this indicator
+                    continue
+
             else:
-                altitude_collisions = data_matrix.flatten()
-            
-            # Map to 100km bins
-            for i, alt_center in enumerate(altitude_centers):
-                # Find corresponding altitude shell
-                alt_shell_idx = int((alt_center - min_alt) / (max_alt - min_alt) * len(altitude_collisions))
-                alt_shell_idx = min(alt_shell_idx, len(altitude_collisions) - 1)
-                cumulative_collisions[i] += altitude_collisions[alt_shell_idx]
-        
+                # Higher-dimensional (e.g. species x alt x something)
+                # Find an axis with length n_shells and treat it as altitude
+                alt_axis = None
+                for ax, dim in enumerate(data_matrix.shape):
+                    if dim == n_shells:
+                        alt_axis = ax
+                        break
+                if alt_axis is None:
+                    continue
+
+                # Sum over all other axes
+                axes_to_sum = tuple(i for i in range(data_matrix.ndim) if i != alt_axis)
+                altitude_collisions = np.sum(data_matrix, axis=axes_to_sum)
+
+            # Accumulate from this indicator into the total
+            cumulative_collisions += altitude_collisions
+
         return altitude_centers, cumulative_collisions
+
+    def _compute_final_population_by_altitude(self, bin_width_km=100.0):
+        """
+        Compute final population by altitude for objects >10cm (radius >5cm).
+        Rebins into specified bin width (default 100km).
+        
+        Returns (altitude_centers_100km, population_per_bin)
+        """
+        # Get species indices for objects >10cm (radius >5cm)
+        species_properties = []
+        if hasattr(self.scenario_properties, 'species_cells'):
+            for species_group in self.scenario_properties.species_cells.values():
+                if isinstance(species_group, list):
+                    species_properties.extend(species_group)
+                else:
+                    species_properties.append(species_group)
+        elif hasattr(self.scenario_properties, 'species'):
+            if isinstance(self.scenario_properties.species, dict):
+                for species_group in self.scenario_properties.species.values():
+                    species_properties.extend(species_group)
+            else:
+                species_properties = self.scenario_properties.species
+
+        large_species_indices = []
+        for i, species in enumerate(species_properties):
+            if hasattr(species, 'radius') and species.radius is not None:
+                radius = species.radius
+                # Handle both scalar and array radii
+                if isinstance(radius, (list, np.ndarray)):
+                    # If any radius in the array is >5cm, include this species
+                    if np.any(np.array(radius) > 0.05):
+                        large_species_indices.append(i)
+                else:
+                    if radius > 0.05:
+                        large_species_indices.append(i)
+
+        # Fallback: use hardcoded indices if no radius info (matching _compute_total_large_over_time)
+        if not large_species_indices:
+            large_species_indices = [0, 4, 5, 6]
+
+        # Get final timestep
+        final_idx = -1
+        n_time = self.output.y.shape[1]
+        
+        # Reshape y to (n_species, n_shells, n_time)
+        y_reshaped = self.output.y.reshape(self.n_species, self.num_shells, n_time)
+        
+        # Sum across large species at final timestep → (n_shells,)
+        final_population_per_shell = np.zeros(self.num_shells)
+        for species_idx in large_species_indices:
+            if species_idx < self.n_species:
+                final_population_per_shell += y_reshaped[species_idx, :, final_idx]
+
+        # Get altitude bin midpoints
+        if hasattr(self.scenario_properties, 'HMid'):
+            altitude_midpoints_km = np.asarray(self.scenario_properties.HMid, dtype=float)
+        else:
+            # Fallback: derive from min/max and n_shells
+            altitude_midpoints_km = np.linspace(
+                float(self.scenario_properties.min_altitude),
+                float(self.scenario_properties.max_altitude),
+                int(self.num_shells)
+            )
+
+        # Get altitude bin edges for rebinning
+        min_alt = float(self.scenario_properties.min_altitude)
+        max_alt = float(self.scenario_properties.max_altitude)
+        
+        # Create 100km bins
+        bin_edges_100km = np.arange(min_alt, max_alt + bin_width_km, bin_width_km)
+        bin_centers_100km = 0.5 * (bin_edges_100km[:-1] + bin_edges_100km[1:])
+        
+        # Rebin: assign each original shell to a 100km bin
+        rebinned_population = np.zeros(len(bin_centers_100km))
+        
+        for i, alt_mid in enumerate(altitude_midpoints_km):
+            # Find which 100km bin this altitude belongs to
+            bin_idx = np.digitize(alt_mid, bin_edges_100km) - 1
+            # Clamp to valid range
+            bin_idx = max(0, min(bin_idx, len(rebinned_population) - 1))
+            rebinned_population[bin_idx] += final_population_per_shell[i]
+
+        return bin_centers_100km, rebinned_population
+
+    def _compute_initial_population_by_altitude(self, bin_width_km=100.0):
+        """
+        Compute initial population by altitude for objects >10cm (radius >5cm) from x0.
+        Rebins into specified bin width (default 100km).
+        
+        Returns (altitude_centers_100km, population_per_bin)
+        """
+        # Check if x0 exists
+        if not hasattr(self.scenario_properties, 'x0') or self.scenario_properties.x0 is None:
+            raise ValueError("x0 (initial population) not found in scenario_properties")
+        
+        x0 = self.scenario_properties.x0
+        
+        # Get species indices for objects >10cm (radius >5cm)
+        # Use same logic as _compute_final_population_by_altitude
+        species_properties = []
+        if hasattr(self.scenario_properties, 'species_cells'):
+            for species_group in self.scenario_properties.species_cells.values():
+                if isinstance(species_group, list):
+                    species_properties.extend(species_group)
+                else:
+                    species_properties.append(species_group)
+        elif hasattr(self.scenario_properties, 'species'):
+            if isinstance(self.scenario_properties.species, dict):
+                for species_group in self.scenario_properties.species.values():
+                    species_properties.extend(species_group)
+            else:
+                species_properties = self.scenario_properties.species
+
+        large_species_names = []
+        for species in species_properties:
+            if hasattr(species, 'radius') and species.radius is not None:
+                radius = species.radius
+                # Handle both scalar and array radii
+                if isinstance(radius, (list, np.ndarray)):
+                    # If any radius in the array is >5cm, include this species
+                    if np.any(np.array(radius) > 0.05):
+                        large_species_names.append(species.sym_name)
+                else:
+                    if radius > 0.05:
+                        large_species_names.append(species.sym_name)
+
+        # Fallback: use hardcoded species names if no radius info
+        if not large_species_names:
+            # For IADC: S, N_446kg, N_32kg, B are >10cm
+            large_species_names = ['S', 'N_446kg', 'N_32kg', 'B']
+            # Also check if these exist in x0 columns
+            available_species = [s for s in large_species_names if s in x0.columns]
+            if available_species:
+                large_species_names = available_species
+
+        # Sum across large species for each altitude shell
+        if isinstance(x0, pd.DataFrame):
+            # x0 is DataFrame with columns = species names, rows = altitude shells
+            initial_population_per_shell = np.zeros(len(x0))
+            for species_name in large_species_names:
+                if species_name in x0.columns:
+                    initial_population_per_shell += x0[species_name].values
+        else:
+            # x0 might be a numpy array - need to map species indices
+            # This is less common, but handle it
+            raise ValueError("x0 format not recognized. Expected DataFrame.")
+
+        # Get altitude bin midpoints
+        if hasattr(self.scenario_properties, 'HMid'):
+            altitude_midpoints_km = np.asarray(self.scenario_properties.HMid, dtype=float)
+        else:
+            # Fallback: derive from min/max and n_shells
+            altitude_midpoints_km = np.linspace(
+                float(self.scenario_properties.min_altitude),
+                float(self.scenario_properties.max_altitude),
+                len(initial_population_per_shell)
+            )
+
+        # Get altitude bin edges for rebinning
+        min_alt = float(self.scenario_properties.min_altitude)
+        max_alt = float(self.scenario_properties.max_altitude)
+        
+        # Create 100km bins
+        bin_edges_100km = np.arange(min_alt, max_alt + bin_width_km, bin_width_km)
+        bin_centers_100km = 0.5 * (bin_edges_100km[:-1] + bin_edges_100km[1:])
+        
+        # Rebin: assign each original shell to a 100km bin
+        rebinned_population = np.zeros(len(bin_centers_100km))
+        
+        for i, alt_mid in enumerate(altitude_midpoints_km):
+            # Find which 100km bin this altitude belongs to
+            bin_idx = np.digitize(alt_mid, bin_edges_100km) - 1
+            # Clamp to valid range
+            bin_idx = max(0, min(bin_idx, len(rebinned_population) - 1))
+            rebinned_population[bin_idx] += initial_population_per_shell[i]
+
+        return bin_centers_100km, rebinned_population
 
     def iadc_study(self):
         """
@@ -1112,6 +1404,27 @@ class Plots:
             # our series - convert time from 0-based to start from 2008
             t_sim, y_sim = self._compute_total_large_over_time()
             t_sim_years = start_year + t_sim
+            
+            # Get initial population from x0 and prepend to the time series
+            try:
+                initial_total = self._compute_initial_total_large()
+                if initial_total > 0:
+                    # Check if first point is already at start_year (might be duplicate)
+                    if len(t_sim_years) > 0 and t_sim_years[0] == start_year:
+                        # Replace first point with initial population
+                        y_sim[0] = initial_total
+                        print(f"Debug: Replaced first point with initial population: {initial_total}")
+                    else:
+                        # Prepend initial point at start_year (t=0)
+                        t_sim_years = np.concatenate([[start_year], t_sim_years])
+                        y_sim = np.concatenate([[initial_total], y_sim])
+                        print(f"Debug: Prepended initial population point: {initial_total} at year {start_year}")
+                else:
+                    print(f"Warning: Initial population computed as {initial_total}, not adding to plot")
+            except Exception as e:
+                import traceback
+                print(f"Warning: Could not add initial population to plot: {e}")
+                traceback.print_exc()
 
             plt.figure(figsize=(12, 6))
             for arr in dinterp:
@@ -1190,6 +1503,46 @@ class Plots:
             plt.close()
         except Exception as e:
             print(f"Error creating IADC collision altitude comparison: {e}")
+
+        # 4) Final population vs altitude (objects >10cm, 100km bins)
+        try:
+            # Get our simulation's final population by altitude
+            alt_sim, pop_sim = self._compute_final_population_by_altitude(bin_width_km=100.0)
+            
+            plt.figure(figsize=(12, 6))
+            # Plot our simulation
+            plt.plot(alt_sim, pop_sim, color='k', linewidth=2.0, label='pySSEM (this run)')
+            plt.legend(['pySSEM (this run)'], loc='best')
+            plt.ylabel('Objects / 100 km bin')
+            plt.xlabel('Altitude (km)')
+            plt.title('Final population vs altitude')
+            plt.xlim(200, 2000)
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(f'{out_dir}/iadc_final_population_altitude.png', dpi=150)
+            plt.close()
+        except Exception as e:
+            print(f"Error creating IADC final population vs altitude plot: {e}")
+
+        # 5) Initial population vs altitude (objects >10cm, 100km bins)
+        try:
+            # Get our simulation's initial population by altitude from x0
+            alt_sim, pop_sim = self._compute_initial_population_by_altitude(bin_width_km=100.0)
+            
+            plt.figure(figsize=(12, 6))
+            # Plot our simulation
+            plt.plot(alt_sim, pop_sim, color='k', linewidth=2.0, label='pySSEM (this run)')
+            plt.legend(['pySSEM (this run)'], loc='best')
+            plt.ylabel('Objects / 100 km bin')
+            plt.xlabel('Altitude (km)')
+            plt.title('Initial population vs altitude')
+            plt.xlim(200, 2000)
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(f'{out_dir}/iadc_initial_population_altitude.png', dpi=150)
+            plt.close()
+        except Exception as e:
+            print(f"Error creating IADC initial population vs altitude plot: {e}")
     
     def _create_3d_collision_plots(self, collision_dir):
         """

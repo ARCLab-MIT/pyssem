@@ -326,6 +326,216 @@ def assign_species_to_population(T, species_mapping):
 
 def IADC_traffic_model(scen_properties, file_path):
     """
+    Build x0_summary and flm_steps from fixed IADC tables
+    rather than from a CSV.
+
+    Assumptions:
+      - Non-elliptical case (2D: [alt_bin, species]).
+      - n_shells == 18, matching the tables below.
+      - species_names exactly:
+          ['S',
+           'N_7.85e-06kg',
+           'N_0.000785kg',
+           'N_0.64kg',
+           'N_32kg',
+           'N_446kg',
+           'B']
+      - Mapping:
+          Active                  -> S
+          Inactive + In non-compliant PMD + In successful PMD -> N_446kg
+          Rocket Bodies           -> B
+          MROs                    -> N_32kg
+          Large debris            -> N_0.64kg
+          Small/medium debris     -> 0 in x0 and FLM (generated dynamically)
+    """
+
+    # ------------------------------------------------------------------
+    # 0. Basic checks
+    # ------------------------------------------------------------------
+    expected_species = [
+        'S',
+        'N_7.85e-06kg',
+        'N_0.000785kg',
+        'N_0.64kg',
+        'N_32kg',
+        'N_446kg'
+        # 'B',
+    ]
+
+    species_names = list(getattr(scen_properties, 'species_names', expected_species))
+
+    # Check that all expected IADC species are present (allow additional species)
+    missing_species = [s for s in expected_species if s not in species_names]
+    if missing_species:
+        raise ValueError(
+            f"Missing required IADC species: {missing_species}. "
+            f"species_names must contain all of {expected_species}, "
+            f"but got {species_names}"
+        )
+    
+    # Find indices of expected species in the full species_names list
+    iadc_species_indices = {}
+    for s in expected_species:
+        if s in species_names:
+            iadc_species_indices[s] = species_names.index(s)
+        else:
+            raise ValueError(f"Species {s} not found in species_names")
+
+    n_shells = int(scen_properties.n_shells)
+    if n_shells != 18:
+        raise ValueError(f"Expected n_shells == 18, got {n_shells}")
+
+    if getattr(scen_properties, 'elliptical', False):
+        raise NotImplementedError(
+            "This simple IADC table-based model only supports non-elliptical (2D) runs."
+        )
+
+    # ------------------------------------------------------------------
+    # 1. x0 from your table (18 altitude bins)
+    # ------------------------------------------------------------------
+    # Columns: [Active, Inactive, In_noncomp_PMD, In_success_PMD,
+    #           Rocket_Bodies, MROs, Large_debris]
+    x0_raw = np.array([
+        [0,   3,   3,   0,   4,   9,   175],
+        [6,   19,  19,  0,   9,   1,   217],
+        [22,  33,  33,  0,   27,  15,  217],
+        [36,  68,  68,  0,   56,  34,  415],
+        [2,   163, 163, 0,   98,  73,  1012],
+        [3,   297, 297, 0,   105, 110, 2315],
+        [2,   156, 156, 0,   98,  62,  2688],
+        [3,   258, 258, 0,   198, 142, 1895],
+        [5,   45,  45,  0,   42,  79,  1088],
+        [8,   72,  72,  0,   41,  44,  487],
+        [1,   8,   8,   0,   8,   6,   384],
+        [15,  36,  36,  0,   19,  13,  391],
+        [319, 213, 213, 0,   51,  24,  723],
+        [19,  35,  35,  0,   59,  15,  685],
+        [2,   14,  14,  0,   10,  5,   410],
+        [0,   3,   3,   0,   6,   3,   200],
+        [0,   2,   2,   0,   0,   1,   81],
+        [0,   1,   1,   0,   4,   2,   87],
+    ], dtype=int)
+
+    if x0_raw.shape != (n_shells, 7):
+        raise RuntimeError("x0_raw shape mismatch; expected (18, 7).")
+
+    # Unpack columns for clarity
+    active_col       = x0_raw[:, 0]
+    # inactive_col     = x0_raw[:, 1]
+    in_noncomp_col   = x0_raw[:, 2]
+    in_success_col   = x0_raw[:, 3]  # all zeros in your table, but include for completeness
+    rocket_bodies_col = x0_raw[:, 4]
+    mros_col         = x0_raw[:, 5]
+    large_debris_col = x0_raw[:, 6]
+
+    # Map into species
+    # S:         active satellites
+    # N_7.85e-06kg:   0 at t0
+    # N_0.000785kg:   0 at t0
+    # N_0.64kg:       large debris
+    # N_32kg:         MROs
+    # N_446kg:        inactive + PMD (non-compliant + successful)
+    # B:              rocket bodies
+    # Other species:  0 at t0 (not part of IADC model)
+    x0_matrix = np.zeros((n_shells, len(species_names)), dtype=int)
+
+    # Get indices for IADC species (allows for additional species in the list)
+    idx_S = iadc_species_indices['S']
+    idx_Ns = iadc_species_indices['N_7.85e-06kg']
+    idx_Nm = iadc_species_indices['N_0.000785kg']
+    idx_NL = iadc_species_indices['N_0.64kg']
+    idx_NMRO = iadc_species_indices['N_32kg']
+    idx_Nsat = iadc_species_indices['N_446kg']
+    # idx_B = iadc_species_indices['B']
+    idx_B = iadc_species_indices['N_446kg']
+
+    x0_matrix[:, idx_S]     = active_col
+    x0_matrix[:, idx_Ns]    = 0
+    x0_matrix[:, idx_Nm]    = 0
+    x0_matrix[:, idx_NL]    = large_debris_col + rocket_bodies_col
+    x0_matrix[:, idx_NMRO]  = mros_col
+    x0_matrix[:, idx_Nsat]  = in_noncomp_col + in_success_col
+    # All other species columns remain 0 (initialized above)
+
+    # Return as DataFrame (same as your 2D branch)
+    x0_summary = pd.DataFrame(
+        x0_matrix,
+        index=range(n_shells),
+        columns=species_names
+    )
+
+    # ------------------------------------------------------------------
+    # 2. FLM_steps from your per-year launch table
+    # ------------------------------------------------------------------
+    # Altitude bins match 200–300, 300–400, ..., 1900–2000
+    # Columns: [Active, Rocket_Bodies, MROs]
+    flm_raw = np.array([
+        [10, 3, 1],   # 200–300
+        [8,  2, 2],   # 300–400
+        [36, 17, 10], # 400–500
+        [38, 24, 9],  # 500–600
+        [99, 19, 21], # 600–700
+        [39, 11, 9],  # 700–800
+        [23, 9, 7],   # 800–900
+        [21, 12, 5],  # 900–1000
+        [3,  3, 9],   # 1000–1100
+        [3,  2, 6],   # 1100–1200
+        [0,  1, 0],   # 1200–1300
+        [2,  1, 0],   # 1300–1400
+        [18, 5, 1],   # 1400–1500
+        [0,  0, 0],   # 1500–1600
+        [1,  1, 0],   # 1600–1700
+        [0,  0, 0],   # 1700–1800
+        [0,  0, 0],   # 1800–1900
+        [0,  0, 0],   # 1900–2000
+    ], dtype=int)
+
+    if flm_raw.shape != (n_shells, 3):
+        raise RuntimeError("flm_raw shape mismatch; expected (18, 3).")
+
+    act_launches  = flm_raw[:, 0]
+    rb_launches   = flm_raw[:, 1]
+    mro_launches  = flm_raw[:, 2]
+
+    # Build a "per year" launch matrix in species space
+    # Only populate IADC species columns; other species remain 0
+    yearly_matrix = np.zeros((n_shells, len(species_names)), dtype=int)
+    yearly_matrix[:, idx_S]    = act_launches
+    yearly_matrix[:, idx_Ns]   = 0
+    yearly_matrix[:, idx_Nm]   = 0
+    yearly_matrix[:, idx_NL]   = 0          # no large debris launched
+    yearly_matrix[:, idx_NMRO] = mro_launches
+    yearly_matrix[:, idx_Nsat] = 0          # no derelict 446 kg launched directly
+    yearly_matrix[:, idx_Nsat]    = rb_launches
+    # All other species columns remain 0 (not part of IADC launch model)
+
+    # ------------------------------------------------------------------
+    # 3. Repeat FLM per calendar year of the simulation
+    # ------------------------------------------------------------------
+    start_year = scen_properties.start_date.year
+    end_year = start_year + scen_properties.simulation_duration
+
+    records = []
+    for year in range(start_year, end_year):
+        epoch_start_date = datetime(year, 1, 1)
+        for alt_bin in range(n_shells):
+            row = {
+                'epoch_start_date': epoch_start_date,
+                'alt_bin': alt_bin,
+            }
+            for s_idx, s_name in enumerate(species_names):
+                row[s_name] = int(yearly_matrix[alt_bin, s_idx])
+            records.append(row)
+
+    flm_steps = pd.DataFrame.from_records(records)
+
+    # Make sure columns are in consistent order
+    flm_steps = flm_steps[['epoch_start_date', 'alt_bin'] + species_names]
+
+    return x0_summary, flm_steps
+
+def IADC_traffic_model_old(scen_properties, file_path):
+    """
     Build initial population (x0) and a future launch model (FLM_steps) from the
     IADC-based CSVs we prepared (e.g., iadc_initial_plus_repeating.csv).
 

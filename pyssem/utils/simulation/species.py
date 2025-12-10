@@ -393,14 +393,24 @@ class Species:
                                 if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
                                     continue
                                 else:
-                                    deb_spec.pmd_func = pmd_func_derelict
+                                    # Check if active species uses IADC PMD function
+                                    if active_spec.pmd_func == pmd_func_iadc:
+                                        from ..pmd.pmd import pmd_func_derelict_iadc
+                                        deb_spec.pmd_func = pmd_func_derelict_iadc
+                                    else:
+                                        deb_spec.pmd_func = pmd_func_derelict
                                     deb_spec.pmd_linked_species = []                
                                     deb_spec.pmd_linked_species.append(active_spec)
                                     print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
                                     found_mass_match_debris = True
                             else:
                                 # If the active species is not elliptical, set the debris species with the smallest eccentricity value
-                                deb_spec.pmd_func = pmd_func_derelict
+                                # Check if active species uses IADC PMD function
+                                if active_spec.pmd_func == pmd_func_iadc:
+                                    from ..pmd.pmd import pmd_func_derelict_iadc
+                                    deb_spec.pmd_func = pmd_func_derelict_iadc
+                                else:
+                                    deb_spec.pmd_func = pmd_func_derelict
                                 deb_spec.pmd_linked_species = []                
                                 deb_spec.pmd_linked_species.append(active_spec)
                                 print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")

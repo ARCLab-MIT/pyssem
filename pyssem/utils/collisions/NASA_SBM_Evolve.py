@@ -701,14 +701,20 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
     nddcdf = 0.1 * M ** 0.75 * dd_edges ** (-1.71)  #eq 2.68
     ndd = np.maximum(0, -np.diff(nddcdf)) # diff to get the PDF count for the bins (dd_edges), if negative, set to 0
     
-    # Make sure int, 0 to 1, random number for stochastic sampling of fragment diameters
-    repeat_counts = np.floor(ndd).astype(int) + (np.random.rand(len(ndd)) > (1 - (ndd - np.floor(ndd)))).astype(int)
-    d_pdf = np.repeat(dd_means, repeat_counts) # PDF of debris objects between LB and 1m.
-
-    try:
-        dss = d_pdf[np.random.randint(0, len(d_pdf), size=int(np.ceil(numSS)))]
-    except ValueError: # This is when the probability breaks as the objects are too small
-        dss = 0
+    # Normalize PDF to probabilities and use multinomial sampling to generate exactly numSS fragments
+    # This ensures no over-generation and preserves the NASA SBM distribution
+    ndd_sum = np.sum(ndd)
+    if ndd_sum > 0:
+        # Normalize to probabilities (multinomial requires probabilities that sum to 1)
+        ndd_probs = ndd / ndd_sum
+        
+        # Use multinomial sampling to generate exactly numSS fragments according to PDF
+        # This ensures the fragment count matches the NASA SBM formula exactly (no over-generation)
+        sample_counts = np.random.multinomial(int(np.round(numSS)), ndd_probs)
+        dss = np.repeat(dd_means, sample_counts)
+    else:
+        # Fallback: if PDF sums to zero (shouldn't happen if numSS > 0), return zeros
+        dss = np.array([])
         return np.zeros(len(binEd) - 1)
 
     # Calculate the mass of objects
