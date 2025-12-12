@@ -64,68 +64,149 @@ def pmd_func_derelict(t, h, species_properties, scen_properties):
     Cpmddot = zeros(scen_properties.n_shells, 1)
 
     # Iterate over each shell and calculate the PMD rate
-    for i, species in enumerate(species_properties.pmd_linked_species):
+    # for i, species in enumerate(species_properties.pmd_linked_species):
+    #     Pm = species.Pm # 0 = no Pmd, 1 = full Pm
+        
+    #     # Failed PMD contribution for each linked species
+    #     for k in range(scen_properties.n_shells):
+    #         Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+    for species in species_properties.pmd_linked_species:
         Pm = species.Pm # 0 = no Pmd, 1 = full Pm
+        
+        # Check if the linked active species uses IADC PMD function
+        # If so, we need to handle both failed and successful PMD differently
+        if hasattr(species, 'pmd_func') and species.pmd_func == pmd_func_iadc:
+            # For IADC: handle via pmd_func_derelict_iadc
+            # This will be called separately if needed
+            # For now, fall through to standard failed PMD handling
+            pass
         
         # Failed PMD contribution for each linked species
         for k in range(scen_properties.n_shells):
-            Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+            Cpmddot[k, 0] += (1 - Pm) / species.deltat * species.sym[k]
 
+
+    return Cpmddot
+
+def pmd_func_derelict_iadc(t, h, species_properties, scenario_properties):
+    """
+    PMD function for derelict objects in IADC model.
+    
+    PMD applies to ALL satellites. For each timestep:
+    - 0.1 (10%) of satellites convert to derelicts at the same altitude (failed PMD)
+    - 0.9 (90%) convert to derelicts and are spread evenly across shells that decay in under 25 years (successful PMD)
+    """
+    n_shells = scenario_properties.n_shells
+    Cpmddot = zeros(n_shells, 1)
+    
+    # Compute shells with decay times under 25 years
+    if species_properties.pmd_linked_species:
+        linked_species = species_properties.pmd_linked_species[0]
+        
+        # Get beta from linked species (ballistic coefficient)
+        beta = getattr(linked_species, 'beta', None)
+        if beta is None:
+            # Fallback: compute from A and mass if available
+            if hasattr(linked_species, 'A') and hasattr(linked_species, 'mass'):
+                Cd = getattr(linked_species, 'Cd', 2.2)
+                beta = Cd * linked_species.A / linked_species.mass
+            else:
+                beta = getattr(species_properties, 'beta', 0.01)
+        
+        shell_marginal_decay_rates = np.zeros(n_shells)
+        shell_marginal_residence_times = np.zeros(n_shells)
+        
+        for k in range(n_shells):
+            rhok = densityexp(scenario_properties.R0_km[k])
+            rvel_current_D = -rhok * beta * np.sqrt(
+                scenario_properties.mu * scenario_properties.R0[k]
+            ) * (24 * 3600 * 365.25)
+            shell_marginal_decay_rates[k] = -rvel_current_D / scenario_properties.Dhl
+            shell_marginal_residence_times[k] = 1.0 / shell_marginal_decay_rates[k]
+        
+        shell_cumulative_residence_times = np.cumsum(shell_marginal_residence_times)
+        # Find all shells where objects will decay in under 25 years
+        valid_indices = np.where(shell_cumulative_residence_times <= 25.0)[0]
+        
+        # If no shells decay in under 25 years, use the lowest shell (index 0)
+        if len(valid_indices) == 0:
+            valid_indices = np.array([0])
+        
+        num_valid_shells = len(valid_indices)
+        
+        # Process each linked active species (apply to ALL shells)
+        for i, linked_species in enumerate(species_properties.pmd_linked_species):
+            tau = linked_species.deltat
+            
+            for k in range(n_shells):
+                Xk = linked_species.sym[k]
+                
+                # Failed PMD (0.1): add to derelict at same shell k
+                Cpmddot[k, i] += 0.1 / tau * Xk
+                
+                # Successful PMD (0.9): spread evenly across shells that decay in under 25 years
+                successful_pmd_rate = 0.9 / tau * Xk
+                rate_per_shell = successful_pmd_rate / num_valid_shells
+                
+                for valid_k in valid_indices:
+                    Cpmddot[valid_k, i] += rate_per_shell
+    
     return Cpmddot
 
 def pmd_func_iadc(t, h, species_properties, scenario_properties):
     """
-    PMD function for objects that are part of the IADC model. 
+    PMD function for objects that are part of the IADC model.
 
-    Here, the succesful derelicts are not removed from the population, 
-    they are placed at the 25 year disposal altitude. 
-
-    The failed derelicts remain at the same altitude.
+    PMD applies to ALL satellites (both naturally and non-naturally compliant).
+    For each timestep:
+    - 0.1 (10%) of satellites convert to derelicts at the same altitude (failed PMD)
+    - 0.9 (90%) convert to derelicts and are spread evenly across shells that decay in under 25 years (successful PMD)
+    
+    This function returns the change to the active species population.
+    The transfer to derelict species is handled by pmd_func_derelict_iadc on the
+    derelict species, which receives both failed and successful PMD from pmd_linked_species.
     """
-     # Initialize Cpmddot as a symbolic zero matrix
-    Cpmddot = zeros(scenario_properties.n_shells, 1)
+    # Return a single column vector for the active species
+    n_shells = scenario_properties.n_shells
+    Cpmddot = zeros(n_shells, 1)
 
-    shell_marginal_decay_rates = np.zeros(scenario_properties.n_shells)
-    shell_marginal_residence_times = np.zeros(scenario_properties.n_shells)
-    shell_cumulative_residence_times = np.zeros(scenario_properties.n_shells)
+    # --- 1. Compute cumulative residence time per shell and find k_star (5-year disposal altitude) ---
+    shell_marginal_decay_rates = np.zeros(n_shells)
+    shell_marginal_residence_times = np.zeros(n_shells)
 
-    # Here using the ballastic coefficient of the species, we are trying to find the highest compliant altitude/shell
-    for k in range(scenario_properties.n_shells):
+    for k in range(n_shells):
         rhok = densityexp(scenario_properties.R0_km[k])
-        rvel_current_D = -rhok * species_properties.beta * np.sqrt(scenario_properties.mu * scenario_properties.R0[k]) * (24 * 3600 * 365.25)
-        shell_marginal_decay_rates[k] = -rvel_current_D/scenario_properties.Dhl
-        shell_marginal_residence_times[k] = 1/shell_marginal_decay_rates[k]
-    
+        rvel_current_D = -rhok * species_properties.beta * np.sqrt(
+            scenario_properties.mu * scenario_properties.R0[k]
+        ) * (24 * 3600 * 365.25)
+        shell_marginal_decay_rates[k] = -rvel_current_D / scenario_properties.Dhl
+        shell_marginal_residence_times[k] = 1.0 / shell_marginal_decay_rates[k]
+
     shell_cumulative_residence_times = np.cumsum(shell_marginal_residence_times)
-    
-    # Find the index of shell_cumulative_residence_times, k_star, which is the largest index that  shell_cumulative_residence_times(k_star) <= self.disposalTime
-    indices = np.where(shell_cumulative_residence_times <= 25)[0]
+
+    # Find k_star: shell where objects will decay in 5 years
+    indices = np.where(shell_cumulative_residence_times <= 5.0)[0]
     k_star = max(indices) if len(indices) > 0 else 0
 
-    # loop through the species and if it is linked, then all in the naturally compliant shells are left where they are
-    # for succesful derelicts, they are moved to the highest compliant shell, k_star
-    # for failed derelicts, they remain at the same altitude
-    for i, species in enumerate(species_properties.pmd_linked_species):
-        # create empty equation to add to Cpmdot
-        successful_disposal = 0
+    # --- 2. Apply PMD to active species (ALL shells, not just non-compliant ones) ---
+    tau = species_properties.deltat  # PMD decision timescale
 
-        # first handle the failed derelicts
-        for k in range(scenario_properties.n_shells):
-            Cpmddot[k, i] = (1 - species.Pm) / species.deltat * species.sym[k]
-        
-        # handle the succesful pmd. 
-        for k in range(scenario_properties.n_shells):
-            if k <= k_star:
-                Cpmddot[k, i] += (species.Pm) / species.deltat * species.sym[k]
-            
-            if k > k_star:
-                # add the succesful derelicts to the kstar shell
-                Cpmddot[k_star, i] += (species.Pm) / species.deltat * species.sym[k]
-            
+    for k in range(n_shells):
+        # Use the active species population
+        Xk = species_properties.sym[k]
 
-        
+        # Everyone in this shell "attempts" PMD at rate 1/tau:
+        attempt_rate = Xk / tau
+
+        # Remove all attempts from shell k (active species decreases)
+        # Both successful (0.9) and failed (0.1) PMD satellites leave the active species
+        Cpmddot[k, 0] -= attempt_rate
+
+        # Successful PMD (0.9): satellites move to k_star disposal altitude and become derelicts
+        # Failed PMD (0.1): satellites become derelicts in the same shell k
+        # Both are handled by pmd_func_derelict_iadc on the derelict species
+
     return Cpmddot
-
 
 
 def pmd_func_opus(t, h, species_properties, scen_properties):
@@ -147,4 +228,37 @@ def pmd_func_opus(t, h, species_properties, scen_properties):
     # Initialize Cpmddot as a symbolic zero matrix
     Cpmddot = zeros(scen_properties.n_shells, 1)
     
+    return Cpmddot
+
+def pmd_func_sat_sym(t, h, species_properties, scen_properties):
+    # Initialize Cpmddot as a symbolic zero matrix
+    Cpmddot = zeros(scen_properties.n_shells, 1) 
+
+    # one per species
+    # species_properties.deltat = symbols(f"deltat_{species_properties.sym_name}")
+
+    # Iterate over each shell and calculate the PMD rate
+    for k in range(scen_properties.n_shells):
+        species_properties.deltat = symbols(f"deltat_{species_properties.sym_name}{k+1}")
+        Cpmddot[k, 0] = (-1 / species_properties.deltat) * species_properties.sym[k]
+    
+    return Cpmddot
+
+def pmd_func_derelict_sym(t, h, species_properties, scen_properties):
+    # Initialize Cpmddot as a symbolic zero matrix
+    Cpmddot = zeros(scen_properties.n_shells, 1)
+
+    # Iterate over each shell and calculate the PMD rate
+    for i, species in enumerate(species_properties.pmd_linked_species):
+
+        # one per species
+        # species.deltat = symbols(f"deltat_{species.sym_name}") 
+        # Pm = symbols(f"Pm_{species.sym_name}")
+
+        # Failed PMD contribution for each linked species
+        for k in range(scen_properties.n_shells):
+            species.deltat = symbols(f"deltat_{species.sym_name}{k+1}") 
+            Pm = symbols(f"Pm_{species.sym_name}{k+1}") 
+            Cpmddot[k, i] = (1 - Pm) / species.deltat * species.sym[k]
+
     return Cpmddot

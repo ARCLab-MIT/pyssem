@@ -187,6 +187,8 @@ def process_drag_and_density(scenario_props, drag_term_upper, drag_term_cur):
     """
     Process drag terms with density considerations.
     
+    Uses integrated decay approach effective densities if available, otherwise uses standard density.
+    
     Args:
         scenario_props: ScenarioProperties instance
         drag_term_upper: Upper drag terms matrix
@@ -196,11 +198,59 @@ def process_drag_and_density(scenario_props, drag_term_upper, drag_term_cur):
         tuple: (full_drag, sym_drag)
     """
     if not scenario_props.time_dep_density: 
-        # Take the shell altitudes, this will be n_shells + 1
-        rho = scenario_props.density_model(0, scenario_props.R0_km, scenario_props.species, scenario_props)
-        rho_reshape = rho.reshape(-1, 1) # Convert to column vector
-        rho_mat = np.tile(rho_reshape, (1, scenario_props.species_length)) 
-        rho_mat = sp.Matrix(rho_mat)
+        # Check if integrated decay approach is being used
+        use_integrated = hasattr(scenario_props, '_use_integrated_decay') and scenario_props._use_integrated_decay
+        
+        if use_integrated and hasattr(scenario_props, '_effective_densities_by_species'):
+            # Use effective densities from integrated decay approach
+            species_list = [species for group in scenario_props.species.values() for species in group]
+            rho_mat_list = []
+            
+            for i, species in enumerate(species_list):
+                if species.sym_name in scenario_props._effective_densities_by_species:
+                    # Use effective density for this species
+                    eff_rho = scenario_props._effective_densities_by_species[species.sym_name]
+                    # Effective densities are per shell (n_shells values)
+                    # Convert to shell boundaries (n_shells+1 values)
+                    # For shell k, use eff_rho[k] for both its lower and upper boundaries
+                    # This preserves the integrated density effect for each shell
+                    eff_rho_boundaries = np.zeros(scenario_props.n_shells + 1)
+                    eff_rho_boundaries[0] = eff_rho[0]  # Lower boundary of first shell
+                    for j in range(1, scenario_props.n_shells):
+                        # Use the effective density of the shell that this boundary belongs to
+                        # Boundary j is the upper boundary of shell j-1 and lower boundary of shell j
+                        # Use the average to smooth the transition
+                        eff_rho_boundaries[j] = (eff_rho[j-1] + eff_rho[j]) / 2.0
+                    eff_rho_boundaries[-1] = eff_rho[-1]  # Upper boundary of last shell
+                    rho_mat_list.append(eff_rho_boundaries)
+                else:
+                    # Use standard density for species without effective density
+                    rho = scenario_props.density_model(0, scenario_props.R0_km, scenario_props.species, scenario_props)
+                    rho_mat_list.append(rho)
+            
+            # Build density matrix - convert numpy arrays to lists for sympy compatibility
+            rho_mat_data = []
+            for i, rho_col in enumerate(rho_mat_list):
+                # Convert numpy array to list of floats
+                if isinstance(rho_col, np.ndarray):
+                    rho_col = rho_col.tolist()
+                # Transpose: build row by row instead of column by column
+                if i == 0:
+                    # Initialize rows
+                    for j in range(len(rho_col)):
+                        rho_mat_data.append([rho_col[j]])
+                else:
+                    # Append to existing rows
+                    for j in range(len(rho_col)):
+                        rho_mat_data[j].append(rho_col[j])
+            
+            rho_mat = sp.Matrix(rho_mat_data)
+        else:
+            # Standard approach: use actual density for all species
+            rho = scenario_props.density_model(0, scenario_props.R0_km, scenario_props.species, scenario_props)
+            rho_reshape = rho.reshape(-1, 1) # Convert to column vector
+            rho_mat = np.tile(rho_reshape, (1, scenario_props.species_length)) 
+            rho_mat = sp.Matrix(rho_mat)
         
         # Second to last row
         upper_rho = rho_mat[1:, :]

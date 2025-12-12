@@ -1,3 +1,4 @@
+from typing import Any
 from sympy import zeros, Matrix, symbols
 import pandas as pd
 from datetime import datetime, timedelta
@@ -312,10 +313,6 @@ def assign_species_to_population(T, species_mapping):
         print(f"Error in species mapping: {e} \n Have you defined the species mapping in the configuration JSON?")
         exit(1)
 
-    # Print summary of resulting species_class assignments
-    print("\nSpecies class distribution:")
-    print(T['species_class'].value_counts())
-
     try:
         T = T[T['species_class'] != "Unknown"]
         print(f"\n{T['species_class'].value_counts()['Unknown']} objects/rows are being removed.")
@@ -323,6 +320,237 @@ def assign_species_to_population(T, species_mapping):
         print("No unknown species classes found.")
 
     return T
+
+def IADC_traffic_model_new(scen_properties, file_path):
+    """
+    Build x0_summary and flm_steps from fixed IADC tables
+    rather than from a CSV.
+
+    Assumptions:
+      - Non-elliptical case (2D: [alt_bin, species]).
+      - n_shells == 18, matching the tables below.
+      - species_names exactly:
+          ['S',
+           'N_7.85e-06kg',
+           'N_0.000785kg',
+           'N_0.64kg',
+           'N_32kg',
+           'N_446kg',
+           'B']
+      - Mapping:
+          Active                  -> S
+          Inactive + In non-compliant PMD + In successful PMD -> N_446kg
+          Rocket Bodies           -> B
+          MROs                    -> N_32kg
+          Large debris            -> N_0.64kg
+          Small/medium debris     -> 0 in x0 and FLM (generated dynamically)
+    """
+
+    # ------------------------------------------------------------------
+    # 0. Basic checks
+    # ------------------------------------------------------------------
+    expected_species = [
+        'S',
+        'N_7.85e-06kg',
+        'N_0.000785kg',
+        'N_0.64kg',
+        'N_32kg',
+        'N_446kg'
+        # 'B',
+    ]
+
+    species_names = list(getattr(scen_properties, 'species_names', expected_species))
+
+    # Check that all expected IADC species are present (allow additional species)
+    missing_species = [s for s in expected_species if s not in species_names]
+    if missing_species:
+        raise ValueError(
+            f"Missing required IADC species: {missing_species}. "
+            f"species_names must contain all of {expected_species}, "
+            f"but got {species_names}"
+        )
+    
+    # Find indices of expected species in the full species_names list
+    iadc_species_indices = {}
+    for s in expected_species:
+        if s in species_names:
+            iadc_species_indices[s] = species_names.index(s)
+        else:
+            raise ValueError(f"Species {s} not found in species_names")
+
+    n_shells = int(scen_properties.n_shells)
+    if n_shells != 18:
+        raise ValueError(f"Expected n_shells == 18, got {n_shells}")
+
+    if getattr(scen_properties, 'elliptical', False):
+        raise NotImplementedError(
+            "This simple IADC table-based model only supports non-elliptical (2D) runs."
+        )
+
+    # ------------------------------------------------------------------
+    # 1. x0 from your table (18 altitude bins)
+    # ------------------------------------------------------------------
+    # Columns: [Active, Inactive, In_noncomp_PMD, In_success_PMD,
+    #           Rocket_Bodies, MROs, Large_debris]
+    x0_raw = np.array([
+        [0,   3,   3,   0,   4,   9,   175],
+        [6,   19,  19,  0,   9,   1,   217],
+        [22,  33,  33,  0,   27,  15,  217],
+        [36,  68,  68,  0,   56,  34,  415],
+        [2,   163, 163, 0,   98,  73,  1012],
+        [3,   297, 297, 0,   105, 110, 2315],
+        [2,   156, 156, 0,   98,  62,  2688],
+        [3,   258, 258, 0,   198, 142, 1895],
+        [5,   45,  45,  0,   42,  79,  1088],
+        [8,   72,  72,  0,   41,  44,  487],
+        [1,   8,   8,   0,   8,   6,   384],
+        [15,  36,  36,  0,   19,  13,  391],
+        [319, 213, 213, 0,   51,  24,  723],
+        [19,  35,  35,  0,   59,  15,  685],
+        [2,   14,  14,  0,   10,  5,   410],
+        [0,   3,   3,   0,   6,   3,   200],
+        [0,   2,   2,   0,   0,   1,   81],
+        [0,   1,   1,   0,   4,   2,   87],
+    ], dtype=int)
+
+    if x0_raw.shape != (n_shells, 7):
+        raise RuntimeError("x0_raw shape mismatch; expected (18, 7).")
+
+    # Unpack columns for clarity
+    active_col       = x0_raw[:, 0]
+    # inactive_col     = x0_raw[:, 1]
+    in_noncomp_col   = x0_raw[:, 2]
+    in_success_col   = x0_raw[:, 3]  # all zeros in your table, but include for completeness
+    rocket_bodies_col = x0_raw[:, 4]
+    mros_col         = x0_raw[:, 5]
+    large_debris_col = x0_raw[:, 6]
+
+    # Map into species
+    # S:         active satellites
+    # N_7.85e-06kg:   0 at t0
+    # N_0.000785kg:   0 at t0
+    # N_0.64kg:       large debris
+    # N_32kg:         MROs
+    # N_446kg:        inactive + PMD (non-compliant + successful)
+    # B:              rocket bodies
+    # Other species:  0 at t0 (not part of IADC model)
+    x0_matrix = np.zeros((n_shells, len(species_names)), dtype=int)
+
+    # Get indices for IADC species (allows for additional species in the list)
+    idx_S = iadc_species_indices['S']
+    idx_Ns = iadc_species_indices['N_7.85e-06kg']
+    idx_Nm = iadc_species_indices['N_0.000785kg']
+    idx_NL = iadc_species_indices['N_0.64kg']
+    idx_NMRO = iadc_species_indices['N_32kg']
+    idx_Nsat = iadc_species_indices['N_446kg']
+    # idx_B = iadc_species_indices['B']
+    idx_B = iadc_species_indices['N_446kg']
+
+    x0_matrix[:, idx_S]     = active_col
+    x0_matrix[:, idx_Ns]    = 0
+    x0_matrix[:, idx_Nm]    = 0
+    x0_matrix[:, idx_NL]    = large_debris_col + rocket_bodies_col
+    x0_matrix[:, idx_NMRO]  = mros_col
+    x0_matrix[:, idx_Nsat]  = in_noncomp_col + in_success_col
+    # All other species columns remain 0 (initialized above)
+
+    # Return as DataFrame (same as your 2D branch)
+    x0_summary = pd.DataFrame(
+        x0_matrix,
+        index=range(n_shells),
+        columns=species_names
+    )
+
+    # ------------------------------------------------------------------
+    # 2. FLM_steps from your per-year launch table
+    # ------------------------------------------------------------------
+    # Altitude bins match 200–300, 300–400, ..., 1900–2000
+    # Columns: [Active, Rocket_Bodies, MROs]
+    # flm_raw = np.array([
+    #     [10, 3, 1],   # 200–300
+    #     [8,  2, 2],   # 300–400
+    #     [36, 17, 10], # 400–500
+    #     [38, 24, 9],  # 500–600
+    #     [99, 19, 21], # 600–700
+    #     [39, 11, 9],  # 700–800
+    #     [23, 9, 7],   # 800–900
+    #     [21, 12, 5],  # 900–1000
+    #     [3,  3, 9],   # 1000–1100
+    #     [3,  2, 6],   # 1100–1200
+    #     [0,  1, 0],   # 1200–1300
+    #     [2,  1, 0],   # 1300–1400
+    #     [18, 5, 1],   # 1400–1500
+    #     [0,  0, 0],   # 1500–1600
+    #     [1,  1, 0],   # 1600–1700
+    #     [0,  0, 0],   # 1700–1800
+    #     [0,  0, 0],   # 1800–1900
+    #     [0,  0, 0],   # 1900–2000
+    # ], dtype=int)
+
+    flm_raw = np.array([
+        [10, 3, 0],   # 200–300
+        [8,  2, 0],   # 300–400
+        [36, 17, 0], # 400–500
+        [38, 24, 0],  # 500–600
+        [99, 19, 0], # 600–700
+        [39, 11, 0],  # 700–800
+        [23, 9, 0],   # 800–900
+        [21, 12, 0],  # 900–1000
+        [3,  3, 0],   # 1000–1100
+        [3,  2, 0],   # 1100–1200
+        [0,  1, 0],   # 1200–1300
+        [2,  1, 0],   # 1300–1400
+        [18, 5, 0],   # 1400–1500
+        [0,  0, 0],   # 1500–1600
+        [1,  1, 0],   # 1600–1700
+        [0,  0, 0],   # 1700–1800
+        [0,  0, 0],   # 1800–1900
+        [0,  0, 0],   # 1900–2000
+    ], dtype=int)
+
+    if flm_raw.shape != (n_shells, 3):
+        raise RuntimeError("flm_raw shape mismatch; expected (18, 3).")
+
+    act_launches  = flm_raw[:, 0]
+    rb_launches   = flm_raw[:, 1]
+    mro_launches  = flm_raw[:, 2]
+
+    # Build a "per year" launch matrix in species space
+    # Only populate IADC species columns; other species remain 0
+    yearly_matrix = np.zeros((n_shells, len(species_names)), dtype=int)
+    yearly_matrix[:, idx_S]    = act_launches
+    yearly_matrix[:, idx_Ns]   = 0
+    yearly_matrix[:, idx_Nm]   = 0
+    yearly_matrix[:, idx_NL]   = 0          # no large debris launched
+    yearly_matrix[:, idx_NMRO] = mro_launches
+    yearly_matrix[:, idx_Nsat] = 0          # no derelict 446 kg launched directly
+    yearly_matrix[:, idx_Nsat]    = rb_launches
+    # All other species columns remain 0 (not part of IADC launch model)
+
+    # ------------------------------------------------------------------
+    # 3. Repeat FLM per calendar year of the simulation
+    # ------------------------------------------------------------------
+    start_year = scen_properties.start_date.year
+    end_year = start_year + scen_properties.simulation_duration
+
+    records = []
+    for year in range(start_year, end_year):
+        epoch_start_date = datetime(year, 1, 1)
+        for alt_bin in range(n_shells):
+            row = {
+                'epoch_start_date': epoch_start_date,
+                'alt_bin': alt_bin,
+            }
+            for s_idx, s_name in enumerate(species_names):
+                row[s_name] = int(yearly_matrix[alt_bin, s_idx])
+            records.append(row)
+
+    flm_steps = pd.DataFrame.from_records(records)
+
+    # Make sure columns are in consistent order
+    flm_steps = flm_steps[['epoch_start_date', 'alt_bin'] + species_names]
+
+    return x0_summary, flm_steps
 
 def IADC_traffic_model(scen_properties, file_path):
     """
@@ -471,80 +699,220 @@ def IADC_traffic_model(scen_properties, file_path):
         x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
         x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
 
-    # ---------- Future Launch Model (FLM) ----------
-    # Future Launch Model (updated)
-    flm_steps = pd.DataFrame()
+    # # ---------- Future Launch Model (FLM) - OLD CSV-BASED APPROACH (COMMENTED OUT) ----------
+    # # Future Launch Model (updated)
+    # flm_steps = pd.DataFrame()
 
-    time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
+    # time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
 
-    time_steps = [
-        scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
-        for i in range(scen_properties.steps + 1)
-    ]    
+    # time_steps = [
+    #     scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
+    #     for i in range(scen_properties.steps + 1)
+    # ]    
 
-    # Distribute the Yearly Launches, USED FOR STEP FUNCTION, but also works w/ current and old interp
+    # # Distribute the Yearly Launches, USED FOR STEP FUNCTION, but also works w/ current and old interp
+    # start_year = scen_properties.start_date.year
+    # end_year = start_year + scen_properties.simulation_duration
+
+    # for year in tqdm(range(start_year, end_year), desc="Processing Launch Years"):
+        
+    #     launches_this_year = T_new[T_new['launch_year'] == year]
+        
+    #     if launches_this_year.empty:
+    #         continue
+
+    #     # Group by shell and species to get total counts for the entire year
+    #     # yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+    #     if scen_properties.elliptical:
+    #         yearly_counts = launches_this_year.groupby(['alt_bin', 'ecc_bin', 'species']).size()
+    #         yearly_counts = yearly_counts.unstack(fill_value=0)
+
+    #         all_alt_ecc_bins = pd.MultiIndex.from_product(
+    #             [range(scen_properties.n_shells), range(len(scen_properties.eccentricity_bins) - 1)],
+    #             names=['alt_bin', 'ecc_bin']
+    #         )
+    #         yearly_counts = yearly_counts.reindex(all_alt_ecc_bins, fill_value=0)
+
+    #     else:
+    #         yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
+    #         yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
+
+    #     # --- START OF THE FIX ---
+    #     # Ensure the yearly_counts DataFrame has a row for every possible shell.
+    #     # This is the step that was missing from my previous version.
+    #     # --- END OF THE FIX ---
+
+    #     # Find which simulation time steps fall within this calendar year
+    #     year_start_date = datetime(year, 1, 1)
+    #     year_end_date = datetime(year + 1, 1, 1)
+        
+    #     relevant_steps_mask = (np.array(time_steps[:-1]) >= year_start_date) & (np.array(time_steps[:-1]) < year_end_date)
+    #     relevant_start_times = np.array(time_steps[:-1])[relevant_steps_mask]
+
+    #     if len(relevant_start_times) == 0:
+    #         continue
+
+    #     # Use only the first time step in the year (mimicking MC behavior)
+    #     step_counts = yearly_counts.copy()
+    #     step_counts = step_counts.reset_index()
+    #     step_counts['epoch_start_date'] = relevant_start_times[0]
+
+    #     flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
+
+    # # Final re-ordering and cleanup
+    # # Ensure all species columns from the scenario are present, even if they had no launches
+    # all_species_columns = scen_properties.species_names
+    # for col in all_species_columns:
+    #     if col not in flm_steps.columns:
+    #         flm_steps[col] = 0
+
+    # # Ensure consistent column order
+    # if scen_properties.elliptical:
+    #     final_cols = ['epoch_start_date', 'alt_bin', 'ecc_bin'] + all_species_columns
+    # else:
+    #     final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
+
+    # flm_steps = flm_steps[final_cols]
+
+    # return x0_summary, flm_steps
+
+    # ---------- Future Launch Model (FLM) - NEW FIXED TABLE APPROACH FROM IADC_traffic_model_new ----------
+    # Build flm_steps from fixed IADC tables rather than from CSV
+    # This uses the same launch function logic as IADC_traffic_model_new
+    
+    # Fixed launch table: per-year launches per altitude bin
+    # Altitude bins match 200–300, 300–400, ..., 1900–2000
+    # Columns: [Active, Rocket_Bodies, MROs]
+    # OLD 18-SHELL VERSION (COMMENTED OUT):
+    # flm_raw = np.array([
+    #     [10, 3, 1],   # 200–300
+    #     [8,  2, 2],   # 300–400
+    #     [36, 17, 10], # 400–500
+    #     [38, 24, 9],  # 500–600
+    #     [99, 19, 21], # 600–700
+    #     [39, 11, 9],  # 700–800
+    #     [23, 9, 7],   # 800–900
+    #     [21, 12, 5],  # 900–1000
+    #     [3,  3, 9],   # 1000–1100
+    #     [3,  2, 6],   # 1100–1200
+    #     [0,  1, 0],   # 1200–1300
+    #     [2,  1, 0],   # 1300–1400
+    #     [18, 5, 1],   # 1400–1500
+    #     [0,  0, 0],   # 1500–1600
+    #     [1,  1, 0],   # 1600–1700
+    #     [0,  0, 0],   # 1700–1800
+    #     [0,  0, 0],   # 1800–1900
+    #     [0,  0, 0],   # 1900–2000
+    # ], dtype=int)
+    # Total: Active=301, Rocket_Bodies=114, MROs=80
+
+    # NEW 36-SHELL VERSION: Each original shell split into 2 shells, maintaining same totals
+    # Altitude bins: 200–250, 250–300, 300–350, 350–400, ..., 1950–2000
+    flm_raw = np.array([
+        [5,  2, 1],   # 200–250 (split from 200–300)
+        [5,  1, 0],   # 250–300
+        [4,  1, 1],   # 300–350 (split from 300–400)
+        [4,  1, 1],   # 350–400
+        [18, 9, 5],   # 400–450 (split from 400–500)
+        [18, 8, 5],   # 450–500
+        [19, 12, 5],  # 500–550 (split from 500–600)
+        [19, 12, 4],  # 550–600
+        [50, 10, 11], # 600–650 (split from 600–700)
+        [49, 9, 10],  # 650–700
+        [20, 6, 5],   # 700–750 (split from 700–800)
+        [19, 5, 4],   # 750–800
+        [12, 5, 4],   # 800–850 (split from 800–900)
+        [11, 4, 3],   # 850–900
+        [11, 6, 3],   # 900–950 (split from 900–1000)
+        [10, 6, 2],   # 950–1000
+        [2,  2, 5],   # 1000–1050 (split from 1000–1100)
+        [1,  1, 4],   # 1050–1100
+        [2,  1, 3],   # 1100–1150 (split from 1100–1200)
+        [1,  1, 3],   # 1150–1200
+        [0,  1, 0],   # 1200–1250 (split from 1200–1300)
+        [0,  0, 0],   # 1250–1300
+        [1,  1, 0],   # 1300–1350 (split from 1300–1400)
+        [1,  0, 0],   # 1350–1400
+        [9,  3, 1],   # 1400–1450 (split from 1400–1500)
+        [9,  2, 0],   # 1450–1500
+        [0,  0, 0],   # 1500–1550 (split from 1500–1600)
+        [0,  0, 0],   # 1550–1600
+        [1,  1, 0],   # 1600–1650 (split from 1600–1700)
+        [0,  0, 0],   # 1650–1700
+        [0,  0, 0],   # 1700–1750 (split from 1700–1800)
+        [0,  0, 0],   # 1750–1800
+        [0,  0, 0],   # 1800–1850 (split from 1800–1900)
+        [0,  0, 0],   # 1850–1900
+        [0,  0, 0],   # 1900–1950 (split from 1900–2000)
+        [0,  0, 0],   # 1950–2000
+    ], dtype=int)
+    # Total: Active=301, Rocket_Bodies=114, MROs=80 (same as 18-shell version)
+
+    if flm_raw.shape[0] != n_shells:
+        raise RuntimeError(f"flm_raw shape mismatch; expected ({n_shells}, 3), got {flm_raw.shape}.")
+
+    act_launches  = flm_raw[:, 0]
+    rb_launches   = flm_raw[:, 1]
+    mro_launches  = flm_raw[:, 2]
+
+    # Get species names from scen_properties
+    species_names = list(getattr(scen_properties, 'species_names', []))
+    
+    # Try to find species indices by matching names (flexible approach)
+    # Look for common IADC species names
+    idx_S = None
+    idx_NMRO = None
+    idx_Nsat = None
+    
+    # Try to find 'S' or active species
+    for i, s_name in enumerate(species_names):
+        if s_name == 'S' or 'active' in s_name.lower() or s_name.startswith('S'):
+            idx_S = i
+            break
+    
+    # Try to find MRO species (N_32kg or similar)
+    for i, s_name in enumerate(species_names):
+        if '32' in s_name or 'mro' in s_name.lower() or 'N_32kg' in s_name:
+            idx_NMRO = i
+            break
+    
+    # Try to find derelict/inactive species (N_446kg or similar)
+    for i, s_name in enumerate(species_names):
+        if '446' in s_name or 'derelict' in s_name.lower() or 'inactive' in s_name.lower() or 'N_446kg' in s_name:
+            idx_Nsat = i
+            break
+
+    # Build a "per year" launch matrix in species space
+    yearly_matrix = np.zeros((n_shells, len(species_names)), dtype=int)
+    
+    if idx_S is not None:
+        yearly_matrix[:, idx_S] = act_launches
+    if idx_NMRO is not None:
+        yearly_matrix[:, idx_NMRO] = mro_launches
+    if idx_Nsat is not None:
+        yearly_matrix[:, idx_Nsat] = rb_launches
+    # All other species columns remain 0 (not part of IADC launch model)
+
+    # Repeat FLM per calendar year of the simulation
     start_year = scen_properties.start_date.year
     end_year = start_year + scen_properties.simulation_duration
 
-    for year in tqdm(range(start_year, end_year), desc="Processing Launch Years"):
-        
-        launches_this_year = T_new[T_new['launch_year'] == year]
-        
-        if launches_this_year.empty:
-            continue
+    records = []
+    for year in range(start_year, end_year):
+        epoch_start_date = datetime(year, 1, 1)
+        for alt_bin in range(n_shells):
+            row = {
+                'epoch_start_date': epoch_start_date,
+                'alt_bin': alt_bin,
+            }
+            for s_idx, s_name in enumerate(species_names):
+                row[s_name] = int(yearly_matrix[alt_bin, s_idx])
+            records.append(row)
 
-        # Group by shell and species to get total counts for the entire year
-        # yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-        if scen_properties.elliptical:
-            yearly_counts = launches_this_year.groupby(['alt_bin', 'ecc_bin', 'species']).size()
-            yearly_counts = yearly_counts.unstack(fill_value=0)
+    flm_steps = pd.DataFrame.from_records(records)
 
-            all_alt_ecc_bins = pd.MultiIndex.from_product(
-                [range(scen_properties.n_shells), range(len(scen_properties.eccentricity_bins) - 1)],
-                names=['alt_bin', 'ecc_bin']
-            )
-            yearly_counts = yearly_counts.reindex(all_alt_ecc_bins, fill_value=0)
-
-        else:
-            yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-            yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
-
-        # --- START OF THE FIX ---
-        # Ensure the yearly_counts DataFrame has a row for every possible shell.
-        # This is the step that was missing from my previous version.
-        # --- END OF THE FIX ---
-
-        # Find which simulation time steps fall within this calendar year
-        year_start_date = datetime(year, 1, 1)
-        year_end_date = datetime(year + 1, 1, 1)
-        
-        relevant_steps_mask = (np.array(time_steps[:-1]) >= year_start_date) & (np.array(time_steps[:-1]) < year_end_date)
-        relevant_start_times = np.array(time_steps[:-1])[relevant_steps_mask]
-
-        if len(relevant_start_times) == 0:
-            continue
-
-        # Use only the first time step in the year (mimicking MC behavior)
-        step_counts = yearly_counts.copy()
-        step_counts = step_counts.reset_index()
-        step_counts['epoch_start_date'] = relevant_start_times[0]
-
-        flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
-
-    # Final re-ordering and cleanup
-    # Ensure all species columns from the scenario are present, even if they had no launches
-    all_species_columns = scen_properties.species_names
-    for col in all_species_columns:
-        if col not in flm_steps.columns:
-            flm_steps[col] = 0
-
-    # Ensure consistent column order
-    if scen_properties.elliptical:
-        final_cols = ['epoch_start_date', 'alt_bin', 'ecc_bin'] + all_species_columns
-    else:
-        final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
-
-    flm_steps = flm_steps[final_cols]
+    # Make sure columns are in consistent order
+    flm_steps = flm_steps[['epoch_start_date', 'alt_bin'] + species_names]
 
     return x0_summary, flm_steps
 
@@ -559,40 +927,78 @@ def SEP_traffic_model(scen_properties, file_path):
     # Calculate Apogee, Perigee, and altitude
     T = pd.read_csv(file_path)
 
-    T['apogee'] = T['sma'] * (1 + T['ecc'])
-    T['perigee'] = T['sma'] * (1 - T['ecc'])
-    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+    if 'OPUS' not in file_path:
+        T['apogee'] = T['sma'] * (1 + T['ecc'])
+        T['perigee'] = T['sma'] * (1 - T['ecc'])
+        T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+    
+        # Filter Rows Based on Min and Max_Altitude
+        T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
 
-    # Filter Rows Based on Min and Max_Altitude
-    T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+        T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
-    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
-
-    for species_class in T['species_class'].unique():
-            if species_class in scen_properties.species_cells:
-                if len(scen_properties.species_cells[species_class]) == 1:
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                    T_new = pd.concat([T_new, T_obj_class])
-                else:
-                    species_cells = scen_properties.species_cells[species_class]
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                    T_new = pd.concat([T_new, T_obj_class])
+    else:
+        T['alt'] = T['altitude_km']
+        T['sma'] = T['semi_major_axis_km']
+        T['ecc'] = T['eccentricity']
+        T['species_class'] = T['species_opus_mass_rule']
+        T['mass'] = T['mass_kg']
+        T_new = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+    
+    # Create a list to store processed dataframes
+    processed_dfs = []
+    
+    for species_class in T_new['species_class'].unique():
+        if species_class in scen_properties.species_cells:
+            if len(scen_properties.species_cells[species_class]) == 1:
+                T_obj_class = T_new[T_new['species_class'] == species_class].copy()
+                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                processed_dfs.append(T_obj_class)
+            else:
+                species_cells = scen_properties.species_cells[species_class]
+                T_obj_class = T_new[T_new['species_class'] == species_class].copy()
+                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                processed_dfs.append(T_obj_class)
+    
+    # Concatenate all processed dataframes
+    if processed_dfs:
+        T_new = pd.concat(processed_dfs, ignore_index=True)
 
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
 
-    T_new['epoch_start_datetime'] = pd.to_datetime(dict(
-        year=T_new['year_start'].astype(int),
-        month=T_new['month_start'].astype(int),
-        day=T_new['day_start'].astype(int)
-    ), errors='coerce')
+    if 'OPUS' not in file_path:
+        T_new['epoch_start_datetime'] = pd.to_datetime(dict(
+            year=T_new['year_start'].astype(int),
+            month=T_new['month_start'].astype(int),
+            day=T_new['day_start'].astype(int)
+        ), errors='coerce')
 
-    T_new['epoch_end_datetime'] = pd.to_datetime(dict(
-        year=T_new['year_final'].astype(int),
-        month=T_new['month_final'].astype(int),
-        day=T_new['day_final'].astype(int)
-    ), errors='coerce')
+        T_new['epoch_end_datetime'] = pd.to_datetime(dict(
+            year=T_new['year_final'].astype(int),
+            month=T_new['month_final'].astype(int),
+            day=T_new['day_final'].astype(int)
+        ), errors='coerce')
+    else:
+        # Convert decimal launch_year to datetime if it exists
+        if 'launch_year' in T_new.columns:
+            def decimal_year_to_datetime(decimal_year):
+                if pd.isna(decimal_year):
+                    return pd.NaT
+                try:
+                    # Convert decimal year to datetime
+                    year = int(decimal_year)
+                    fraction = decimal_year - year
+                    # Calculate day of year from fraction
+                    days_in_year = 365 if year % 4 != 0 else 366  # Handle leap years
+                    day_of_year = int(fraction * days_in_year) + 1
+                    return pd.to_datetime(f"{year}-{day_of_year:03d}", format="%Y-%j")
+                except:
+                    return pd.NaT
+            
+            T_new['epoch_start_datetime'] = T_new['launch_year'].apply(decimal_year_to_datetime)
+        else:
+            raise ValueError("launch_year column not found in T_new dataframe.")
+    
 
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
@@ -600,7 +1006,7 @@ def SEP_traffic_model(scen_properties, file_path):
     T_new = T_new[T_new['species'].isin(scen_properties.species_names)]
 
     # Initial population
-    x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
+    x0 = T_new[T_new['epoch_start_datetime'] <= scen_properties.start_date]
 
     # x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
@@ -638,10 +1044,24 @@ def SEP_traffic_model(scen_properties, file_path):
         # === Standard 2D case: DataFrame [alt_bin, species] ===
         df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
         x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
-        x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # Replace the problematic line with:
+        df_pivot = df.reindex(columns=x0_summary.columns, fill_value=0)
+
+        # Check for and handle duplicate columns
+        if df_pivot.columns.duplicated().any():
+            # Sum duplicate columns
+            df_pivot = df_pivot.groupby(df_pivot.columns, axis=1).sum()
+
+        # Then update
+        x0_summary.update(df_pivot)
 
     if scen_properties.baseline:
         return x0_summary, None
+
+    if scen_properties.opus:
+        if 'OPUS' not in file_path and not scen_properties.baseline:
+            raise ValueError("OPUS data is not supported for non-baseline scenarios.")
 
     # Future Launch Model (updated)
     flm_steps = pd.DataFrame()
