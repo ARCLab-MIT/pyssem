@@ -87,12 +87,12 @@ def pmd_func_derelict_iadc(t, h, species_properties, scenario_properties):
     
     PMD applies to ALL satellites. For each timestep:
     - 0.1 (10%) of satellites convert to derelicts at the same altitude (failed PMD)
-    - 0.9 (90%) convert to derelicts and are placed at the shell where they will decay in 5 years (successful PMD)
+    - 0.9 (90%) convert to derelicts and are spread evenly across shells that decay in under 25 years (successful PMD)
     """
     n_shells = scenario_properties.n_shells
     Cpmddot = zeros(n_shells, 1)
     
-    # Compute k_star (5-year disposal altitude, same logic as pmd_func_iadc)
+    # Compute shells with decay times under 25 years
     if species_properties.pmd_linked_species:
         linked_species = species_properties.pmd_linked_species[0]
         
@@ -118,9 +118,14 @@ def pmd_func_derelict_iadc(t, h, species_properties, scenario_properties):
             shell_marginal_residence_times[k] = 1.0 / shell_marginal_decay_rates[k]
         
         shell_cumulative_residence_times = np.cumsum(shell_marginal_residence_times)
-        # Find k_star: shell where objects will decay in 5 years
-        indices = np.where(shell_cumulative_residence_times <= 25.0)[0]
-        k_star = max(indices) if len(indices) > 0 else 0
+        # Find all shells where objects will decay in under 25 years
+        valid_indices = np.where(shell_cumulative_residence_times <= 25.0)[0]
+        
+        # If no shells decay in under 25 years, use the lowest shell (index 0)
+        if len(valid_indices) == 0:
+            valid_indices = np.array([0])
+        
+        num_valid_shells = len(valid_indices)
         
         # Process each linked active species (apply to ALL shells)
         for i, linked_species in enumerate(species_properties.pmd_linked_species):
@@ -132,8 +137,12 @@ def pmd_func_derelict_iadc(t, h, species_properties, scenario_properties):
                 # Failed PMD (0.1): add to derelict at same shell k
                 Cpmddot[k, i] += 0.1 / tau * Xk
                 
-                # Successful PMD (0.9): add to derelict at k_star (5-year disposal altitude)
-                Cpmddot[k_star, i] += 0.9 / tau * Xk
+                # Successful PMD (0.9): spread evenly across shells that decay in under 25 years
+                successful_pmd_rate = 0.9 / tau * Xk
+                rate_per_shell = successful_pmd_rate / num_valid_shells
+                
+                for valid_k in valid_indices:
+                    Cpmddot[valid_k, i] += rate_per_shell
     
     return Cpmddot
 
@@ -144,7 +153,7 @@ def pmd_func_iadc(t, h, species_properties, scenario_properties):
     PMD applies to ALL satellites (both naturally and non-naturally compliant).
     For each timestep:
     - 0.1 (10%) of satellites convert to derelicts at the same altitude (failed PMD)
-    - 0.9 (90%) convert to derelicts and are placed at the shell where they will decay in 5 years (successful PMD)
+    - 0.9 (90%) convert to derelicts and are spread evenly across shells that decay in under 25 years (successful PMD)
     
     This function returns the change to the active species population.
     The transfer to derelict species is handled by pmd_func_derelict_iadc on the
@@ -169,7 +178,7 @@ def pmd_func_iadc(t, h, species_properties, scenario_properties):
     shell_cumulative_residence_times = np.cumsum(shell_marginal_residence_times)
 
     # Find k_star: shell where objects will decay in 5 years
-    indices = np.where(shell_cumulative_residence_times <= 25.0)[0]
+    indices = np.where(shell_cumulative_residence_times <= 5.0)[0]
     k_star = max(indices) if len(indices) > 0 else 0
 
     # --- 2. Apply PMD to active species (ALL shells, not just non-compliant ones) ---

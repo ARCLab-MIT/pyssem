@@ -11,7 +11,7 @@
     "steps": 200,
     "min_altitude": 200,
     "max_altitude": 2000,
-    "n_shells": 18,
+    "n_shells": 36,
     "launch_function": "Constant",
     "integrator": "BDF",
     "density_model": "static_exp_dens_func",
@@ -54,20 +54,20 @@
       "sym_name": "S",
       "Cd": 2.2,
       "mass": 446,
-      "radius": 1.17,
-      "A": 3.69,
+      "radius": 1.2,
+      "A": 3.99,
       "active": true,
       "maneuverable": false,
       "trackable": true,
       "deltat": 8,
-      "Pm": 1,
+      "Pm": 0.9,
       "alpha": 0,
       "alpha_active": 0,
       "slotted": false,
       "slotting_effectiveness": 0,
       "drag_effected": false,
       "launch_func": "launch_func_null",
-      "pmd_func": "pmd_func_sat",
+      "pmd_func": "pmd_func_iadc",
       "drag_func": "drag_func_exp"
     },
     {
@@ -82,13 +82,13 @@
       "radius": [
         0.0005,
         0.005,
-        0.09,
-        0.465
+        0.8,
+        1.5
       ],
       "A": [
         7.85e-07,
         7.85e-05,
-        0.02,
+        0.04,
         0.68
       ],
       "active": false,

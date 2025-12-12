@@ -13,18 +13,25 @@ def process_species_pair(args):
     
     # Determine if fragments should be included based on IADC collision rules
     include_fragments = False
+    catastrophic = False
     s1_name = s1.sym_name
     s2_name = s2.sym_name
     
     # Collisions between satellites and between satellites and large debris were catastrophic.
     if s1_name == 'S' and s2_name in ['S', 'N_446kg']:
         include_fragments = False
+        catastrophic = True
     # if a combination of large debris, then include fragments
-    if s1_name in ['N_446kg', 'N_32kg'] and s2_name in ['N_446kg', 'N_32kg']:
-        include_fragments = False
+    if s1_name in ['N_446kg'] and s2_name in ['N_446kg']:
+        include_fragments = True
+        catastrophic = False
+    if s1_name in ['N_32kg'] and s2_name in ['N_32kg']:
+        include_fragments = True
+        catastrophic = False
     # if a combination of medium debris, then include fragments
     if s1_name == 'N_0.64kg' and s2_name == 'N_0.64kg':
         include_fragments = False
+        catastrophic = False
 
     # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
     gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
@@ -33,21 +40,21 @@ def process_species_pair(args):
     source_sinks = [s1, s2]
 
     # Implementing logic for gammas calculations based on species properties
-    if s1.maneuverable and s2.maneuverable:
-        # Multiplying each element in the first column of gammas by the product of alpha_active values
-        gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
-        if s1.slotted and s2.slotted:
-            # Applying the minimum slotting effectiveness if both are slotted
-            gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
+    # if s1.maneuverable and s2.maneuverable:
+    #     # Multiplying each element in the first column of gammas by the product of alpha_active values
+    #     gammas[:, 0] = gammas[:, 0] * s1.alpha_active * s2.alpha_active
+    #     if s1.slotted and s2.slotted:
+    #         # Applying the minimum slotting effectiveness if both are slotted
+    #         gammas[:, 0] = gammas[:, 0] * min(s1.slotting_effectiveness, s2.slotting_effectiveness)
 
-    elif (s1.maneuverable and not s2.maneuverable) or (s2.maneuverable and not s1.maneuverable):
-        if s1.trackable and s2.maneuverable:
-            gammas[:, 0] = gammas[:, 0] * s2.alpha
-        elif s2.trackable and s1.maneuverable:
-            gammas[:, 0] = gammas[:, 0] * s1.alpha
+    # elif (s1.maneuverable and not s2.maneuverable) or (s2.maneuverable and not s1.maneuverable):
+    #     if s1.trackable and s2.maneuverable:
+    #         gammas[:, 0] = gammas[:, 0] * s2.alpha
+    #     elif s2.trackable and s1.maneuverable:
+    #         gammas[:, 0] = gammas[:, 0] * s1.alpha
 
-    # Applying symmetric loss to both colliding species
-    gammas[:, 1] = gammas[:, 0]
+    # # Applying symmetric loss to both colliding species
+    # gammas[:, 1] = gammas[:, 0]
 
     # Rocket Body Flag - 1: RB; 0: not RB
     # Will be 0 if both are None type
@@ -156,12 +163,12 @@ def process_species_pair(args):
         for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits 
             dv1, dv2 = 7.5, 7.5 # for now we are going to assume the same velocity. 
             try:
-                results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
+                results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km, catastrophic=catastrophic)
                 # frags_made[dv_index, :] = results[0]
                 if not include_fragments:
                     frags_made[dv_index, :] = 0
                 else:
-                    frags_made[dv_index, :] = results[0]
+                    frags_made[dv_index, :] = results[0] / 150
             except IndexError as ie:
                 alt_nums = None
                 continue

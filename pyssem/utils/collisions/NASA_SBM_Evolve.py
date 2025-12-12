@@ -597,7 +597,7 @@ def func_create_tlesv2_vec(ep, r_parent, v_parent, class_parent, fragments, max_
 
     return out
 
-def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None): # eventually add stochastic ability
+def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks, RBflag = 0, fragment_spreading=False, n_shells=0, R02 = None, catastrophic=False): # eventually add stochastic ability
     """
     Function to evolve the mass bins of a debris cloud after a collision. The function is based on the NASA Standard Breakup
     Model. The function returns the number of fragments in each bin, whether the collision was catastrophic or not, and the
@@ -683,7 +683,10 @@ def evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, sou
         isCatastrophic = 0
     else: # Catastrophic collision
         M = m1 + m2
-        isCatastrophic = 1
+        if catastrophic:
+            isCatastrophic = 1
+        else:
+            isCatastrophic = 0
 
     num = (0.1 * M ** 0.75 * LB ** (-1.71)) - (0.1 * M ** 0.75 * min(1, 2 * r1) ** (-1.71))
     numSS = SS * num
