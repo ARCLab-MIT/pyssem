@@ -35,6 +35,7 @@
     ],
     "SEP_mapping": [
       "T.loc[(T['obj_type'] == 2), 'species_class'] = 'S'",
+      
       "T.loc[(T['obj_type'] >= 3) & (T['diam_char'] >= 0.01), 'species_class'] = 'N'",
       "T.loc[(T['obj_type'] == 1), 'species_class'] = 'B'"
     ],

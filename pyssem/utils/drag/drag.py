@@ -482,6 +482,9 @@ def calculate_orbital_lifetimes(scenario_properties):
         This function is mainly used for UMPY calculations. For each species, it will calculate the orbital lifetimes based off the static density model. 
     """
 
+    # simulation_duration = scenario_properties.simulation_duration if not scenario_properties.opus else 100
+    simulation_duration = 100
+
     shell_marginal_decay_rates = np.zeros(scenario_properties.n_shells)
     shell_marginal_residence_times = np.zeros(scenario_properties.n_shells)
 

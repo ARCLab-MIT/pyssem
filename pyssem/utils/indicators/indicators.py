@@ -296,7 +296,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
 
     return spec_man_indc
 
-def make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
+def  make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
     """
     Calculates the indicator variable for number of active spacecraft lost in each orbit shell
     to collision events in a given year. 
@@ -470,8 +470,8 @@ def make_catastrophic_collisions_per_species_altitude(scen_properties, percentag
             # Get all collision pairs involving this species
             for pair in scen_properties.collision_pairs:
                 # Check if ANY of the catastrophic flags are True
-                if not hasattr(pair, 'catastrophic') or not np.any(pair.catastrophic):
-                    continue  # Skip this pair if no catastrophic collisions
+                # if not hasattr(pair, 'catastrophic') or not np.any(pair.catastrophic):
+                #     continue  # Skip this pair if no catastrophic collisions
                 
                 species_1_name = pair.species1.sym_name
                 species_2_name = pair.species2.sym_name
@@ -515,8 +515,8 @@ def make_catastrophic_collisions_per_species_altitude_per_pair(scen_properties, 
             # Get all collision pairs involving this species
             for pair in scen_properties.collision_pairs:
                 # Check if ANY of the catastrophic flags are True
-                if not hasattr(pair, 'catastrophic') or not np.any(pair.catastrophic):
-                    continue  # Skip this pair if no catastrophic collisions
+                # if not hasattr(pair, 'catastrophic') or not np.any(pair.catastrophic):
+                #     continue  # Skip this pair if no catastrophic collisions
                 
                 species_1_name = pair.species1.sym_name
                 species_2_name = pair.species2.sym_name
@@ -586,6 +586,7 @@ def make_umpy_indicator(scen_properties, X=4, indicator_name="umpy_indicator"):
     :return: A list containing one IndicatorStruct, or multiple if you want per-species
     """
 
+    simulation_duration = scen_properties.simulation_duration if not scen_properties.opus else 100
 
     # One aggregated vector eqs (n_shells x 1) summing across species
     umpy_eqs = sp.zeros(scen_properties.n_shells, 1)

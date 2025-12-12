@@ -313,10 +313,6 @@ def assign_species_to_population(T, species_mapping):
         print(f"Error in species mapping: {e} \n Have you defined the species mapping in the configuration JSON?")
         exit(1)
 
-    # Print summary of resulting species_class assignments
-    print("\nSpecies class distribution:")
-    print(T['species_class'].value_counts())
-
     try:
         T = T[T['species_class'] != "Unknown"]
         print(f"\n{T['species_class'].value_counts()['Unknown']} objects/rows are being removed.")
@@ -931,40 +927,78 @@ def SEP_traffic_model(scen_properties, file_path):
     # Calculate Apogee, Perigee, and altitude
     T = pd.read_csv(file_path)
 
-    T['apogee'] = T['sma'] * (1 + T['ecc'])
-    T['perigee'] = T['sma'] * (1 - T['ecc'])
-    T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+    if 'OPUS' not in file_path:
+        T['apogee'] = T['sma'] * (1 + T['ecc'])
+        T['perigee'] = T['sma'] * (1 - T['ecc'])
+        T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
+    
+        # Filter Rows Based on Min and Max_Altitude
+        T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
 
-    # Filter Rows Based on Min and Max_Altitude
-    T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+        T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
 
-    T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
-
-    for species_class in T['species_class'].unique():
-            if species_class in scen_properties.species_cells:
-                if len(scen_properties.species_cells[species_class]) == 1:
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
-                    T_new = pd.concat([T_new, T_obj_class])
-                else:
-                    species_cells = scen_properties.species_cells[species_class]
-                    T_obj_class = T[T['species_class'] == species_class].copy()
-                    T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
-                    T_new = pd.concat([T_new, T_obj_class])
+    else:
+        T['alt'] = T['altitude_km']
+        T['sma'] = T['semi_major_axis_km']
+        T['ecc'] = T['eccentricity']
+        T['species_class'] = T['species_opus_mass_rule']
+        T['mass'] = T['mass_kg']
+        T_new = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+    
+    # Create a list to store processed dataframes
+    processed_dfs = []
+    
+    for species_class in T_new['species_class'].unique():
+        if species_class in scen_properties.species_cells:
+            if len(scen_properties.species_cells[species_class]) == 1:
+                T_obj_class = T_new[T_new['species_class'] == species_class].copy()
+                T_obj_class['species'] = scen_properties.species_cells[species_class][0].sym_name
+                processed_dfs.append(T_obj_class)
+            else:
+                species_cells = scen_properties.species_cells[species_class]
+                T_obj_class = T_new[T_new['species_class'] == species_class].copy()
+                T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
+                processed_dfs.append(T_obj_class)
+    
+    # Concatenate all processed dataframes
+    if processed_dfs:
+        T_new = pd.concat(processed_dfs, ignore_index=True)
 
     print(f"Number of objects for each species in T_new: {T_new['species'].value_counts()}")
 
-    T_new['epoch_start_datetime'] = pd.to_datetime(dict(
-        year=T_new['year_start'].astype(int),
-        month=T_new['month_start'].astype(int),
-        day=T_new['day_start'].astype(int)
-    ), errors='coerce')
+    if 'OPUS' not in file_path:
+        T_new['epoch_start_datetime'] = pd.to_datetime(dict(
+            year=T_new['year_start'].astype(int),
+            month=T_new['month_start'].astype(int),
+            day=T_new['day_start'].astype(int)
+        ), errors='coerce')
 
-    T_new['epoch_end_datetime'] = pd.to_datetime(dict(
-        year=T_new['year_final'].astype(int),
-        month=T_new['month_final'].astype(int),
-        day=T_new['day_final'].astype(int)
-    ), errors='coerce')
+        T_new['epoch_end_datetime'] = pd.to_datetime(dict(
+            year=T_new['year_final'].astype(int),
+            month=T_new['month_final'].astype(int),
+            day=T_new['day_final'].astype(int)
+        ), errors='coerce')
+    else:
+        # Convert decimal launch_year to datetime if it exists
+        if 'launch_year' in T_new.columns:
+            def decimal_year_to_datetime(decimal_year):
+                if pd.isna(decimal_year):
+                    return pd.NaT
+                try:
+                    # Convert decimal year to datetime
+                    year = int(decimal_year)
+                    fraction = decimal_year - year
+                    # Calculate day of year from fraction
+                    days_in_year = 365 if year % 4 != 0 else 366  # Handle leap years
+                    day_of_year = int(fraction * days_in_year) + 1
+                    return pd.to_datetime(f"{year}-{day_of_year:03d}", format="%Y-%j")
+                except:
+                    return pd.NaT
+            
+            T_new['epoch_start_datetime'] = T_new['launch_year'].apply(decimal_year_to_datetime)
+        else:
+            raise ValueError("launch_year column not found in T_new dataframe.")
+    
 
     T_new['alt_bin'] = T_new['alt'].apply(find_alt_bin, args=(scen_properties,))
 
@@ -972,7 +1006,7 @@ def SEP_traffic_model(scen_properties, file_path):
     T_new = T_new[T_new['species'].isin(scen_properties.species_names)]
 
     # Initial population
-    x0 = T_new[T_new['epoch_start_datetime'] < scen_properties.start_date]
+    x0 = T_new[T_new['epoch_start_datetime'] <= scen_properties.start_date]
 
     # x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
@@ -1010,10 +1044,24 @@ def SEP_traffic_model(scen_properties, file_path):
         # === Standard 2D case: DataFrame [alt_bin, species] ===
         df = x0.pivot_table(index='alt_bin', columns='species', aggfunc='size', fill_value=0)
         x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
-        x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
+        # Replace the problematic line with:
+        df_pivot = df.reindex(columns=x0_summary.columns, fill_value=0)
+
+        # Check for and handle duplicate columns
+        if df_pivot.columns.duplicated().any():
+            # Sum duplicate columns
+            df_pivot = df_pivot.groupby(df_pivot.columns, axis=1).sum()
+
+        # Then update
+        x0_summary.update(df_pivot)
 
     if scen_properties.baseline:
         return x0_summary, None
+
+    if scen_properties.opus:
+        if 'OPUS' not in file_path and not scen_properties.baseline:
+            raise ValueError("OPUS data is not supported for non-baseline scenarios.")
 
     # Future Launch Model (updated)
     flm_steps = pd.DataFrame()

@@ -48,7 +48,7 @@ class Model:
                         v_imp=None,
                         fragment_spreading=True, parallel_processing=False, baseline=False, 
                         indicator_variables=None, launch_scenario=None, SEP_mapping=None, 
-                        elliptical=False, eccentricity_bins=None):
+                        elliptical=False, eccentricity_bins=None, control=False, opus=False):
         """
         Initialize the scenario properties for the simulation model.
 
@@ -112,7 +112,9 @@ class Model:
                 launch_scenario=launch_scenario,
                 SEP_mapping=SEP_mapping,
                 elliptical=elliptical,
-                eccentricity_bins=eccentricity_bins
+                eccentricity_bins=eccentricity_bins,
+                control=control,
+                opus=opus
             )
             
         except Exception as e:
@@ -164,9 +166,11 @@ class Model:
                 # Calculate Orbital Lifetimes if "umpy" is in the indicator variables
                 if "umpy" in self.scenario_properties.indicator_variables:
                     self.scenario_properties.species = calculate_orbital_lifetimes(self.scenario_properties)
+                
                 self.scenario_properties.build_indicator_variables()     
 
             # Initial population of species and any launches
+
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             
             return species_list
@@ -189,9 +193,9 @@ class Model:
         except Exception as e:
             raise ValueError(f"An error occurred calculating collisions: {str(e)}")
         
-    def opus_active_loss_setup(self, fringe_species):
+    def opus_collisions_setup(self, fringe_species, maneuvers = False):
         """
-        The OPUS economic model requires an indicator variable to be correctly configured: "actactive_loss_per_species" to be a proxy for probability of collision. 
+        The OPUS economic model requires an indicator variable to be correctly configured: "collisions_per_species_altitude" to be a proxy for probability of collision. 
 
         This function find the correct economic indicator, lambdify the equations for numpy, then add it to its own variable for easy access.
 
@@ -215,7 +219,7 @@ class Model:
             raise NameError("Indicator variables not found. Please ensure that the indicator variables are provided in the configuration JSON. If you are an OPUS user please use 'active_loss_per_species'")
         
         try:
-            self.scenario_properties.configure_active_satellite_loss(fringe_species)
+            self.scenario_properties.configure_active_satellite_loss(fringe_species, maneuvers)
         except Exception as e:
             raise ValueError(f"An error occurred setting up OPUS active loss: {str(e)}")
     
@@ -297,6 +301,25 @@ class Model:
         
         except Exception as e:
             raise RuntimeError(f"Failed to build model: {str(e)}")
+        
+
+    def build_sym_model(self):
+        """
+            Build symbolic the model to use symbolic equations for policy jupyter notebook.
+        """
+
+        if not isinstance(self.scenario_properties, ScenarioProperties):
+            raise ValueError("Invalid scenario properties provided.")
+        try:
+            self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
+            self.scenario_properties.build_sym_model()
+
+            # save the scenario properties to a pickle file
+            with open('test_3_species_sym.pkl', 'wb') as f:            
+                pickle.dump(self.scenario_properties, f)
+        
+        except Exception as e:
+            raise RuntimeError(f"Failed to build model: {str(e)}")
     
 
     def propagate(self, times, population, launch=None, elliptical=False, use_euler=False, step_size=None, opus=True):
@@ -321,8 +344,7 @@ class Model:
             results = self.scenario_properties.propagate(
                 population, times, launch_arg, elliptical, euler=use_euler, step_size=step_size, opus=opus
             )
-
-
+ 
             return results
         except Exception as e:
             raise RuntimeError(f"Failed to integrate: {str(e)}")
@@ -346,6 +368,10 @@ class Model:
     
 
 if __name__ == "__main__":
+
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
     with open(os.path.join('pyssem', 'simulation_configurations', 'iadc.json')) as f:
         simulation_data = json.load(f)
 
@@ -371,52 +397,67 @@ if __name__ == "__main__":
         launch_scenario=scenario_props["launch_scenario"],
         SEP_mapping=simulation_data["SEP_mapping"] if "SEP_mapping" in simulation_data else None,
         elliptical=scenario_props.get("elliptical", None),
-        eccentricity_bins=scenario_props.get("eccentricity_bins", None)
+        eccentricity_bins=scenario_props.get("eccentricity_bins", None),
+        control=scenario_props.get("control", False)
     )
 
     species = simulation_data["species"]
 
     species_list = model.configure_species(species)
 
-    model.run_model()
-
-    data = model.results_to_json()
-
-    # # # # Create the figures directory if it doesn't exist
-    main_path = 'figures'
-    if not os.path.exists(main_path):
-        os.makedirs(main_path)
-
-    # Create a subdirectory for the simulation name
-    os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
-    # Save the results to a JSON file
-    with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
-        json.dump(data, f, indent=4)
-
-    try:
-        plot_names = simulation_data["plots"]
-        mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
-        sep_export = SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
-                      elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
-                      output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-                      )
-        
-        # Create all SEP export plots
-        print("Creating SEP data export plots...")
-        sep_export.create_catastrophic_collision_plots()
-        sep_export.create_launch_analysis_plots()
-        # SEPDataExport(model, simulation_data["simulation_name"], 
-        #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-        #               )
-    except Exception as e:
-        import traceback
-        print(f"Error in SEPDataExport: {e}")
-        print(traceback.format_exc())
-        print("No plots specified in the simulation configuration file.")
-
-    plot_names = simulation_data["plots"]
-    # Only run plots if the list is not empty
-    if plot_names:
-        Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+    if model.scenario_properties.control:
+        ###============================================================
+        ### To use symbolic equations for policy roses jup. notebook
+        ### (note: load the correct .json file)
+        results = model.build_sym_model()
+        print('Symbolic model built successfully')
+        ###============================================================
     else:
-        print("No plots specified - skipping plotting phase.")
+        ###============================================================
+        ### To use numerical equations as per standard pySSEM
+        print('Numerical model')
+        model.run_model()
+
+        # model.opus_collisions_setup(fringe_species="Su")
+        data = model.results_to_json()
+
+        # # # # Create the figures directory if it doesn't exist
+        main_path = 'figures'
+        if not os.path.exists(main_path):
+            os.makedirs(main_path)
+
+        # Create a subdirectory for the simulation name
+        os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
+        # Save the results to a JSON file
+        with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
+            json.dump(data, f, indent=4)
+
+        try:
+            plot_names = simulation_data["plots"]
+            mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+            sep_export = SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+                        elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+                        output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                        )
+        
+            # Create all SEP export plots
+            print("Creating SEP data export plots...")
+            sep_export.create_catastrophic_collision_plots()
+            sep_export.create_launch_analysis_plots()
+                # SEPDataExport(model, simulation_data["simulation_name"], 
+                #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                #               )
+        except Exception as e:
+            import traceback
+            print(f"Error in SEPDataExport: {e}")
+            print(traceback.format_exc())
+            print("No plots specified in the simulation configuration file.")
+
+        plot_names = simulation_data["plots"]
+        # Only run plots if the list is not empty
+        if plot_names:
+            # Plots(model.scenario_properties, plot_names, simulation_data["simulation_name"], main_path)
+            Plots(model, plot_names, simulation_data["simulation_name"], main_path)
+        else:
+            print("No plots specified - skipping plotting phase.")
+        ###============================================================
