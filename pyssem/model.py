@@ -372,7 +372,7 @@ if __name__ == "__main__":
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'iadc.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'iadc_cluster.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -428,6 +428,7 @@ if __name__ == "__main__":
 
         # Create a subdirectory for the simulation name
         os.makedirs(f'{main_path}/{simulation_data["simulation_name"]}', exist_ok=True)
+        
         # Save the results to a JSON file
         with open(f'{main_path}/{simulation_data["simulation_name"]}/results.json', 'w') as f:
             json.dump(data, f, indent=4)

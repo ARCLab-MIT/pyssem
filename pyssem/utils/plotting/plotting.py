@@ -1543,6 +1543,40 @@ class Plots:
             plt.close()
         except Exception as e:
             print(f"Error creating IADC initial population vs altitude plot: {e}")
+
+        # 6) Initial vs final population on one plot (thin line + markers)
+        try:
+            alt_init, pop_init = self._compute_initial_population_by_altitude(bin_width_km=100.0)
+            alt_final, pop_final = self._compute_final_population_by_altitude(bin_width_km=100.0)
+
+            # Ensure we have matching altitude bins; if not, skip overlay
+            if not np.array_equal(alt_init, alt_final):
+                print("Warning: initial and final altitude bins differ; skipping combined plot.")
+            else:
+                plt.figure(figsize=(12, 6))
+                plt.plot(
+                    alt_init, pop_init,
+                    color='tab:blue', linewidth=1.0,
+                    marker='o', markersize=4,
+                    label='2008 population'
+                )
+                plt.plot(
+                    alt_final, pop_final,
+                    color='tab:orange', linewidth=1.0,
+                    marker='o', markersize=4,
+                    label='2208 population'
+                )
+                plt.ylabel('Objects / 100 km bin')
+                plt.xlabel('Altitude (km)')
+                plt.title('Initial vs Final population by altitude')
+                plt.xlim(200, 2000)
+                plt.grid(True, alpha=0.3)
+                plt.legend(loc='best')
+                plt.tight_layout()
+                # plt.savefig(f'{out_dir}/iadc_initial_final_population_altitude.png', dpi=150)
+                plt.close()
+        except Exception as e:
+            print(f"Error creating combined initial/final population plot: {e}")
     
     def _create_3d_collision_plots(self, collision_dir):
         """

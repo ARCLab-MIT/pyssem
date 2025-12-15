@@ -860,27 +860,27 @@ def IADC_traffic_model(scen_properties, file_path):
     
     # Try to find species indices by matching names (flexible approach)
     # Look for common IADC species names
-    idx_S = None
-    idx_NMRO = None
-    idx_Nsat = None
+    idx_S = 2
+    idx_NMRO = 6
+    idx_Nsat = 5
     
-    # Try to find 'S' or active species
-    for i, s_name in enumerate(species_names):
-        if s_name == 'S' or 'active' in s_name.lower() or s_name.startswith('S'):
-            idx_S = i
-            break
+    # # Try to find 'S' or active species
+    # for i, s_name in enumerate(species_names):
+    #     if s_name == 'S' or 'active' in s_name.lower() or s_name.startswith('S'):
+    #         idx_S = i
+    #         break
     
-    # Try to find MRO species (N_32kg or similar)
-    for i, s_name in enumerate(species_names):
-        if '32' in s_name or 'mro' in s_name.lower() or 'N_32kg' in s_name:
-            idx_NMRO = i
-            break
+    # # Try to find MRO species (N_32kg or similar)
+    # for i, s_name in enumerate(species_names):
+    #     if '32' in s_name or 'mro' in s_name.lower() or 'N_32kg' in s_name:
+    #         idx_NMRO = i
+    #         break
     
-    # Try to find derelict/inactive species (N_446kg or similar)
-    for i, s_name in enumerate(species_names):
-        if '446' in s_name or 'derelict' in s_name.lower() or 'inactive' in s_name.lower() or 'N_446kg' in s_name:
-            idx_Nsat = i
-            break
+    # # Try to find derelict/inactive species (N_446kg or similar)
+    # for i, s_name in enumerate(species_names):
+    #     if '446' in s_name or 'derelict' in s_name.lower() or 'inactive' in s_name.lower() or 'N_446kg' in s_name:
+    #         idx_Nsat = i
+    #         break
 
     # Build a "per year" launch matrix in species space
     yearly_matrix = np.zeros((n_shells, len(species_names)), dtype=int)

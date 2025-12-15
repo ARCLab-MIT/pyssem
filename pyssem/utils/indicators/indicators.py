@@ -63,7 +63,7 @@ def make_indicator_struct(obj, name, ind_type, species, eqs=None, catastrophic=F
             raise ValueError(f"No matching species pair has been found for: '{species[0]}', '{species[1]}'.")
 
         # Calculate intrinsic collisions (without gamma)
-        intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))
+        intrinsic_collisions = sp.Matrix(pair.phi).multiply_elementwise(sp.Matrix(pair.species1.sym)).multiply_elementwise(sp.Matrix(pair.species2.sym))*2 
         
         # For collision indicators, we want to show the ACTUAL collision rate (with gamma applied)
         # Note: pair.gammas[0] is a single value (e.g., -1e-10 for maneuverable species)
