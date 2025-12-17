@@ -1431,7 +1431,7 @@ class Plots:
                 plt.plot(yrs, arr, linewidth=1.2)
             # overlay our simulation
             plt.plot(t_sim_years, y_sim, color='k', linewidth=2.0, label='pySSEM (this run)')
-            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'pySSEM'], loc='best')
+            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSEM'], loc='best')
             plt.ylabel('Total population >10 cm')
             plt.xlabel('Time (year)')
             plt.grid(True, alpha=0.3)
@@ -1466,7 +1466,7 @@ class Plots:
                 plt.plot(yrs, arr, linewidth=1.2)
             # overlay our simulation
             plt.plot(t_sim_years, y_sim_collisions, color='k', linewidth=2.0, label='pySSEM (this run)')
-            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'pySSEM'], loc='upper left')
+            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSEM'], loc='upper left')
             plt.ylabel('Cumulative catastrophic collisions')
             plt.xlabel('Time (year)')
             plt.ylim(0, 60)
@@ -1492,7 +1492,7 @@ class Plots:
                 plt.plot(g[:, 0], g[:, 1], linewidth=1.2)
             # overlay our simulation
             plt.plot(alt_sim, collisions_sim, color='k', linewidth=2.0, marker='o', markersize=4, label='pySSEM (this run)')
-            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'pySSEM'], loc='upper left')
+            plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSSEM'], loc='upper left')
             plt.ylabel('Total catastrophic collisions')
             plt.xlabel('Altitude (km)')
             plt.xlim(0, 2000)
@@ -1512,7 +1512,7 @@ class Plots:
             plt.figure(figsize=(12, 6))
             # Plot our simulation
             plt.plot(alt_sim, pop_sim, color='k', linewidth=2.0, label='pySSEM (this run)')
-            plt.legend(['pySSEM (this run)'], loc='best')
+            plt.legend(['MOCAT-SSEM (this run)'], loc='best')
             plt.ylabel('Objects / 100 km bin')
             plt.xlabel('Altitude (km)')
             plt.title('Final population vs altitude')
@@ -1577,6 +1577,147 @@ class Plots:
                 plt.close()
         except Exception as e:
             print(f"Error creating combined initial/final population plot: {e}")
+
+        # 7) Thesis plot: 2x2 subplot layout
+        try:
+            # Set up figure with larger size for A4 page
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+            
+            # Set larger font sizes for all text
+            font_size = 14
+            label_size = 16
+            legend_size = 14
+            tick_size = 12
+            
+            # Top left: Initial vs Final population by altitude
+            alt_init, pop_init = self._compute_initial_population_by_altitude(bin_width_km=100.0)
+            alt_final, pop_final = self._compute_final_population_by_altitude(bin_width_km=100.0)
+            
+            if np.array_equal(alt_init, alt_final):
+                ax1.plot(alt_init, pop_init, color='tab:blue', linewidth=3.0, 
+                        marker='o', markersize=6, label='Initial (2008)')
+                ax1.plot(alt_final, pop_final, color='tab:orange', linewidth=3.0, 
+                        marker='s', markersize=6, label='Final (2208)')
+                ax1.set_xlabel('Altitude (km)', fontsize=label_size, fontweight='bold')
+                ax1.set_ylabel('Objects / 100 km bin', fontsize=label_size, fontweight='bold')
+                ax1.set_xlim(200, 2000)
+                ax1.tick_params(axis='both', which='major', labelsize=tick_size, width=2, length=6)
+                ax1.grid(True, alpha=0.3, linewidth=1.5)
+                leg1 = ax1.legend(fontsize=legend_size, frameon=True, framealpha=0.9, edgecolor='black')
+                if leg1 is not None:
+                    leg1.get_frame().set_linewidth(1.5)
+                for spine in ax1.spines.values():
+                    spine.set_linewidth(2)
+            
+            # Top right: Total population comparison over time
+            dd = np.asarray(data.get('dd', []), dtype=float)
+            dd_groups = self._split_dd_groups(dd)
+            yrs = np.arange(2008.0, 2208.0 + 0.0001, 0.1)
+            dinterp = []
+            for g in dd_groups:
+                x = g[:, 0]
+                y = g[:, 1]
+                y_interp = np.interp(yrs, x, y)
+                dinterp.append(y_interp)
+            
+            t_sim, y_sim = self._compute_total_large_over_time()
+            t_sim_years = start_year + t_sim
+            
+            try:
+                initial_total = self._compute_initial_total_large()
+                if initial_total > 0:
+                    if len(t_sim_years) > 0 and t_sim_years[0] == start_year:
+                        y_sim[0] = initial_total
+                    else:
+                        t_sim_years = np.concatenate([[start_year], t_sim_years])
+                        y_sim = np.concatenate([[initial_total], y_sim])
+            except Exception:
+                pass
+            
+            # Plot IADC agency data with thinner lines
+            for arr in dinterp:
+                ax2.plot(yrs, arr, linewidth=1.5, alpha=0.7)
+            # Plot our simulation with thicker line
+            ax2.plot(t_sim_years, y_sim, color='k', linewidth=3.5, label='pySSEM')
+            ax2.set_xlabel('Time (year)', fontsize=label_size, fontweight='bold')
+            ax2.set_ylabel('Total population >10 cm', fontsize=label_size, fontweight='bold')
+            ax2.set_ylim(10000, 30000)
+            ax2.tick_params(axis='both', which='major', labelsize=tick_size, width=2, length=6)
+            ax2.grid(True, alpha=0.3, linewidth=1.5)
+            leg2 = ax2.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSEM', 'pySSEM'], 
+                              fontsize=legend_size, frameon=True, framealpha=0.9, edgecolor='black')
+            if leg2 is not None:
+                leg2.get_frame().set_linewidth(1.5)
+            for spine in ax2.spines.values():
+                spine.set_linewidth(2)
+            
+            # Bottom left: Cumulative number of collisions over time
+            cc = np.asarray(data.get('cc', []), dtype=float)
+            cc_groups = self._split_decreasing_groups(cc)
+            yrs = np.arange(2008.0, 2208.0 + 0.0001, 0.1)
+            cinterp = []
+            for i, g in enumerate(cc_groups):
+                if g.shape[0] == 0:
+                    continue
+                g_with_first = np.vstack([cc[0, :], g]) if not np.allclose(g[0, :], cc[0, :]) else g
+                x = g_with_first[:, 0]
+                y = g_with_first[:, 1]
+                y_interp = np.interp(yrs, x, y)
+                cinterp.append(y_interp)
+            
+            t_sim, y_sim_collisions = self._compute_cumulative_catastrophic_collisions()
+            t_sim_years = start_year + t_sim
+            
+            # Plot IADC agency data with thinner lines
+            for arr in cinterp:
+                ax3.plot(yrs, arr, linewidth=1.5, alpha=0.7)
+            # Plot our simulation with thicker line
+            ax3.plot(t_sim_years, y_sim_collisions, color='k', linewidth=3.5, label='pySSEM')
+            ax3.set_xlabel('Time (year)', fontsize=label_size, fontweight='bold')
+            ax3.set_ylabel('Cumulative catastrophic collisions', fontsize=label_size, fontweight='bold')
+            ax3.set_ylim(0, 60)
+            ax3.tick_params(axis='both', which='major', labelsize=tick_size, width=2, length=6)
+            ax3.grid(True, alpha=0.3, linewidth=1.5)
+            leg3 = ax3.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSEM', 'pySSEM'], 
+                              fontsize=legend_size, frameon=True, framealpha=0.9, edgecolor='black')
+            if leg3 is not None:
+                leg3.get_frame().set_linewidth(1.5)
+            for spine in ax3.spines.values():
+                spine.set_linewidth(2)
+            
+            # Bottom right: Cumulative collisions by altitude
+            aa = np.asarray(data.get('aa', []), dtype=float)
+            aa_groups = self._split_decreasing_groups(aa)
+            alt_sim, collisions_sim = self._compute_collisions_by_altitude()
+            
+            # Plot IADC agency data with thinner lines
+            for g in aa_groups:
+                if g.shape[0] == 0:
+                    continue
+                ax4.plot(g[:, 0], g[:, 1], linewidth=1.5, alpha=0.7)
+            # Plot our simulation with thicker line
+            ax4.plot(alt_sim, collisions_sim, color='k', linewidth=3.5, marker='o', 
+                    markersize=8, label='pySSEM')
+            ax4.set_xlabel('Altitude (km)', fontsize=label_size, fontweight='bold')
+            ax4.set_ylabel('Total catastrophic collisions', fontsize=label_size, fontweight='bold')
+            ax4.set_xlim(0, 2000)
+            ax4.set_ylim(0, 10)
+            ax4.tick_params(axis='both', which='major', labelsize=tick_size, width=2, length=6)
+            ax4.grid(True, alpha=0.3, linewidth=1.5)
+            leg4 = ax4.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSEM', 'pySSEM'], 
+                              fontsize=legend_size, frameon=True, framealpha=0.9, edgecolor='black')
+            if leg4 is not None:
+                leg4.get_frame().set_linewidth(1.5)
+            for spine in ax4.spines.values():
+                spine.set_linewidth(2)
+            
+            plt.tight_layout()
+            plt.savefig(f'{out_dir}/iadc_study_thesis.png', dpi=300, bbox_inches='tight')
+            plt.close()
+        except Exception as e:
+            import traceback
+            print(f"Error creating IADC thesis plot: {e}")
+            traceback.print_exc()
     
     def _create_3d_collision_plots(self, collision_dir):
         """
