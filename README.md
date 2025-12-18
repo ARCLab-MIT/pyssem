@@ -117,14 +117,16 @@ Each species in the simulation is defined in the `species` section of the JSON c
 
 
 ## Installation
+FOR USERS ONLY:
 
 Ensure that you have a Python version above 3.8 before running the package. 
 
 Download the python package using pip (currently Test Environment) and install the required packages:
 
 ```bash
-pip3 install pyssem
+pip install pyssem
 ```
+If you have any issues with the other package installments. You can manually install the packages using this [requirements](https://github.com/ARCLab-MIT/pyssem/blob/pypi-production/requirements.txt) file:  
 
 To create a Model you need the following JSON (simple 3 species model). The two key elements are the scenario_properties and the species list:
 ```json
@@ -140,7 +142,10 @@ To create a Model you need the following JSON (simple 3 species model). The two 
     "integrator": "BDF",                
     "density_model": "static_exp_dens_func", 
     "LC": 0.1,                             
-    "v_imp": 10.0                          
+    "v_imp": 10.0,
+    "baseline": false,
+    "fragment_spreading": false,
+    "parallel_processing": false                               
   },
   "species": [
       {
@@ -244,6 +249,8 @@ results = model.run_model()
 model.create_plots()
 ```
 
+# Acknowledgements
+Research was sponsored by the Department of the Air Force Artificial Intelligence Accelerator and was accomplished under Cooperative Agreement Number FA8750-19-2-1000. The views and conclusions contained in this document are those of the authors and should not be interpreted as representing the official policies, either expressed or implied, of the Department of the Air Force or the U.S. Government. The U.S. Government is authorized to reproduce and distribute reprints for Government purposes notwithstanding any copyright notation herein.
 
 
 

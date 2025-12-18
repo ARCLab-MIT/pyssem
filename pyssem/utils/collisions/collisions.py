@@ -1,11 +1,16 @@
-from itertools import combinations
-from sympy import symbols, Matrix
 import numpy as np
+from itertools import combinations
+import multiprocessing as mp
+from sympy import symbols, Matrix
+from tqdm import tqdm
+from .NASA_SBM_Evolve import evolve_bins_circular, evolve_bins_elliptical
 from ..simulation.species_pair_class import SpeciesPairClass
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import multiprocessing as mp
+import math
+import random
 
 
 def func_Am(d, ObjClass):
@@ -56,15 +61,27 @@ def func_dv(Am, mode):
     Returns:
         np.ndarray: Calculated delta-v values for each fragment.
     """
-    if mode == 'col':
-       mu = 0.2 * np.log10(Am) + 1.85 # Explosion
-    elif mode == 'exp':
-        mu = 0.9 * np.log10(Am) + 2.9
+    # ensure Am is a list of floats
+    if isinstance(Am, (int, float)):
+        Am_list = [float(Am)]
+    else:
+        Am_list = [float(x) for x in Am]
 
     sigma = 0.4
-    N = mu + sigma * np.random.randn(*np.shape(mu))
-    z = 10 ** N # m/s
-    return z 
+    result = []
+    for am_val in Am_list:
+        if mode == 'col':
+            mu_val = 0.9 * math.log10(am_val) + 2.9
+        elif mode == 'exp':
+            mu_val = 1.85 * math.log10(am_val) + 1.85
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+        # add Gaussian noise
+        N_val = mu_val + sigma * random.gauss(0, 1)
+        result.append(10 ** N_val)
+
+    # return scalar if single input, else list
+    return result[0] if len(result) == 1 else result
 
 def calculate_amsms_for_rocket_body(logd):
     """
@@ -286,7 +303,7 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
         # find difference in orbital velocity for shells
         # dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + R02)) * 1000))) # use equal spacing in dv space for binning to altitude base 
         dDV = np.abs(np.median(np.diff(np.sqrt(MU / (RE + np.arange(200, 2000, 50))) * 1000)))
-        dv_values = func_dv(Am, 'col') / 1000 # km/s
+        dv_values = np.array(func_dv(Am, 'col')) / 1000 # km/s
         u = np.random.rand(len(dv_values)) * 2 - 1
         theta = np.random.rand(len(dv_values)) * 2 * np.pi
 
@@ -305,13 +322,10 @@ def evolve_bins(m1, m2, r1, r2, dv1, dv2, binC, binE, binW, LBdiam, source_sinks
 
     return nums, isCatastrophic, binOut, altNums
 
-def process_species_pair(args):
-    
-    i, (s1, s2), scen_properties, debris_species, binE, LBgiven = args
+def process_species_pair(args):    
+    i, (s1, s2), scen_properties, debris_species, binE_mass, LBgiven = args
     m1, m2 = s1.mass, s2.mass
     r1, r2 = s1.radius, s2.radius
-
-    # print(f"{s1.sym_name} vs. {s2.sym_name}")
 
     # Create a matrix of gammas, rows are the shells, columns are debris species (only 2 as in loop)
     gammas = Matrix(scen_properties.n_shells, 2, lambda i, j: -1)
@@ -348,57 +362,112 @@ def process_species_pair(args):
         RBflag = max(s1.RBflag, s2.RBflag)
 
     # Calculate the number of fragments made for each debris species
-    frags_made = np.zeros((len(scen_properties.v_imp2), len(debris_species)))
-    alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
+    frags_made = np.zeros((len(scen_properties.v_imp_all), len(debris_species)))
+    # alt_nums = np.zeros((scen_properties.n_shells * 2, len(debris_species)))
+    # Alt nums is now a 3D array, the first dimension is the collision shells, the second dimension is the debris species, 
+    # and the third dimension is where the fragments end up. 
+    alt_nums = np.zeros((scen_properties.n_shells, len(debris_species), scen_properties.n_shells))
 
-    # This will tell you the number of fragments in each debris bin
-    for dv_index, dv in enumerate(scen_properties.v_imp2): # This is the case for circular orbits 
+    if scen_properties.elliptical:
+        #########
+        # Elliptical Collisions. Uses full EVolve 4.0. 
+        #########
+        # Requires binning of eccentricity bins too
+        binE_ecc = np.array(np.sort(scen_properties.eccentricity_bins))
+        if not np.all(np.diff(binE_ecc) > 0):
+            raise ValueError("binE_ecc must be strictly increasing and contain no duplicates.")   
+        binE_ecc = np.unique(binE_ecc)
+        n_mass_bins = len(binE_mass) - 1
+        n_sma_bins = len(scen_properties.semi_major_bins_km) - 1
+        n_ecc_bins = len(binE_ecc) - 1
+        # Shape: [source_shell, mass_bin, sma_bin, ecc_bin]
+        fragment_spread_totals = np.zeros(
+            (scen_properties.n_shells, n_mass_bins, n_sma_bins, n_ecc_bins),
+            dtype=np.float64
+        )         
+        for shell in range(scen_properties.n_shells):
+            # First need a representative semi-major axis
+            sma1 = scen_properties.sma_HMid_km[shell]
+            sma2 = sma1
+            e1 = 0.01
+            e2 = 0.02
 
-        dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. This can change later. 
-
-        # If using the collision spreading function             
-        if scen_properties.fragment_spreading:
             try:
-                results = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
+                # Result is summed over: bins=[binE_sma, binE_mass, binE_ecc]
+                result_3d = evolve_bins_elliptical(scen_properties, m1, m2, r1, r2, sma1, sma2, e1, e2, 
+                                            binE_mass, binE_ecc, shell, n_shells=scen_properties.n_shells, RBflag=RBflag)
 
-                if s1.elliptical or s2.elliptical:
-                    if s1.elliptical and s2.elliptical:
-                        # Both are elliptical, take the product of the time_per_shells values
-                        time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
-                    elif s1.elliptical:
-                        time_factor = s1.time_per_shells[dv_index][dv_index]
-                    else:
-                        # Only s2 is elliptical, use its time_per_shells value
-                        time_factor = s2.time_per_shells[dv_index][dv_index]
+                # To get just mass, sum everything on the second axis. 
+                mass_distribution = np.sum(result_3d, axis=(0, 2))
+
+                transpose = np.transpose(result_3d, (1, 0, 2))  # Transpose to [mass_bin, sma_bin, ecc_bin]
+
+                fragment_spread_totals[shell, :, :, :] = transpose
+
+                assert np.sum(mass_distribution) == np.sum(transpose), "Mass distribution should match the total fragments produced."
+            except Exception:
+                print(f"no fragments produced for {m1, m2}")
+                print(Exception)
+                continue
+
+            frags_made[shell, :] = mass_distribution 
+
+            
+    elif scen_properties.fragment_spreading:
+        #########
+        # Fragment spreading
+        #########
+        # Initialize a 3D matrix: [source_shell, debris_species, destination_shell]
+        alt_nums_3d = np.zeros((scen_properties.n_shells, len(debris_species), scen_properties.n_shells))
+        
+        for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits
+            dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
+            try:
+                results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
+                frags_made[dv_index, :] = results[0] # nums is the number of fragments related to the shell of dv_index (same shell)
+                
+                # results[3]
+                velocity_fragment_data = results[3]  # Shape: (n_shells * 2 - 1, debris_species)
+                
+                # Map velocity bins to destination shells
+                # The middle bin represents the collision shell
+                # Bins below middle represent shells below collision shell
+                # Bins above middle represent shells above collision shell
+                
+                n_velocity_bins = velocity_fragment_data.shape[0]
+                middle_bin_idx = n_velocity_bins // 2  # Middle bin index
+                
+                for vel_bin_idx in range(n_velocity_bins):
+                    # Calculate destination shell index
+                    dest_shell_offset = vel_bin_idx - middle_bin_idx
+                    dest_shell = dv_index + dest_shell_offset
                     
-                    frags_made[dv_index, :] = results[0] * time_factor
-                    alt_nums = results[3] * time_factor
-
-                else:
-                    frags_made[dv_index, :] = results[0]
-                    alt_nums = results[3]
+                    # Only include valid shell indices
+                    if 0 <= dest_shell < scen_properties.n_shells:
+                        alt_nums_3d[dv_index, :, dest_shell] += velocity_fragment_data[vel_bin_idx, :]
+                        
             except IndexError as ie:
-                alt_nums  = None
                 continue
             except ValueError as e:
                 continue
-        else:
-            results = evolve_bins(m1, m2, r1, r2, dv1, dv2, [], binE, [], LBgiven, RBflag, source_sinks)
-            # Check if s1 or s2 is elliptical
-            if s1.elliptical or s2.elliptical:
-                if s1.elliptical and s2.elliptical:
-                    # Both are elliptical, take the product of the time_per_shells values
-                    time_factor = s1.time_per_shells[dv_index][dv_index] * s2.time_per_shells[dv_index][dv_index]
-                elif s1.elliptical:
-                    time_factor = s1.time_per_shells[dv_index][dv_index]
-                else:
-                    # Only s2 is elliptical, use its time_per_shells value
-                    time_factor = s2.time_per_shells[dv_index][dv_index]
-                
-                frags_made[dv_index, :] = results[0] * time_factor
-            else:
+    
+    else:
+        #########
+        # Basic SSEM 
+        #########
+        for dv_index, dv in enumerate(scen_properties.v_imp_all): # This is the case for circular orbits 
+            dv1, dv2 = 10, 10 # for now we are going to assume the same velocity. 
+            try:
+                results = evolve_bins_circular(m1, m2, r1, r2, dv1, dv2, [], binE_mass, [], LBgiven, RBflag, source_sinks, scen_properties.fragment_spreading, scen_properties.n_shells, scen_properties.R0_km)
                 frags_made[dv_index, :] = results[0]
+            except IndexError as ie:
+                alt_nums = None
+                continue
+            except ValueError as e:
+                    continue
 
+    
+    ## Create the symbolic matrix - this should be the same for each. 
     for i, species in enumerate(debris_species):
         frags_made_sym = Matrix(frags_made[:, i]) 
 
@@ -414,11 +483,12 @@ def process_species_pair(args):
         else:
             source_sinks.append(species)
 
+    if scen_properties.elliptical:
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragment_spread_totals=fragment_spread_totals, model_type='elliptical')
     if scen_properties.fragment_spreading:
-        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, alt_nums)
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, fragsMadeDV_3d=alt_nums_3d, model_type='fragment_spreading')
     else:
-        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties)
-        
+        return SpeciesPairClass(s1, s2, gammas, source_sinks, scen_properties, model_type='baseline')
 
 def create_collision_pairs(scen_properties):
     """
@@ -434,7 +504,6 @@ def create_collision_pairs(scen_properties):
     """
     
     # Get the binomial coefficient of the species
-    # This returns all possible combinations of the species
     species =  [species for species_group in scen_properties.species.values() for species in species_group]
     species_cross_pairs = list(combinations(species, 2))
     species_self_pairs = [(s, s) for s in species]
@@ -442,67 +511,36 @@ def create_collision_pairs(scen_properties):
     # Combine the cross and self pairs
     species_pairs = species_cross_pairs + species_self_pairs
     species_pairs_classes = [] 
-    # n_f = symbols('n_f:{0}'.format(scen_properties.n_shells))
 
     # Debris species - remember, we don't want PMD linked species. Just raw debris.
     # debris_species = [species for species in scen_properties.species['debris'] if not species.pmd_linked_species]
     debris_species = [species for species in scen_properties.species['debris']]
 
-    # Calculate the Mass bin centres, edges and widths
-    binC = np.zeros(len(debris_species))
-    binE = np.zeros(2 * len(debris_species))
-    binW = np.zeros(len(debris_species))
+    # Calculate the Mass bin edges
+    binE_mass = np.zeros(2 * len(debris_species))
     LBgiven = scen_properties.LC
-
     for index, debris in enumerate(debris_species):
-        binC[index] = debris.mass
-        binE[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
-        binW[index] = debris.mass_ub - debris.mass_lb
+        binE_mass[2 * index: 2 * index + 2] = [debris.mass_lb, debris.mass_ub]
+    binE_mass = np.unique(binE_mass)
 
-    binE = np.unique(binE)
+    args = [(i, species_pair, scen_properties, debris_species, binE_mass, LBgiven) for i, species_pair in enumerate(species_pairs)]
 
-    args = [(i, species_pair, scen_properties, debris_species, binE, LBgiven) for i, species_pair in enumerate(species_pairs)]
-    
-    # Use multiprocessing Pool for parallel processing
-    if scen_properties.parallel_processing:
-        with mp.Pool(processes=mp.cpu_count()) as pool:
-            results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+    if scen_properties.elliptical:
+        if scen_properties.parallel_processing:
+            with mp.Pool(processes=mp.cpu_count()) as pool:
+                results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+        else:
+            results = [process_species_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
+
     else:
-        results = [process_species_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
+        if scen_properties.parallel_processing:
+            with mp.Pool(processes=mp.cpu_count()) as pool:
+                results = list(tqdm(pool.imap(process_species_pair, args), total=len(species_pairs), desc="Creating collision pairs"))
+        else:
+            results = [process_species_pair(arg) for arg in tqdm(args, desc="Creating collision pairs")]
 
     # Collect results
     species_pairs_classes.extend(results)
 
     return species_pairs_classes
 
-
-if __name__ == "__main__":
-    # Testing evolve_bins
-    m1 = 1000
-    m2 = 250
-    r1 = 2
-    r2 = 0.7
-    dv = 10
-    binE = np.array([1.4137200e-03, 2.8420686e-01, 1.3028350e+02, 3.6650000e+02,
-       6.1150000e+02, 1.0000000e+05])
-    R02 = np.arange(200, 2050, 50)
-    nums, is_catastrophic, bin_out, alt_nums = evolve_bins(m1, m2, r1, r2, dv, [], binE, [], 0.1, RBflag=0, fragment_spreading=True, n_shells=10, R02=R02)
-
-    range_values = range(-(len(alt_nums)//2), len(alt_nums)//2)
-
-    # Check lengths of range_values and alt_nums
-    print("Length of range_values:", len(range_values))
-    print("Shape of alt_nums:", alt_nums.shape)
-
-    # Plot the stacked bar chart
-    plt.figure()
-    for i in range(alt_nums.shape[1]):
-        if i == 0:
-            plt.bar(range_values, alt_nums[:, i], label=f'{i}', alpha=0.6)
-        else:
-            plt.bar(range_values, alt_nums[:, i], bottom=np.sum(alt_nums[:, :i], axis=1), label=f'{i}', alpha=0.6)
-
-    plt.legend(title='Bin Edges')
-    plt.xlabel('Shell offset')
-    plt.ylabel('Count')
-    plt.show()

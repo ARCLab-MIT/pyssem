@@ -5,7 +5,7 @@ scipy>=1.10
 sympy>=1.11
 tqdm>=4.65
 gdown>=4.0.0
-requests
+requests>=2.0
 bs4
 matplotlib
 loky

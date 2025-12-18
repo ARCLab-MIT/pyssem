@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pkl
 
 # C extensions
 *.so
@@ -165,3 +166,9 @@ pyssem/utils/launch/data/
 
 # Figures folder
 /figures/
+/grid_search/
+/grid_search_new/
+/species_kmeans_results
+/test_results/
+/indigo-thesis/
+/indigo-thesis/*
