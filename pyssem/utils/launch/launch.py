@@ -699,113 +699,6 @@ def IADC_traffic_model(scen_properties, file_path):
         x0_summary = pd.DataFrame(index=range(scen_properties.n_shells), columns=scen_properties.species_names).fillna(0)
         x0_summary.update(df.reindex(columns=x0_summary.columns, fill_value=0))
 
-    # # ---------- Future Launch Model (FLM) - OLD CSV-BASED APPROACH (COMMENTED OUT) ----------
-    # # Future Launch Model (updated)
-    # flm_steps = pd.DataFrame()
-
-    # time_increment_per_step = scen_properties.simulation_duration / scen_properties.steps
-
-    # time_steps = [
-    #     scen_properties.start_date + timedelta(days=365.25 * time_increment_per_step * i) 
-    #     for i in range(scen_properties.steps + 1)
-    # ]    
-
-    # # Distribute the Yearly Launches, USED FOR STEP FUNCTION, but also works w/ current and old interp
-    # start_year = scen_properties.start_date.year
-    # end_year = start_year + scen_properties.simulation_duration
-
-    # for year in tqdm(range(start_year, end_year), desc="Processing Launch Years"):
-        
-    #     launches_this_year = T_new[T_new['launch_year'] == year]
-        
-    #     if launches_this_year.empty:
-    #         continue
-
-    #     # Group by shell and species to get total counts for the entire year
-    #     # yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-    #     if scen_properties.elliptical:
-    #         yearly_counts = launches_this_year.groupby(['alt_bin', 'ecc_bin', 'species']).size()
-    #         yearly_counts = yearly_counts.unstack(fill_value=0)
-
-    #         all_alt_ecc_bins = pd.MultiIndex.from_product(
-    #             [range(scen_properties.n_shells), range(len(scen_properties.eccentricity_bins) - 1)],
-    #             names=['alt_bin', 'ecc_bin']
-    #         )
-    #         yearly_counts = yearly_counts.reindex(all_alt_ecc_bins, fill_value=0)
-
-    #     else:
-    #         yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
-    #         yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
-
-    #     # --- START OF THE FIX ---
-    #     # Ensure the yearly_counts DataFrame has a row for every possible shell.
-    #     # This is the step that was missing from my previous version.
-    #     # --- END OF THE FIX ---
-
-    #     # Find which simulation time steps fall within this calendar year
-    #     year_start_date = datetime(year, 1, 1)
-    #     year_end_date = datetime(year + 1, 1, 1)
-        
-    #     relevant_steps_mask = (np.array(time_steps[:-1]) >= year_start_date) & (np.array(time_steps[:-1]) < year_end_date)
-    #     relevant_start_times = np.array(time_steps[:-1])[relevant_steps_mask]
-
-    #     if len(relevant_start_times) == 0:
-    #         continue
-
-    #     # Use only the first time step in the year (mimicking MC behavior)
-    #     step_counts = yearly_counts.copy()
-    #     step_counts = step_counts.reset_index()
-    #     step_counts['epoch_start_date'] = relevant_start_times[0]
-
-    #     flm_steps = pd.concat([flm_steps, step_counts], ignore_index=True)
-
-    # # Final re-ordering and cleanup
-    # # Ensure all species columns from the scenario are present, even if they had no launches
-    # all_species_columns = scen_properties.species_names
-    # for col in all_species_columns:
-    #     if col not in flm_steps.columns:
-    #         flm_steps[col] = 0
-
-    # # Ensure consistent column order
-    # if scen_properties.elliptical:
-    #     final_cols = ['epoch_start_date', 'alt_bin', 'ecc_bin'] + all_species_columns
-    # else:
-    #     final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
-
-    # flm_steps = flm_steps[final_cols]
-
-    # return x0_summary, flm_steps
-
-    # ---------- Future Launch Model (FLM) - NEW FIXED TABLE APPROACH FROM IADC_traffic_model_new ----------
-    # Build flm_steps from fixed IADC tables rather than from CSV
-    # This uses the same launch function logic as IADC_traffic_model_new
-    
-    # Fixed launch table: per-year launches per altitude bin
-    # Altitude bins match 200–300, 300–400, ..., 1900–2000
-    # Columns: [Active, Rocket_Bodies, MROs]
-    # OLD 18-SHELL VERSION (COMMENTED OUT):
-    # flm_raw = np.array([
-    #     [10, 3, 1],   # 200–300
-    #     [8,  2, 2],   # 300–400
-    #     [36, 17, 10], # 400–500
-    #     [38, 24, 9],  # 500–600
-    #     [99, 19, 21], # 600–700
-    #     [39, 11, 9],  # 700–800
-    #     [23, 9, 7],   # 800–900
-    #     [21, 12, 5],  # 900–1000
-    #     [3,  3, 9],   # 1000–1100
-    #     [3,  2, 6],   # 1100–1200
-    #     [0,  1, 0],   # 1200–1300
-    #     [2,  1, 0],   # 1300–1400
-    #     [18, 5, 1],   # 1400–1500
-    #     [0,  0, 0],   # 1500–1600
-    #     [1,  1, 0],   # 1600–1700
-    #     [0,  0, 0],   # 1700–1800
-    #     [0,  0, 0],   # 1800–1900
-    #     [0,  0, 0],   # 1900–2000
-    # ], dtype=int)
-    # Total: Active=301, Rocket_Bodies=114, MROs=80
-
     # NEW 36-SHELL VERSION: Each original shell split into 2 shells, maintaining same totals
     # Altitude bins: 200–250, 250–300, 300–350, 350–400, ..., 1950–2000
     flm_raw = np.array([
@@ -864,24 +757,6 @@ def IADC_traffic_model(scen_properties, file_path):
     idx_NMRO = 6
     idx_Nsat = 5
     
-    # # Try to find 'S' or active species
-    # for i, s_name in enumerate(species_names):
-    #     if s_name == 'S' or 'active' in s_name.lower() or s_name.startswith('S'):
-    #         idx_S = i
-    #         break
-    
-    # # Try to find MRO species (N_32kg or similar)
-    # for i, s_name in enumerate(species_names):
-    #     if '32' in s_name or 'mro' in s_name.lower() or 'N_32kg' in s_name:
-    #         idx_NMRO = i
-    #         break
-    
-    # # Try to find derelict/inactive species (N_446kg or similar)
-    # for i, s_name in enumerate(species_names):
-    #     if '446' in s_name or 'derelict' in s_name.lower() or 'inactive' in s_name.lower() or 'N_446kg' in s_name:
-    #         idx_Nsat = i
-    #         break
-
     # Build a "per year" launch matrix in species space
     yearly_matrix = np.zeros((n_shells, len(species_names)), dtype=int)
     

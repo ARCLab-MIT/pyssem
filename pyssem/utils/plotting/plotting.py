@@ -4,6 +4,11 @@ import numpy as np
 import pandas as pd
 import json
 import imageio
+try:
+    from scipy.interpolate import interp1d
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
 from ..simulation.scen_properties import ScenarioProperties
 
 class Plots:
@@ -1068,6 +1073,9 @@ class Plots:
         """
         Compute cumulative catastrophic collisions over time from indicator variables.
         Returns (t, cumulative_collisions).
+        
+        NOTE: This should match the same indicators used in _compute_collisions_by_altitude()
+        to ensure consistency between cumulative and altitude plots.
         """
         if not (hasattr(self.scenario_properties, 'indicator_results') and 
                 self.scenario_properties.indicator_results is not None):
@@ -1076,7 +1084,7 @@ class Plots:
         
         indicators = self.scenario_properties.indicator_results.get('indicators', {})
         
-        # Filter for catastrophic collision indicators
+        # Filter for catastrophic collision indicators (ORIGINAL FILTER - restored)
         catastrophic_indicators = {}
         for indicator_name, time_data in indicators.items():
             if 'catastrophic' in indicator_name.lower() or 'collision' in indicator_name.lower():
@@ -1087,16 +1095,26 @@ class Plots:
         
         # Calculate total catastrophic collisions over time
         total_collisions = np.zeros(len(self.output.t))
+        indicator_totals = {}  # Track totals per indicator for debugging
         
         for indicator_name, time_data in catastrophic_indicators.items():
+            indicator_sum = 0.0
             times = np.array(list(time_data.keys()))
             for time in times:
                 time_idx = np.argmin(np.abs(self.output.t - time))
-                data_matrix = time_data[time]
-                if hasattr(data_matrix, 'shape') and len(data_matrix.shape) > 1:
-                    total_collisions[time_idx] += np.sum(data_matrix)
-                else:
-                    total_collisions[time_idx] += np.sum(data_matrix)
+                data_matrix = np.asarray(time_data[time])
+                collision_count = np.sum(data_matrix)
+                total_collisions[time_idx] += collision_count
+                indicator_sum += collision_count
+            indicator_totals[indicator_name] = indicator_sum
+        
+        # Print diagnostic information
+        final_total = total_collisions[-1] if len(total_collisions) > 0 else 0.0
+        print(f"\n[_compute_cumulative_catastrophic_collisions] Diagnostic:")
+        print(f"  Number of indicators used: {len(catastrophic_indicators)}")
+        print(f"  Final cumulative collisions: {final_total:.4f}")
+        for name, total in indicator_totals.items():
+            print(f"    {name}: {total:.4f}")
         
         return np.asarray(self.output.t, dtype=float), np.asarray(total_collisions, dtype=float)
 
@@ -1115,16 +1133,42 @@ class Plots:
 
         indicators = self.scenario_properties.indicator_results.get('indicators', {})
 
-        # 2) Select catastrophic collision indicators with altitude structure
-        altitude_indicators = {}
+        # 2) Select catastrophic collision indicators - USE SAME FILTER AS CUMULATIVE PLOT
+        # Use the same filter as cumulative plot: 'catastrophic' in name OR 'collision' in name
+        all_catastrophic_indicators = {}
         for indicator_name, time_data in indicators.items():
+            if 'catastrophic' in indicator_name.lower() or 'collision' in indicator_name.lower():
+                all_catastrophic_indicators[indicator_name] = time_data
+        
+        # Then filter for those with altitude structure (needed for altitude plot)
+        altitude_indicators = {}
+        non_altitude_indicators = []
+        for indicator_name, time_data in all_catastrophic_indicators.items():
             lname = indicator_name.lower()
-            if ('catastrophic' in lname and
-                ('altitude' in lname or 'per_altitude' in lname)):
+            if ('altitude' in lname or 'per_altitude' in lname):
                 altitude_indicators[indicator_name] = time_data
+            else:
+                non_altitude_indicators.append(indicator_name)
 
         if not altitude_indicators:
+            print(f"\n[_compute_collisions_by_altitude] WARNING: No altitude-structured indicators found!")
+            print(f"  Found {len(all_catastrophic_indicators)} catastrophic/collision indicators total")
+            print(f"  Non-altitude indicators: {non_altitude_indicators}")
             return np.array([]), np.array([])
+        
+        # Print diagnostic information about which indicators are used
+        print(f"\n[_compute_collisions_by_altitude] Diagnostic:")
+        print(f"  Total catastrophic/collision indicators: {len(all_catastrophic_indicators)}")
+        print(f"  Altitude-structured indicators: {len(altitude_indicators)}")
+        print(f"  Non-altitude indicators (excluded from altitude plot): {len(non_altitude_indicators)}")
+        for name in altitude_indicators.keys():
+            print(f"    {name} (used)")
+        if non_altitude_indicators:
+            print(f"  Non-altitude indicators (not used in altitude plot):")
+            for name in non_altitude_indicators[:5]:  # Show first 5
+                print(f"    {name}")
+            if len(non_altitude_indicators) > 5:
+                print(f"    ... and {len(non_altitude_indicators) - 5} more")
 
         # 3) Altitude bin centres from scenario_properties (preferred)
         if hasattr(self.scenario_properties, 'HMid'):
@@ -1186,6 +1230,25 @@ class Plots:
 
             # Accumulate from this indicator into the total
             cumulative_collisions += altitude_collisions
+            print(f"    {indicator_name}: sum={np.sum(altitude_collisions):.4f}, integral={np.trapz(altitude_collisions, altitude_centers):.4f}")
+
+        # Filter to keep only altitudes between 200-2000 km (keep pySSEM original data points)
+        if len(altitude_centers) == 0:
+            return np.array([]), np.array([])
+        
+        # Filter to 200-2000 km range
+        mask_200_2000 = (altitude_centers >= 200.0) & (altitude_centers <= 2000.0)
+        altitude_centers = altitude_centers[mask_200_2000]
+        cumulative_collisions = cumulative_collisions[mask_200_2000]
+        
+        # Print diagnostic information
+        total_filtered = np.trapz(cumulative_collisions, altitude_centers)
+        sum_filtered = np.sum(cumulative_collisions)
+        print(f"\n[IADC Altitude Collisions] pySSEM original data points (200-2000 km):")
+        print(f"  Number of altitude points: {len(altitude_centers)}")
+        print(f"  Altitude range: {np.min(altitude_centers):.1f} - {np.max(altitude_centers):.1f} km")
+        print(f"  Total collisions (integral): {total_filtered:.4f}")
+        print(f"  Sum of values: {sum_filtered:.4f}")
 
         return altitude_centers, cumulative_collisions
 
@@ -1460,6 +1523,10 @@ class Plots:
             # Get our simulation's cumulative catastrophic collisions
             t_sim, y_sim_collisions = self._compute_cumulative_catastrophic_collisions()
             t_sim_years = start_year + t_sim
+            
+            # Print final cumulative total for comparison
+            final_cumulative = y_sim_collisions[-1] if len(y_sim_collisions) > 0 else 0.0
+            print(f"\n[Cumulative Collisions Plot] Final cumulative collisions: {final_cumulative:.4f}")
 
             plt.figure(figsize=(12, 6))
             for arr in cinterp:
@@ -1493,7 +1560,7 @@ class Plots:
             # overlay our simulation
             plt.plot(alt_sim, collisions_sim, color='k', linewidth=2.0, marker='o', markersize=4, label='pySSEM (this run)')
             plt.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSSEM'], loc='upper left')
-            plt.ylabel('Total catastrophic collisions')
+            plt.ylabel('Catastrophic collisions per altitude bin')
             plt.xlabel('Altitude (km)')
             plt.xlim(0, 2000)
             plt.ylim(0, 10)
@@ -1501,6 +1568,51 @@ class Plots:
             plt.tight_layout()
             plt.savefig(f'{out_dir}/iadc_collisions_altitude.png', dpi=150)
             plt.close()
+            
+            # Print total collisions for comparison
+            if len(alt_sim) > 0 and len(collisions_sim) > 0:
+                total_pyssem = np.trapz(collisions_sim, alt_sim)
+                sum_pyssem = np.sum(collisions_sim)
+                print(f"\n[IADC Altitude Plot Totals]")
+                print(f"  pySSEM total collisions (integral): {total_pyssem:.4f}")
+                print(f"  pySSEM sum of values: {sum_pyssem:.4f}")
+                
+                # Cross-check: Compare with cumulative collisions at final time
+                # The altitude plot shows collisions at final time, so it should match
+                # the final cumulative value (if using same indicators)
+                try:
+                    t_cum, y_cum = self._compute_cumulative_catastrophic_collisions()
+                    if len(y_cum) > 0:
+                        final_cumulative = y_cum[-1]
+                        print(f"  Final cumulative collisions (from time plot): {final_cumulative:.4f}")
+                        print(f"  Difference (altitude integral - cumulative final): {total_pyssem - final_cumulative:.4f}")
+                        if abs(total_pyssem - final_cumulative) > 0.1:
+                            print(f"  WARNING: Significant difference! Altitude and cumulative plots may use different indicators.")
+                except Exception as e:
+                    print(f"  Could not cross-check with cumulative: {e}")
+                
+                # Calculate totals for JAXA (Study 4)
+                jaxa_group = None
+                for g in aa_groups:
+                    if g.shape[0] > 0:
+                        # Check if this might be JAXA by checking altitude range
+                        alt_range = np.max(g[:, 0]) - np.min(g[:, 0])
+                        if 449 <= np.min(g[:, 0]) <= 450 and len(g) == 23:
+                            jaxa_group = g
+                            break
+                
+                if jaxa_group is None and len(aa_groups) >= 4:
+                    # JAXA is Study 4 (index 3)
+                    jaxa_group = aa_groups[3] if len(aa_groups) > 3 else None
+                
+                if jaxa_group is not None and jaxa_group.shape[0] > 0:
+                    jaxa_alts = jaxa_group[:, 0]
+                    jaxa_colls = jaxa_group[:, 1]
+                    total_jaxa = np.trapz(jaxa_colls, jaxa_alts)
+                    sum_jaxa = np.sum(jaxa_colls)
+                    print(f"  JAXA total collisions (integral): {total_jaxa:.4f}")
+                    print(f"  JAXA sum of values: {sum_jaxa:.4f}")
+                    print(f"  Ratio (pySSEM/JAXA): {total_pyssem/total_jaxa:.4f}" if total_jaxa > 0 else "  Ratio: N/A")
         except Exception as e:
             print(f"Error creating IADC collision altitude comparison: {e}")
 
@@ -1641,7 +1753,7 @@ class Plots:
             ax2.plot(t_sim_years, y_sim, color='k', linewidth=3.5, label='pySSEM')
             ax2.set_xlabel('Time (year)', fontsize=label_size, fontweight='bold')
             ax2.set_ylabel('Total population >10 cm', fontsize=label_size, fontweight='bold')
-            ax2.set_ylim(10000, 30000)
+            ax2.set_ylim(0, 30000)
             ax2.tick_params(axis='both', which='major', labelsize=tick_size, width=2, length=6)
             ax2.grid(True, alpha=0.3, linewidth=1.5)
             leg2 = ax2.legend(['ASI', 'ESA', 'ISRO', 'JAXA', 'NASA', 'UKSA', 'MOCAT-SSEM', 'pySSEM'], 
