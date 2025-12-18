@@ -1,12 +1,11 @@
 import json
 from sympy import Matrix
-from tqdm import tqdm    
 import numpy as np
 import copy
-import concurrent.futures
 from ..pmd.pmd import *
 from ..drag.drag import *
 from ..launch.launch import *
+from ..control.control import *
 from ..elliptical.elliptical import compute_time_fractions_for_orbit, vis_viva
 from ..simulation.scen_properties import ScenarioProperties
 
@@ -62,8 +61,14 @@ class SpeciesProperties:
         self.launch_func = None
         self.pmd_func = None
         self.drag_func = None
+        self.control_func = None
 
         self.trackable_radius_threshold = 0.05  # m
+
+        # Policy
+        self.country = None # U.S., China, Europe, etc.
+        self.mission_type = None # Civil, defense, commercial.
+        self.mission_objective = None # Communication, weather, remote sensing, navigation, military, etc.
 
         # Elliptical Orbits
         self.elliptical = False
@@ -107,6 +112,9 @@ class SpeciesProperties:
                 self.beta = None
             if self.beta is None:
                 print(f"Warning: No ballistic coefficient provided for species {self.sym_name}.")
+
+
+            self.orbital_lifetimes = None
 
             # Handle Eccentricity Bins if provided
             if 'eccentricity_bins' in properties_json:
@@ -186,7 +194,9 @@ class Species:
             species_props_copy['sym_name'] = f"{species_properties['sym_name']}_{species_properties['mass'][i]}kg"
 
             try:
-                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null":
+                if species_props_copy.get("launch_func", "launch_func_null") != "launch_func_null" and \
+                    species_props_copy.get("launch_func") != "launch_lambda_sym" and \
+                    species_props_copy.get("launch_func") != "launch_lambda_sym_null":
                     # Change the lambda_constant and launch_altitude to the value of the index
                     lambda_const_temp = species_props_copy.get('lambda_constant', 0)
                     launch_alt_temp = species_props_copy.get('launch_altitude', 0)
@@ -206,6 +216,10 @@ class Species:
                         species_props_copy[field] = field_value[i]
                     elif len(field_value) == 1:
                         species_props_copy[field] = field_value[0]
+                    elif field == "deltat" and species_props_copy.get("pmd_func") == "pmd_func_sat_sym" or species_props_copy.get("pmd_func") == "pmd_func_derelict_sym":
+                        continue
+                    elif field == "Pm" and species_props_copy.get("pmd_func") == "pmd_func_sat_sym" or species_props_copy.get("pmd_func") == "pmd_func_derelict_sym":
+                        continue
                     else:
                         raise ValueError(f"The field '{field}' list length does not match the number of species and is not a single-element list.")
                 else:
@@ -233,18 +247,22 @@ class Species:
         return species_list
     
     def set_mass_bounds(self, species_list):
-        species_list.sort(key=lambda x: x.mass) # sorts by mass
+        species_list.sort(key=lambda x: x.mass)  # sorts by mass
 
-        for i in range(len(species_list)):
-            if i == 0:
-                species_list[i].mass_lb = 0
-                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
-            elif i == len(species_list) - 1:
-                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-            else:
-                species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
-                species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
-        
+        if len(species_list) == 1:
+            # In the case it is only one debris object, mass lb and ub are already set as maximum and minimum. 
+            return species_list
+        else:
+            for i in range(len(species_list)):
+                if i == 0:
+                    species_list[i].mass_lb = 0
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                elif i == len(species_list) - 1:
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+                else:
+                    species_list[i].mass_ub = 0.5 * (species_list[i].mass + species_list[i + 1].mass)
+                    species_list[i].mass_lb = 0.5 * (species_list[i - 1].mass + species_list[i].mass)
+
         return species_list
 
   
@@ -282,6 +300,11 @@ class Species:
                 # Don't create a debris species
                 continue
 
+            debris_name = f"N_{properties.mass}kg"
+            # check if the species is already in the debris list
+            if any(deb_spec.sym_name == debris_name for deb_spec in self.species['debris']):
+                continue
+
             # Change the relevant properties to make it a debris
             debris_species_template = copy.deepcopy(self.species['debris'][0])  
             debris_species_template.mass = properties.mass
@@ -291,8 +314,11 @@ class Species:
             debris_species_template.beta = properties.beta
             debris_species_template.radius = properties.radius
             debris_species_template.trackable = properties.trackable  # large debris is trackable
-            debris_species_template.sym_name = f"N_{properties.mass}kg"
+            debris_species_template.sym_name = debris_name
             debris_species_template.bstar = properties.bstar
+            debris_species_template.country = properties.country
+            debris_species_template.mission_type = properties.mission_type
+            debris_species_template.mission_objective = properties.mission_objective
 
             self.species['debris'].append(debris_species_template)
             pmd_debris_names.append(debris_species_template.sym_name)
@@ -315,6 +341,10 @@ class Species:
                     species.pmd_func = pmd_func_derelict
                 elif species.pmd_func == "pmd_func_sat":
                     species.pmd_func = pmd_func_sat
+                elif species.pmd_func == "pmd_func_sat_sym":
+                    species.pmd_func = pmd_func_sat_sym
+                elif species.pmd_func == "pmd_func_derelict_sym":
+                    species.pmd_func = pmd_func_derelict_sym
                 else:
                     species.pmd_func = pmd_func_none
 
@@ -327,7 +357,19 @@ class Species:
                 #     species.launch_func = launch_func_constant
                 # else:
                 #     species.launch_func = launch_func_lambda_fun   
-                species.launch_func = launch_func_lambda_fun 
+                if species.launch_func == 'launch_lambda_sym':
+                    species.launch_func = launch_lambda_sym
+                elif species.launch_func == 'launch_lambda_sym_null':
+                    species.launch_func = launch_lambda_sym_null
+                else:
+                    species.launch_func = launch_func_lambda_fun 
+
+                if species.control_func == 'control_launch_sym':
+                    species.control_func = control_launch_sym
+                elif species.control_func == 'control_adr_sym':
+                    species.control_func = control_adr_sym
+                else:
+                    species.control_func = control_none  
 
         return
 
@@ -359,8 +401,6 @@ class Species:
             active_species (list): List of active species objects.
             debris_species (list): List of debris species objects.
         # """
-        # active_species = self.species['active']
-        # debris_species = self.species['debris']
 
         # Collect active species and their names
         linked_spec_names = [item.sym_name for item in active_species]
@@ -375,28 +415,34 @@ class Species:
             for deb_spec in debris_species:
                 if not found_mass_match_debris:
                     if spec_mass == deb_spec.mass:
-                        if active_spec.elliptical:
-                            # find the closest eccentricity bin to current eccentricity
-                            ecc_bins = deb_spec.eccentricity_bins
-                            ecc_diffs = [abs(ecc - active_spec.eccentricity) for ecc in ecc_bins]
-                            closest_ecc_idx = ecc_diffs.index(min(ecc_diffs))
+                        if active_spec.pmd_func == pmd_func_opus:
+                            deb_spec.pmd_func = pmd_func_opus                        
+                        else:
+                            if active_spec.elliptical:
+                                # find the closest eccentricity bin to current eccentricity
+                                ecc_bins = deb_spec.eccentricity_bins
+                                ecc_diffs = [abs(ecc - active_spec.eccentricity) for ecc in ecc_bins]
+                                closest_ecc_idx = ecc_diffs.index(min(ecc_diffs))
 
-                            # if the current debris eccentricity is not the same, continue the loop
-                            if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
-                                continue
+                                # if the current debris eccentricity is not the same, continue the loop
+                                if deb_spec.eccentricity != ecc_bins[closest_ecc_idx]:
+                                    continue
+                                else:
+                                    deb_spec.pmd_func = pmd_func_derelict
+                                    deb_spec.pmd_linked_species = []                
+                                    deb_spec.pmd_linked_species.append(active_spec)
+                                    print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
+                                    found_mass_match_debris = True
                             else:
-                                deb_spec.pmd_func = pmd_func_derelict
-                                deb_spec.pmd_linked_species = []                
+                                # If the active species is not elliptical, set the debris species with the smallest eccentricity value
+                                if active_spec.Pm == []: # if no pm, then it will be replaced by sym
+                                    deb_spec.pmd_func = pmd_func_derelict_sym
+                                else:
+                                    deb_spec.pmd_func = pmd_func_derelict
+                                # deb_spec.pmd_linked_species = []                
                                 deb_spec.pmd_linked_species.append(active_spec)
                                 print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
                                 found_mass_match_debris = True
-                        else:
-                            # If the active species is not elliptical, set the debris species with the smallest eccentricity value
-                            deb_spec.pmd_func = pmd_func_derelict
-                            deb_spec.pmd_linked_species = []                
-                            deb_spec.pmd_linked_species.append(active_spec)
-                            print(f"Matched species {active_spec.sym_name} to debris species {deb_spec.sym_name}.")
-                            found_mass_match_debris = True
 
             if not found_mass_match_debris:
                 print(f"No matching mass debris species found for species {active_spec.sym_name} with mass {spec_mass}.")
@@ -409,9 +455,15 @@ class Species:
 
         # Find the species in self.species and update the pmd_linked_species property
         for deb_spec in debris_species:
-            for spec in self.species['active']:
-                if spec.sym_name == deb_spec.sym_name:
-                    spec.pmd_linked_species = deb_spec.pmd_linked_species
+            # for spec in self.species['active']:
+            #     if spec.sym_name == deb_spec.sym_name:
+            #         spec.pmd_linked_species = deb_spec.pmd_linked_species
+            for linked_species in deb_spec.pmd_linked_species:
+                for active_species in self.species['active']:
+                    if linked_species.sym_name == active_species.sym_name:
+                        active_species.pmd_linked_species = deb_spec
+
+        return
 
     def calculate_time_and_velocity_in_shell(self, radii, velocities, R0_km):
         """

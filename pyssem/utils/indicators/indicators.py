@@ -181,18 +181,6 @@ def make_intrinsic_cap_indicator(scen_properties, sep_dist_method, sep_angle=0.2
     unconsumed_intrinsic_capacity = N_sat - slotted_sats_eqs
     ind_struct = Indicator("unconsumed_intrinsic_capacity", "manual", None, unconsumed_intrinsic_capacity)
 
-    if graph:
-        # create a plot and save in the figures folder at root
-        plt.figure()
-        plt.scatter(scen_properties.R0[1:], N_sat)
-        plt.title("Intrinsic Capacity per Altitude Bin")
-        plt.xlabel("Altitude of Bin Ceiling [km]")
-        plt.ylabel("Intrinsic Capacity [Satellites]")
-        # Check to see if the figures directory exists, if not create it
-        if not os.path.exists("figures"):
-            os.makedirs("figures")
-        plt.savefig("figures/intrinsic_capacity.png")
-
     return ind_struct
 
 
@@ -299,7 +287,7 @@ def make_ca_counter(scen_properties, primary_species_list, secondary_species_lis
 
     return spec_man_indc
 
-def make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
+def  make_active_loss_per_shell(scen_properties, percentage, per_species, per_pair):
     """
     Calculates the indicator variable for number of active spacecraft lost in each orbit shell
     to collision events in a given year. 
@@ -493,6 +481,49 @@ def make_all_col_indicators(scen_properties):
             all_col_indicators.append(spec_ag_col_indc)
     
     return all_col_indicators
+
+def make_umpy_indicator(scen_properties, X=4, indicator_name="umpy_indicator"):
+    """
+    Creates a UMPY indicator (vector of length n_shells) using a similar approach
+    to 'make_active_loss_per_shell'. This sums contributions from all species
+    in each shell, based on their masses, lifetimes, and symbolic population.
+
+    :param scen_properties: The scenario properties object
+    :param X: Exponent in the UMPY formula (default=4)
+    :param indicator_name: Name for the resulting indicator
+    :return: A list containing one IndicatorStruct, or multiple if you want per-species
+    """
+
+    simulation_duration = scen_properties.simulation_duration if not scen_properties.opus else 100
+
+    # One aggregated vector eqs (n_shells x 1) summing across species
+    umpy_eqs = sp.zeros(scen_properties.n_shells, 1)
+
+    for species_group in scen_properties.species.values():
+        for species in species_group:
+            mass_i = species.mass
+
+            for shell_idx in range(scen_properties.n_shells):
+                if not species.active:
+                    # Usual UMPY formula for inactive species
+                    pop_ij  = species.sym[shell_idx]             # population in shell i
+                    life_ij = species.orbital_lifetimes[shell_idx]
+                    umpy_factor = ((sp.exp(X * (life_ij / simulation_duration)) - 1)
+                                / (sp.exp(X) - 1))
+                    umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / simulation_duration
+                else:
+                    # If active, just add zero
+                    umpy_eqs[shell_idx] += 0
+
+    umpy_indicator = make_indicator_struct(
+        scen_properties,
+        indicator_name,
+        "manual",
+        None,
+        umpy_eqs
+    )
+
+    return [umpy_indicator]
 
 def make_indicator_eqs(obj, ind_struct):
     """

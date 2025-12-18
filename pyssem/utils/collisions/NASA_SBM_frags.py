@@ -5,7 +5,7 @@ import numpy as np
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from utils.collisions.collisions import func_dv, func_Am
+from .collisions import func_dv, func_Am
 # from numba.typed import List
 # from numba import int64, float64, boolean
 # from numba import njit, prange
