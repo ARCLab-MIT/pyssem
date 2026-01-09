@@ -331,16 +331,19 @@ def SEP_traffic_model(scen_properties, file_path):
     # Calculate Apogee, Perigee, and altitude
     T = pd.read_csv(file_path)
 
+
     if 'OPUS' not in file_path:
         T['apogee'] = T['sma'] * (1 + T['ecc'])
         T['perigee'] = T['sma'] * (1 - T['ecc'])
         T['alt'] = (T['apogee'] + T['perigee']) / 2 - scen_properties.re
-    
+
         # Filter Rows Based on Min and Max_Altitude
-        T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+        # T = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
+        # Filter based on perigee height
+        T['hp'] = T['sma']*(1 - T['ecc']) - scen_properties.re
+        T = T[(T['hp'] >= scen_properties.min_altitude) & (T['hp'] <= scen_properties.max_altitude)]
 
-        T_new = assign_species_to_population(T, scen_properties.SEP_mapping)
-
+        T_new = T
     else:
         T['alt'] = T['altitude_km']
         T['sma'] = T['semi_major_axis_km']
@@ -349,6 +352,9 @@ def SEP_traffic_model(scen_properties, file_path):
         T['mass'] = T['mass_kg']
         T_new = T[(T['alt'] >= scen_properties.min_altitude) & (T['alt'] <= scen_properties.max_altitude)] 
     
+    # # convert D to N
+    # T_new['species_class'] = T_new['species_class'].replace('D', 'N')
+
     # Create a list to store processed dataframes
     processed_dfs = []
     
@@ -363,7 +369,13 @@ def SEP_traffic_model(scen_properties, file_path):
                 T_obj_class = T_new[T_new['species_class'] == species_class].copy()
                 T_obj_class['species'] = T_obj_class['mass'].apply(find_mass_bin, args=(scen_properties, species_cells)) 
                 processed_dfs.append(T_obj_class)
-    
+        else:
+            # If it is D, then it needs to go the debris category
+            if species_class == 'D':
+                T_obj_class = T_new[T_new['species_class'] == species_class].copy()
+                T_obj_class['species'] = 'N_521.8210518282503kg'
+                processed_dfs.append(T_obj_class)
+        
     # Concatenate all processed dataframes
     if processed_dfs:
         T_new = pd.concat(processed_dfs, ignore_index=True)
@@ -410,7 +422,10 @@ def SEP_traffic_model(scen_properties, file_path):
     T_new = T_new[T_new['species'].isin(scen_properties.species_names)]
 
     # Initial population
-    x0 = T_new[T_new['epoch_start_datetime'] <= scen_properties.start_date]
+    # Include objects where epoch_start_datetime <= start_date OR is NaT (missing dates)
+    # Missing dates typically indicate debris/fragments that should be in initial population
+    x0 = T_new[(T_new['epoch_start_datetime'] <= scen_properties.start_date) | 
+               (T_new['epoch_start_datetime'].isna())]
 
     # x0['species'].value_counts().plot(kind='bar', figsize=(12, 6))
 
@@ -441,8 +456,12 @@ def SEP_traffic_model(scen_properties, file_path):
             species_idx = species_name_to_index.get(row['species'], None)
             ecc_bin = row['ecc_bin']
 
-            if pd.notna(ecc_bin) and species_idx is not None:
-                x0_summary[alt_bin, species_idx, int(ecc_bin)] += 1
+            # Check all indices are valid before indexing
+            if (pd.notna(alt_bin) and pd.notna(ecc_bin) and 
+                species_idx is not None and 
+                0 <= int(alt_bin) < n_shells and 
+                0 <= int(ecc_bin) < n_ecc_bins):
+                x0_summary[int(alt_bin), species_idx, int(ecc_bin)] += 1
 
     else:
         # === Standard 2D case: DataFrame [alt_bin, species] ===
@@ -504,11 +523,6 @@ def SEP_traffic_model(scen_properties, file_path):
             yearly_counts = launches_this_year.groupby(['alt_bin', 'species']).size().unstack(fill_value=0)
             yearly_counts = yearly_counts.reindex(range(scen_properties.n_shells), fill_value=0)
 
-        # --- START OF THE FIX ---
-        # Ensure the yearly_counts DataFrame has a row for every possible shell.
-        # This is the step that was missing from my previous version.
-        # --- END OF THE FIX ---
-
         # Find which simulation time steps fall within this calendar year
         year_start_date = datetime(year, 1, 1)
         year_end_date = datetime(year + 1, 1, 1)
@@ -540,6 +554,64 @@ def SEP_traffic_model(scen_properties, file_path):
         final_cols = ['epoch_start_date', 'alt_bin'] + all_species_columns
 
     flm_steps = flm_steps[final_cols]
+
+    # Validation check for elliptical case
+    if scen_properties.elliptical:
+        # Reconstruct variables needed for validation
+        ecc_edges = np.array(scen_properties.eccentricity_bins)
+        n_shells = scen_properties.n_shells
+        n_ecc_bins = len(ecc_edges) - 1
+        species_name_to_index = {name: idx for idx, name in enumerate(scen_properties.species_names)}
+        
+        # Count total objects in the 3D matrix
+        total_in_matrix = np.sum(x0_summary)
+        
+        # Count valid objects in x0 that should have been added
+        valid_mask = (
+            x0['alt_bin'].notna() & 
+            x0['ecc_bin'].notna() & 
+            x0['species'].isin(scen_properties.species_names) &
+            (x0['alt_bin'] >= 0) & (x0['alt_bin'] < n_shells) &
+            (x0['ecc_bin'] >= 0) & (x0['ecc_bin'] < n_ecc_bins)
+        )
+        total_valid_objects = valid_mask.sum()
+        
+        # Count objects that were filtered out (invalid indices)
+        invalid_objects = (~valid_mask).sum()
+        
+        # Verify counts match
+        if total_in_matrix != total_valid_objects:
+            raise ValueError(
+                f"Mismatch in elliptical 3D matrix population!\n"
+                f"  Total objects in x0_summary matrix: {total_in_matrix}\n"
+                f"  Total valid objects in x0: {total_valid_objects}\n"
+                f"  Objects with invalid indices (not added): {invalid_objects}\n"
+                f"  Difference: {abs(total_in_matrix - total_valid_objects)}"
+            )
+        
+        # Additional verification: cross-check a sample of objects are in correct bins
+        # Verify by reconstructing counts from x0 and comparing
+        verification_counts = x0[valid_mask].groupby(['alt_bin', 'species', 'ecc_bin']).size()
+        
+        mismatches = []
+        for (alt_bin, species, ecc_bin), count in verification_counts.items():
+            species_idx = species_name_to_index.get(species, None)
+            if species_idx is not None:
+                matrix_count = x0_summary[int(alt_bin), species_idx, int(ecc_bin)]
+                if matrix_count != count:
+                    mismatches.append(
+                        f"  Bin [{int(alt_bin)}, {species}, {int(ecc_bin)}]: "
+                        f"expected {count}, found {matrix_count}"
+                    )
+        
+        if mismatches:
+            raise ValueError(
+                f"Found {len(mismatches)} bin mismatches in elliptical 3D matrix:\n" +
+                "\n".join(mismatches[:10]) +  # Show first 10 mismatches
+                (f"\n  ... and {len(mismatches) - 10} more" if len(mismatches) > 10 else "")
+            )
+        
+        print(f"✓ Elliptical 3D matrix validation passed: {total_in_matrix} objects correctly placed")
 
     return x0_summary, flm_steps
 
@@ -622,7 +694,9 @@ def ADEPT_traffic_model(scen_properties, file_path, baseline=False):
     T_new = T_new[T_new['species_class'].isin(scen_properties.species_cells.keys())]
 
     # Initial population
-    x0 = T_new[T_new['epoch_start_datime'] < scen_properties.start_date]
+    # Missing dates typically indicate debris/fragments that should be in initial population
+    x0 = T_new[(T_new['epoch_start_datime'] < scen_properties.start_date) | 
+               (T_new['epoch_start_datime'].isna())]
 
     x0.to_csv(os.path.join('pyssem', 'utils', 'launch', 'data', 'x0.csv'))
 
@@ -759,7 +833,7 @@ def find_mass_bin(mass, scen_properties, species_cell):
     for species in species_cell:
         if species.mass_lb <= mass < species.mass_ub:
             return species.sym_name
-    
+        
     return None
 
 def find_alt_bin(altitude, scen_properties):

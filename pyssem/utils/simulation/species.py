@@ -150,7 +150,7 @@ class Species:
     species = None
 
     def __init__(self) -> None:
-        self.species = {'active': [], 'debris': [], 'rocket_body': []}
+        self.species = {'active': [], 'debris': [], 'rocket_body': [], 'derelict': []}
     
     def add_multi_property_species(self, species_properties):
         """
@@ -280,7 +280,6 @@ class Species:
         :return: A dictionary of species objects, split into Active, Debris and Rocket Body species.
         :rtype: dict
         """ 
-
         # Loop through the json and pass create and instance of species properties for each species
         for properties in species_json:      
             rb_flag = properties.get('RBflag', 0)  # Defaults to 0 if 'RBflag' is not found
@@ -300,10 +299,16 @@ class Species:
                 # Don't create a debris species
                 continue
 
-            debris_name = f"N_{properties.mass}kg"
-            # check if the species is already in the debris list
-            if any(deb_spec.sym_name == debris_name for deb_spec in self.species['debris']):
-                continue
+            if properties.pmd_func == 'pmd_func_opus':
+                debris_name = f"N_{properties.mass}kg"
+                # check if the species is already in the debris list
+                if any(deb_spec.sym_name == debris_name for deb_spec in self.species['debris']):
+                    continue
+            else:
+                debris_name = f"D_{properties.mass}kg"
+                if any(deb_spec.sym_name == debris_name for deb_spec in self.species['derelict']):
+                    continue
+            
 
             # Change the relevant properties to make it a debris
             debris_species_template = copy.deepcopy(self.species['debris'][0])  
@@ -319,14 +324,20 @@ class Species:
             debris_species_template.country = properties.country
             debris_species_template.mission_type = properties.mission_type
             debris_species_template.mission_objective = properties.mission_objective
+            debris_species_template.drag_effected = True
 
-            self.species['debris'].append(debris_species_template)
+            if properties.pmd_func == 'pmd_func_opus':
+                self.species['debris'].append(debris_species_template)
+            else:
+                self.species['derelict'].append(debris_species_template)
+
             pmd_debris_names.append(debris_species_template.sym_name)
 
         print(f"Added {len(self.species['active'])} active species, {len(self.species['debris'])} debris species, and {len(self.species['rocket_body'])} rocket body species to the simulation.")
 
         # As new debris species have been added, the upper and lower mass bounds need to be updated
         self.species['debris'] = self.set_mass_bounds(self.species['debris'])
+        self.species['derelict'] = self.set_mass_bounds(self.species['derelict'])
            
         return self.species, pmd_debris_names
     

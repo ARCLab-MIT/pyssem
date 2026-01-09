@@ -42,14 +42,43 @@ class SEPDataExport:
         self.times = sp.scen_times         # list[float]
         # Optional: large fragments list for grouping
         self.large_fragments = self.scenario_properties.pmd_debris_names
-        
+        # remove N_6
+        self.large_fragments = [sp for sp in self.large_fragments if sp != 'N_6kg']
         if elliptical:
-            # self.pop_time_df, self.pop_time_alt_df, self.pop_time_df_grouped, self.pop_time_alt_df_grouped = self.elliptical_to_effective_altitude_bins()
-            # self.generate_heatmaps(self.pop_time_alt_df_grouped)
-            self.scenario_properties.output.y = sp.output.y_alt  # use the altitude-resolved data directly
-            self.y = sp.output.y_alt  # shape [n_alt * n_species, n_time]
-        # else: 
-        self.y = sp.output.y  # shape [n_shells * n_species, n_time]
+            # Check if y_alt exists and has the expected shape
+            if not hasattr(sp.output, 'y_alt') or sp.output.y_alt is None:
+                raise ValueError("Elliptical mode requires output.y_alt, but it is not available.")
+            
+            y_alt = np.asarray(sp.output.y_alt)  # Ensure it's a numpy array
+            
+            # Handle both 2D (Euler integration) and 3D (solve_ivp) cases
+            # 2D: (n_shells * n_species, n_time) from Euler
+            # 3D: (n_shells, n_species, n_time) from solve_ivp
+            if y_alt.ndim == 2:
+                # 2D case: shape is (n_shells * n_species, n_time) from Euler integration
+                # Reshape to 3D: (n_shells, n_species, n_time)
+                # Assuming the data is organized as: [species0_shell0, species0_shell1, ..., species1_shell0, ...]
+                n_time = y_alt.shape[1]
+                expected_size = self.n_shells * len(self.species)
+                if y_alt.shape[0] != expected_size:
+                    raise ValueError(f"y_alt 2D shape {y_alt.shape} doesn't match expected size {expected_size} (n_shells * n_species)")
+                # Reshape to (n_species, n_shells, n_time) then transpose to (n_shells, n_species, n_time)
+                y_alt_3d = y_alt.reshape(len(self.species), self.n_shells, n_time).transpose(1, 0, 2)
+                self.y_alt = y_alt_3d  # shape (n_shells, n_species, n_time)
+                self.y = y_alt  # Already in the right format for pop_time()
+            elif y_alt.ndim == 3:
+                # 3D case: shape is (n_shells, n_species, n_time) from solve_ivp
+                self.y_alt = y_alt  # shape (n_shells, n_species, n_time)
+                # Reshape for compatibility with non-elliptical code paths
+                # Transpose to (n_species, n_shells, n_time) then reshape to (n_species * n_shells, n_time)
+                y_alt_reshaped = y_alt.transpose(1, 0, 2).reshape(-1, y_alt.shape[2])
+                self.scenario_properties.output.y = y_alt_reshaped
+                self.y = y_alt_reshaped  # shape [n_species * n_shells, n_time]
+            else:
+                raise ValueError(f"y_alt must be 2D or 3D, but got shape {y_alt.shape} with {y_alt.ndim} dimensions")
+        else: 
+            self.y = sp.output.y  # shape [n_shells * n_species, n_time]
+            self.y_alt = None
         self.ssem_pop_time = self.pop_time()
         self.ssem_pop_time_alt = self.pop_time_alt()
         self.generate_heatmaps()
@@ -91,7 +120,7 @@ class SEPDataExport:
             return 'S'
         if sp.startswith('B'):
             return 'B'
-        if sp in self.large_fragments:
+        if sp.startswith('D_'):
             return 'D'
         return 'N'
 
@@ -100,22 +129,39 @@ class SEPDataExport:
         Export total population per species over time to pop_time.csv.
         """
         rows = []
-        for i, sp in enumerate(self.species):
-            label = self._group_label(sp)
-            start_idx = i * self.n_shells
-            end_idx = (i + 1) * self.n_shells
-            if end_idx > self.y.shape[0]:
-                continue
-            shell_data = self.y[start_idx:end_idx, :]
-            # sum over shells for each time step
-            for t_idx, offset in enumerate(self.times):
-                year = int(self.start_year + offset)
-                pop = shell_data[:, t_idx].sum()
-                rows.append({
-                    "Species": label,
-                    "Year": year,
-                    "Population": pop
-                })
+        # Use y_alt directly if available (elliptical mode), matching plotting.py approach
+        if hasattr(self, 'y_alt') and self.y_alt is not None:
+            # y_alt has shape (n_shells, n_species, n_time)
+            for i, sp in enumerate(self.species):
+                label = self._group_label(sp)
+                # Sum over shells for each time step
+                for t_idx, offset in enumerate(self.times):
+                    year = int(self.start_year + offset)
+                    # y_alt[shell, species, time] - sum over all shells for this species
+                    pop = self.y_alt[:, i, t_idx].sum()
+                    rows.append({
+                        "Species": label,
+                        "Year": year,
+                        "Population": pop
+                    })
+        else:
+            # Non-elliptical mode: use self.y
+            for i, sp in enumerate(self.species):
+                label = self._group_label(sp)
+                start_idx = i * self.n_shells
+                end_idx = (i + 1) * self.n_shells
+                if end_idx > self.y.shape[0]:
+                    continue
+                shell_data = self.y[start_idx:end_idx, :]
+                # sum over shells for each time step
+                for t_idx, offset in enumerate(self.times):
+                    year = int(self.start_year + offset)
+                    pop = shell_data[:, t_idx].sum()
+                    rows.append({
+                        "Species": label,
+                        "Year": year,
+                        "Population": pop
+                    })
 
         df = pd.DataFrame(rows)
         df_grouped = (
@@ -136,24 +182,43 @@ class SEPDataExport:
         Export shell-resolved population per species over time and altitude to pop_time_alt.csv.
         """
         rows = []
-        for i, sp in enumerate(self.species):
-            label = self._group_label(sp)
-            start_idx = i * self.n_shells
-            end_idx = (i + 1) * self.n_shells
-            if end_idx > self.y.shape[0]:
-                continue
-            shell_block = self.y[start_idx:end_idx, :]
-            for s in range(self.n_shells):
-                alt = self.Hmid[s]
-                for t_idx, offset in enumerate(self.times):
-                    year = int(self.start_year + offset)
-                    pop = shell_block[s, t_idx]
-                    rows.append({
-                        "Species": label,
-                        "Year": year,
-                        "Altitude": alt,
-                        "Population": pop
-                    })
+        # Use y_alt directly if available (elliptical mode), matching plotting.py approach
+        if hasattr(self, 'y_alt') and self.y_alt is not None:
+            # y_alt has shape (n_shells, n_species, n_time)
+            for i, sp in enumerate(self.species):
+                label = self._group_label(sp)
+                for s in range(self.n_shells):
+                    alt = self.Hmid[s]
+                    for t_idx, offset in enumerate(self.times):
+                        year = int(self.start_year + offset)
+                        # y_alt[shell, species, time]
+                        pop = self.y_alt[s, i, t_idx]
+                        rows.append({
+                            "Species": label,
+                            "Year": year,
+                            "Altitude": alt,
+                            "Population": pop
+                        })
+        else:
+            # Non-elliptical mode: use self.y
+            for i, sp in enumerate(self.species):
+                label = self._group_label(sp)
+                start_idx = i * self.n_shells
+                end_idx = (i + 1) * self.n_shells
+                if end_idx > self.y.shape[0]:
+                    continue
+                shell_block = self.y[start_idx:end_idx, :]
+                for s in range(self.n_shells):
+                    alt = self.Hmid[s]
+                    for t_idx, offset in enumerate(self.times):
+                        year = int(self.start_year + offset)
+                        pop = shell_block[s, t_idx]
+                        rows.append({
+                            "Species": label,
+                            "Year": year,
+                            "Altitude": alt,
+                            "Population": pop
+                        })
 
         df = pd.DataFrame(rows)
         df_grouped = (
@@ -496,14 +561,13 @@ class SEPDataExport:
         # --- build the flat table ---
         Hmid = self.Hmid
         sy   = self.start_year
-        lf   = self.large_fragments
 
         def grp(n):
-            if n in lf:        return 'D'
             if n.startswith('Sns'): return 'Sns'
             if n.startswith('Su'):  return 'Su'
             if n.startswith('S'):   return 'S'
-            if n == 'B':       return 'B'
+            if n.startswith('B'):   return 'B'
+            if n.startswith('D_'):  return 'D'
             return 'N'
 
         inds = {
@@ -1063,7 +1127,7 @@ class SEPDataExport:
             raise ValueError("MOCAT-MC totals path not set or not found (self.MOCAT_MC_Path).")
         mc_df = pd.read_csv(self.MOCAT_MC_Path)
 
-        species_groups = ['S','Su','N','D','B']
+        species_groups = ['S','Su', 'Sns', 'N','D','B']
         fig, axes = plt.subplots(2, 3, figsize=(15, 8), sharex=True)
         axes = axes.flatten()
 
@@ -1121,8 +1185,8 @@ class SEPDataExport:
 
         # Resolve MC altitude CSV path
         if mc_pop_time_alt_path is None and isinstance(self.MOCAT_MC_Path, str):
-            if self.MOCAT_MC_Path.endswith("pop_time.csv"):
-                guess = self.MOCAT_MC_Path.replace("pop_time.csv", "pop_time_alt.csv")
+            if self.MOCAT_MC_Path.endswith("pop_time_mc.csv"):
+                guess = self.MOCAT_MC_Path.replace("pop_time_mc.csv", "pop_time_alt_mc.csv")
                 if os.path.exists(guess):
                     mc_pop_time_alt_path = guess
         if not mc_pop_time_alt_path or not os.path.exists(mc_pop_time_alt_path):

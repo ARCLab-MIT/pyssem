@@ -1104,7 +1104,10 @@ class ScenarioProperties:
         # collision pair in altitude space 
         for term in self.collision_terms:
             dNdt_term = term.lambdified_sources(*x_flat_ordered)
-            total_dNdt_alt = np.array(dNdt_term, dtype=float) # n_collision_shells x n_species
+            # Convert to numpy array for this term's debris production
+            dNdt_term_array = np.array(dNdt_term, dtype=float) # n_collision_shells x n_species
+            # Accumulate debris production from all collision terms (for potential future use)
+            total_dNdt_alt += dNdt_term_array
 
             # multiply the growth rate for each species by the distribution of that species in a,e space
             for shell in range(n_collision_shells):
@@ -1116,7 +1119,8 @@ class ScenarioProperties:
                         continue
 
                     sma_ecc_distribution = term.spread_distribution[shell, mass_bin, :, :] # this should be to equal to on
-                    species_frag = total_dNdt_alt[shell, species] # get the column of the debris species
+                    # Use this term's debris production, not the accumulated total
+                    species_frag = dNdt_term_array[shell, species] # get the column of the debris species for this term
                     if np.sum(sma_ecc_distribution) == 0 and np.sum(species_frag) != 0:
                         print("fragments made but no distribution in sma_ecc space")
                     frag_spread_sma_ecc = species_frag * sma_ecc_distribution
@@ -1841,8 +1845,35 @@ class ScenarioProperties:
                             f"{rate_array}\n\n{e}"
                         )
             # Finally lambdify the equations for integration, this will just be pmd
-            # equations_flattened = [self.equations[i, j] for j in r÷
-            self.full_Cdot_PMD = [sp.lambdify(flat_vars, eq, 'numpy') for eq in self.full_Cdot_PMD]
+            # Convert full_Cdot_PMD to a list and check each element before lambdifying
+            if isinstance(self.full_Cdot_PMD, sp.Matrix):
+                # Flatten the matrix into a list by iterating over all elements
+                pmd_list = [self.full_Cdot_PMD[i, j] for i in range(self.full_Cdot_PMD.rows) 
+                           for j in range(self.full_Cdot_PMD.cols)]
+            elif isinstance(self.full_Cdot_PMD, list):
+                pmd_list = self.full_Cdot_PMD
+            else:
+                pmd_list = [self.full_Cdot_PMD]
+            
+            # Lambdify each element, but skip if it's already a function
+            lambdified_pmd = []
+            for eq in pmd_list:
+                # Check if it's already a function (callable)
+                if callable(eq) and not isinstance(eq, sp.Basic):
+                    lambdified_pmd.append(eq)
+                # Check if it's a sympy expression
+                elif isinstance(eq, sp.Basic):
+                    try:
+                        lambdified_pmd.append(sp.lambdify(flat_vars, eq, 'numpy'))
+                    except Exception as e:
+                        raise ValueError(f"Failed to lambdify PMD equation: {eq}\nError: {e}")
+                # Handle None or other types
+                elif eq is None:
+                    lambdified_pmd.append(None)
+                else:
+                    raise TypeError(f"Unexpected type in full_Cdot_PMD: {type(eq)}, value: {eq}")
+            
+            self.full_Cdot_PMD = lambdified_pmd
 
             # species-major stacking of shells → (n_species*n_shells, n_time)
             self.output.y_alt = np.transpose(n_eff, (1, 0, 2)).reshape(self.species_length * self.n_shells,

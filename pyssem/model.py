@@ -152,14 +152,14 @@ class Model:
             self.all_symbolic_vars = species_list.create_symbolic_variables(self.scenario_properties.n_shells)
 
             # Pair the active species to the debris species for PMD modeling
-            species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['debris'])
+            species_list.pair_actives_to_debris(species_list.species['active'], species_list.species['derelict'])
 
             # Add the final species to the scenario properties to be used in the simulation
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            collision_pairs = create_collision_pairs(self.scenario_properties)
-            self.scenario_properties.add_collision_pairs(collision_pairs)
+            # collision_pairs = create_collision_pairs(self.scenario_properties)
+            # self.scenario_properties.add_collision_pairs(collision_pairs)
             
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -169,7 +169,6 @@ class Model:
                 self.scenario_properties.build_indicator_variables()     
 
             # Initial population of species and any launches
-
             self.scenario_properties.initial_pop_and_launch(baseline=self.scenario_properties.baseline, launch_file=self.scenario_properties.launch_scenario) # Initial population is considered but not launch
             
             return species_list
@@ -368,7 +367,7 @@ if __name__ == "__main__":
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'three_species_sym.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'mocat-mc.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -430,14 +429,14 @@ if __name__ == "__main__":
 
         try:
             plot_names = simulation_data["plots"]
-            mc_pop_time_path = '/Users/indigobrownhall/Code/MOCAT-VnV/results/pop_time.csv'
+            mc_pop_time_path = '/Users/indigobrownhall/Code/pyssem/figures/mocat-mc/pop_time_mc.csv'
+            # SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
+            #             elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
+            #             output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+            #             )
             SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
-                        elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
-                        output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-                        )
-            # SEPDataExport(model, simulation_data["simulation_name"], 
-            #               elliptical=model.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
-            #               )
+                          elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
+                          )
         except Exception as e:
             import traceback
             print(f"Error in SEPDataExport: {e}")

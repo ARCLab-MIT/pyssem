@@ -163,6 +163,7 @@ cython_debug/
 # Large Launch Files
 pyssem/utils/launch/data/x0_launch_repeatlaunch_2018to2022_megaconstellationLaunches_Constellations.csv
 pyssem/utils/launch/data/
+pyssem/utils/plotting/data/
 
 # Figures folder
 /figures/
