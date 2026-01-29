@@ -98,12 +98,22 @@ class SpeciesProperties:
             if self.A == "Calculated based on radius":
                 self.A = np.pi * self.radius ** 2
             if self.A is not None and self.amr is None:
-                self.amr = self.A / self.mass
+                try:
+                    self.amr = self.A / self.mass
+                except Exception as e:
+                    # get first element of mass and radius
+                    mass = self.mass[0]
+                    radius = self.radius[0]
+                    self.A = np.pi * radius ** 2
+                    self.amr = self.A / mass
             if self.Cd is not None and self.amr is not None and self.beta is None:
                 self.beta = self.Cd * self.amr
 
             if self.radius is not None and hasattr(self, 'trackable'):
-                self.trackable = self.radius >= self.trackable_radius_threshold
+                if isinstance(self.radius, list):
+                    self.trackable = self.radius[0] >= self.trackable_radius_threshold
+                else:   
+                    self.trackable = self.radius >= self.trackable_radius_threshold
                         
             # Ballistic Coefficient
             if hasattr(self, 'Cd') and hasattr(self, 'amr'):

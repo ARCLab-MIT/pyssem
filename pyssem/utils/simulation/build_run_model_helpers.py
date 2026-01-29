@@ -306,8 +306,9 @@ def get_dadt(a_current, e_current, p):
         n0   = np.sqrt(mu) * a_current ** -1.5
         a_minus_re = a_current - re
         rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
-        # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
-        C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+        # C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+        # bstar = 2.2 * (area/mass)* 0.157 * 0.5
+        C_0 = max((p['Bstar'] * 0.5 * rho_0)/1e6, 1e-20)
         
         beta = (np.sqrt(3)/2)*e_current
         ang  = np.arctan(beta)
@@ -321,8 +322,9 @@ def get_dedt(a_current, e_current, p):
     beta = (np.sqrt(3)/2) * e_current
     a_minus_re = a_current - re
     rho_0 = densityexp(a_minus_re) * 1e9  # kg/km^3
-    # C_0 = max((param['Bstar']/(1e6*0.157))*rho_0,1e-20)
-    C_0   = max(0.5 * p['Bstar'] * rho_0, 1e-20)
+    C_0 = max((p['Bstar'] * 0.5 * rho_0)/1e6, 1e-20)
+
+
 
     sec2 = 1.0 / np.cos(np.arctan(beta)) ** 2
     return -e_current * n0 * a_current * C_0 * sec2
