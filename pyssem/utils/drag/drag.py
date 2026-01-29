@@ -5,7 +5,6 @@ from scipy.spatial import KDTree
 import json
 import os
 
-<<<<<<< HEAD
 # def densityexp(h):
 #     """
 #     Calculates atmospheric density based on altitude using a exponential model.
@@ -102,43 +101,6 @@ def densityexp(h_km):
     # Bin index k so that edges[k] <= h < edges[k+1]
     k = np.searchsorted(edges, h, side='right') - 1
 
-=======
-def densityexp(h_km):
-    """
-    Vallado Table 8-4 exponential density model (vectorized), matching the MATLAB densityexp_vec.
-    
-    Parameters
-    ----------
-    h_km : array_like
-        Altitude above the ellipsoid in **kilometers** (must be >= 0).
-    
-    Returns
-    -------
-    p : ndarray
-        Density in kg/m^3 (matches the MATLAB code as given, where the km^3 conversion is commented out).
-        To convert to kg/km^3, multiply by 1e9.
-    """
-    h = np.asarray(h_km, dtype=float)
-
-    # Lower edges h0 and corresponding (p0, H) for each interval
-    h0 = np.array([   0,    25,    30,    40,    50,    60,    70,    80,    90,   100,
-                     110,   120,   130,   140,   150,   180,   200,   250,   300,   350,
-                     400,   450,   500,   600,   700,   800,   900,  1000], dtype=float)
-    p0 = np.array([1.225, 3.899e-2, 1.774e-2, 3.972e-3, 1.057e-3, 3.206e-4, 8.770e-5, 1.905e-5,
-                   3.396e-6, 5.297e-7, 9.661e-8, 2.438e-8, 8.484e-9, 3.845e-9, 2.070e-9, 5.464e-10,
-                   2.789e-10, 7.248e-11, 2.418e-11, 9.518e-12, 3.725e-12, 1.585e-12, 6.967e-13,
-                   1.454e-13, 3.614e-14, 1.170e-14, 5.245e-15, 3.019e-15], dtype=float)
-    H  = np.array([7.249, 6.349, 6.682, 7.554, 8.382, 7.714, 6.549, 5.799, 5.382, 5.877,
-                   7.263, 9.473, 12.636, 16.149, 22.523, 29.740, 37.105, 45.546, 53.628, 53.298,
-                   58.515, 60.828, 63.822, 71.835, 88.667, 124.64, 181.05, 268.00], dtype=float)
-
-    # Build edges exactly like MATLAB: [0, 25, 30, ..., 1000, Inf]
-    edges = np.concatenate([h0, [np.inf]])
-
-    # Bin index k so that edges[k] <= h < edges[k+1]
-    k = np.searchsorted(edges, h, side='right') - 1
-
->>>>>>> main
     # MATLAB errors if any value is below 0
     if np.any(k < 0):
         raise ValueError("Input altitude h has element(s) below 0 km.")
@@ -149,7 +111,6 @@ def densityexp(h_km):
     # To match MATLAB's current output units (kg/m^3), do NOT convert.
     # If you want kg/km^3 instead, uncomment the next line:
     # p = p * (1000.0**3)
-<<<<<<< HEAD
 
     
 
@@ -219,11 +180,6 @@ def densityexp(h_km):
 
 #     return ρ
 
-=======
-
-    return p
-
->>>>>>> main
 def densityexp_jbvalues(h):
     """
     Returns interpolated atmospheric density values based on reference altitudes and densities.

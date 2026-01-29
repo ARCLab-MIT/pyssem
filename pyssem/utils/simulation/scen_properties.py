@@ -328,24 +328,9 @@ class ScenarioProperties:
                     else:
                         temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
                         species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
-                        # NaN-safe total
-                        total_count = float(np.nansum([np.nansum(entry) if isinstance(entry, np.ndarray) else 0.0
-                                                       for entry in lambda_funs]))
-                        if species.sym_name == 'B':
-                            nan_cells = sum(int(np.isnan(entry).any()) for entry in lambda_funs if isinstance(entry, np.ndarray))
-                            print(f"Species: {species.sym_name} Total Count: {total_count} (cells with NaNs: {nan_cells})")
-                        else:
-                            print(f"Species: {species.sym_name} Total Count: {total_count}")
-                    else:
-                        temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
-                        species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
 
                         lambda_funs = []
-                        if species.launch_altitude is not None:
-                            closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
-                        else:
-                            closest_shell = None
-                        lambda_funs = []
+
                         if species.launch_altitude is not None:
                             closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
                         else:
@@ -356,61 +341,13 @@ class ScenarioProperties:
                                 y = species_FLM.loc[shell, :].values
                             else:
                                 y = np.zeros(len(species_FLM.columns))
-                        for shell in range(n_shells):
-                            if shell in species_FLM.index:
-                                y = species_FLM.loc[shell, :].values
-                            else:
-                                y = np.zeros(len(species_FLM.columns))
 
-                            if closest_shell is not None and shell == closest_shell:
-                                y += species.lambda_constant
                             if closest_shell is not None and shell == closest_shell:
                                 y += species.lambda_constant
 
                             lambda_funs.append(y if not np.all(y == 0) else 0)
-                            lambda_funs.append(y if not np.all(y == 0) else 0)
 
                         species.lambda_funs = lambda_funs
-                        species.lambda_funs = lambda_funs
-
-        else: # circular orbits
-            # Check for consistent time step
-            scen_times = np.array(self.scen_times)
-            if len(np.unique(np.round(np.diff(scen_times), 5))) == 1:
-                time_step = np.unique(np.round(np.diff(scen_times), 5))[0]
-            else:
-                raise ValueError("FLM to Launch Function is not set up for variable time step runs.")
-
-            for species_group in self.species.values():
-                for species in species_group:
-
-                    # Extract the species columns, with altitude and time
-                    if species.sym_name in FLM_steps.columns:
-                        temp_df = FLM_steps.loc[:, ['alt_bin', 'epoch_start_date', species.sym_name]]
-
-                    else:
-                        continue
-
-                    species_FLM = temp_df.pivot(index='alt_bin', columns='epoch_start_date', values=species.sym_name)
-
-                    # Convert spec_FLM to interpolating functions (lambdadot) for each shell
-                    # Remember indexing starts at 0 (40th shell is index 39)
-                    species.lambda_funs = []
-                    
-                    if species.launch_altitude is not None:
-                        closest_shell = np.argmin(np.abs(self.HMid - species.launch_altitude))
-
-                    for shell in range(self.n_shells):
-                        y = species_FLM.loc[shell, :].values / time_step  
-
-                        if species.launch_altitude is not None and shell == closest_shell:
-                            # Add the lambda_constant to each value in the array y
-                            y += species.lambda_constant
-
-                        if np.all(y == 0):
-                            species.lambda_funs.append(None)  
-                        else:
-                            species.lambda_funs.append(np.array(y))
         else: # circular orbits
             # Check for consistent time step
             scen_times = np.array(self.scen_times)
