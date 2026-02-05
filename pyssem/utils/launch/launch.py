@@ -343,6 +343,9 @@ def SEP_traffic_model(scen_properties, file_path):
         T['hp'] = T['sma']*(1 - T['ecc']) - scen_properties.re
         T = T[(T['hp'] >= scen_properties.min_altitude) & (T['hp'] <= scen_properties.max_altitude)]
 
+        # change all species_class from 'Su' to 'S'
+        T['species_class'] = T['species_class'].replace('Su', 'S')
+
         T_new = T
     else:
         T['alt'] = T['altitude_km']

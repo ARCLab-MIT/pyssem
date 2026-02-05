@@ -389,8 +389,12 @@ def process_species_pair(args):
             # First need a representative semi-major axis
             sma1 = scen_properties.sma_HMid_km[shell]
             sma2 = sma1
-            e1 = 0.01
-            e2 = 0.02
+            e1 = 0.001
+            e2 = 0.002
+
+            if m1 < 2 or m2 < 2:
+                print(f"mass of debris is lower than 2 kg, skipping collision")
+                continue
 
             try:
                 # Result is summed over: bins=[binE_sma, binE_mass, binE_ecc]

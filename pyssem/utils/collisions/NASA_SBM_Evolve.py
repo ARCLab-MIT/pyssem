@@ -31,7 +31,7 @@ def evolve_bins_elliptical(scen_properties, m1, m2, rad_1, rad_2, sma1, sma2, e1
     # }
 
     # # Lower bound (LB)
-    LB = 0.1
+    LB = scen_properties.LC
     # SS = 60
     true_anomaly_deg = 90
     TA = np.radians(true_anomaly_deg)
@@ -823,7 +823,9 @@ def func_Am(d, ObjClass):
         Area-to-mass ratio for each fragment.
     """
     numObj = d.size
-    logds = np.log10(d)
+    # Handle zero diameters: replace with small positive value to avoid log10(0) = -inf
+    d_safe = np.where(d > 0, d, np.finfo(float).tiny)
+    logds = np.log10(d_safe)
     amsms = np.nan * np.ones((numObj, 5))  # alpha, mu1, sigma1, mu2, sigma2
 
     if 4.5 < ObjClass < 8.5:  # Rocket-body related

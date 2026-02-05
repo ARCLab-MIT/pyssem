@@ -158,8 +158,8 @@ class Model:
             self.scenario_properties.add_species_set(species_list.species, self.all_symbolic_vars)
                 
             # Create Collision Pairs
-            collision_pairs = create_collision_pairs(self.scenario_properties)
-            self.scenario_properties.add_collision_pairs(collision_pairs)
+            # collision_pairs = create_collision_pairs(self.scenario_properties)
+            # self.scenario_properties.add_collision_pairs(collision_pairs)
             
             # Create Indicator Variables if provided
             if self.scenario_properties.indicator_variables is not None:
@@ -364,10 +364,10 @@ class Model:
 
 if __name__ == "__main__":
 
-    # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical.json')) as f:
+    with open(os.path.join('pyssem', 'simulation_configurations', 'opus_new.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'three_species.json')) as f:
     # with open(os.path.join('pyssem', 'simulation_configurations', 'elliptical-test.json')) as f:
-    with open(os.path.join('pyssem', 'simulation_configurations', 'mocat-mc.json')) as f:
+    # with open(os.path.join('pyssem', 'simulation_configurations', 'mocat-mc.json')) as f:
         simulation_data = json.load(f)
 
     scenario_props = simulation_data["scenario_properties"]
@@ -429,7 +429,7 @@ if __name__ == "__main__":
 
         try:
             plot_names = simulation_data["plots"]
-            mc_pop_time_path = '/Users/indigobrownhall/Code/pyssem/figures/mocat-mc/pop_time_mc.csv'
+            mc_pop_time_path = '/Users/indigobrownhall/Code/pyssem/figures/mocat-mc-elliptical-test/pop_time_mc.csv'
             # SEPDataExport(model.scenario_properties, simulation_data["simulation_name"], 
             #             elliptical=model.scenario_properties.elliptical, MOCAT_MC_Path=mc_pop_time_path, 
             #             output_dir=f'{main_path}/{simulation_data["simulation_name"]}'
@@ -450,4 +450,8 @@ if __name__ == "__main__":
             Plots(model, plot_names, simulation_data["simulation_name"], main_path)
         else:
             print("No plots specified - skipping plotting phase.")
+        
+        # save the input json in the results directory
+        with open(f'{main_path}/{simulation_data["simulation_name"]}/input.json', 'w') as f:
+            json.dump(simulation_data, f, indent=4)
         ###============================================================

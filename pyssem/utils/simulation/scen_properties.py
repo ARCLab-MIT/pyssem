@@ -1045,6 +1045,8 @@ class ScenarioProperties:
 
         # dt = years * (t - self.t_0)
         # self.t_0 = t
+        # print(f"sum of x_flat: {np.sum(x_flat)}")
+        print(np.sum(x_flat))
         if self.progress_bar is not None and progress_bar:
             self.progress_bar.update(t - self.progress_bar.n)
         #############################
@@ -1090,6 +1092,7 @@ class ScenarioProperties:
             print(f"Error in calculating effective altitude matrix: {e}")
             raise ValueError("The population matrix is not defined correctly. Please check your population matrix.")
         
+        
         total_dNdt_alt = np.zeros((n_collision_shells, n_species))
         total_dNdt_sma_ecc_sources = np.zeros((n_sma_bins, n_species, n_ecc_bins))
 
@@ -1126,6 +1129,18 @@ class ScenarioProperties:
                     frag_spread_sma_ecc = species_frag * sma_ecc_distribution
                     total_dNdt_sma_ecc_sources[:, species, :] = total_dNdt_sma_ecc_sources[:, species, :] + frag_spread_sma_ecc
 
+        # Diagnostic: Print collision sources per species to check for indexing issues
+        # Print every timestep to track which species are receiving fragments
+        total_sources_all = np.sum(total_dNdt_sma_ecc_sources)
+        # if total_sources_all > 1e3:  # Only print if sources are significant
+        #     print(f"DIAGNOSTIC: Collision sources by species at t={t:.2f} (objects/year):")
+        #     for species_idx in range(n_species):
+        #         species_name = self.species_names[species_idx] if species_idx < len(self.species_names) else f"species_{species_idx}"
+        #         species_sources = np.sum(total_dNdt_sma_ecc_sources[:, species_idx, :])
+        #         if species_sources > 1e2:  # Only print species with significant sources
+        #             fraction = species_sources / total_sources_all if total_sources_all > 0 else 0
+        #             print(f"  {species_name} (idx={species_idx}): {species_sources:.2e} objects/year ({fraction:.1%} of total)")
+
         #############################
         # Now we need to calculate the sink equations, which are the same as the source equations
         # but multiplied by the time in shell.
@@ -1146,6 +1161,7 @@ class ScenarioProperties:
                         # convert nans to 0s
                         dNdt_sink_sma_ecc[np.isnan(dNdt_sink_sma_ecc)] = 0
                         print(f"NaN found in dNdt_sink_sma_ecc for species {species} at shell {shell}. Check your collision equations.")
+                        exit()
                         
         output = total_dNdt_sma_ecc_sources + dNdt_sink_sma_ecc
 
@@ -1752,11 +1768,14 @@ class ScenarioProperties:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
 
             if self.integrator == "Euler":
-                step_size = 0.01
+                step_size = 1
                 output = self._propagate_euler_elliptical(
                     self.x0.flatten(), self.scen_times, launch_rate_functions, step_size
                 )
             else:
+                # For adaptive integrators (BDF, RK45, etc.), pass tolerance options
+                # and limit max timestep to prevent numerical instability with large dt
+                # Rates are per year, so max_step=0.1 years prevents removing >10% population per step
                 output = solve_ivp(
                     fun=self.population_rhs,
                     t_span=(self.scen_times[0], self.scen_times[-1]),
@@ -1764,7 +1783,10 @@ class ScenarioProperties:
                     t_eval=self.scen_times,
                     args=(launch_rate_functions, self.n_sma_bins, self.species_length, self.n_ecc_bins, self.n_alt_shells,
                           self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, self.active_species_bool, self.all_species_list),
-                    method = self.integrator # or any other method you prefer
+                    method=self.integrator,
+                    rtol=self.options.get('reltol', 1.e-4),
+                    atol=self.options.get('abstol', 1.e-4),
+                    max_step=0.1  # Limit max timestep to 0.1 years to prevent instability
                 )
 
             # output = 1
@@ -2272,7 +2294,7 @@ class ScenarioProperties:
 
         return dN_dt
     
-    def propagate(self, population, times, launch=None, elliptical=False, euler=False, step_size=None, opus=True):
+    def propagate(self, population, times, launch=None, elliptical=False, euler=False, step_size=None, opus=True, max_change_per_step=1e6):
         """
             This will use the equations that have been built already by the model, and then integrate the differential equations
             over a chosen timestep. The population and launch (if provided) must be the same length as the species and shells.
@@ -2282,6 +2304,7 @@ class ScenarioProperties:
             :param launch: Launch rates
             :param elliptical: If True, propagate using the elliptical model formulation.
             :param step_size: Fixed timestep to use with explicit integrators (e.g. Euler).
+            :param max_change_per_step: For Euler integration, cap the max change of any state variable per step (default 1e6). Set to None to disable.
 
             :return: results_matrix
         """
@@ -2356,7 +2379,7 @@ class ScenarioProperties:
 
             if euler:
                 mock_result = self._propagate_euler_elliptical(
-                    population, times, launch_rate_functions, step_size
+                    population, times, launch_rate_functions, step_size, max_change_per_step=max_change_per_step
                 )
                 # Extract the final state from the mock result
                 final_state = mock_result.y[:, -1].reshape(self.n_sma_bins, self.species_length, self.n_ecc_bins)
@@ -2375,7 +2398,10 @@ class ScenarioProperties:
                     self.species_to_mass_bin, years, self.adot_all_species, self.edot_all_species, self.Δa, self.Δe, 
                     self.active_species_bool, self.all_species_list
                 ),
-                method=self.integrator  # or any other method you prefer
+                method=self.integrator,
+                rtol=self.options.get('reltol', 1.e-4),
+                atol=self.options.get('abstol', 1.e-4),
+                max_step=0.0001  # Limit max timestep to 0.1 years to prevent instability
             )
 
             if not output.success:
@@ -2390,9 +2416,13 @@ class ScenarioProperties:
             
             return results_matrix, results_matrix_alt
 
-    def _forward_euler(self, rhs, y0, times, step_size=None, progress_bar=None):
+    def _forward_euler(self, rhs, y0, times, step_size=None, progress_bar=None, max_change_per_step=None):
         """
         Integrate an ODE using a fixed-step forward Euler method.
+
+        If max_change_per_step is set, the state update in each step is scaled down
+        so that no component changes by more than this amount in one step, preventing
+        runaway growth from large dydt.
         """
         times = np.asarray(times, dtype=float)
         y_current = np.asarray(y0, dtype=float).reshape(-1)
@@ -2424,11 +2454,17 @@ class ScenarioProperties:
                 dydt = np.asarray(rhs(t_current, y_current), dtype=float).reshape(-1)
                 if dydt.shape != y_current.shape:
                     raise ValueError("Derivative vector shape mismatch during Euler integration.")
-                y_current = y_current + dt * dydt
+                delta_y = dt * dydt
+                # Cap max change per step to avoid runaway
+                if max_change_per_step is not None and max_change_per_step > 0:
+                    max_delta = np.max(np.abs(delta_y))
+                    if max_delta > max_change_per_step:
+                        delta_y = delta_y * (max_change_per_step / max_delta)
+                y_current = y_current + delta_y
                 # Prevent small negative populations due to numerical error
                 y_current = np.where(y_current < 0.0, 0.0, y_current)
                 t_current += dt
-                
+
                 # Update progress bar if provided
                 if progress_bar is not None:
                     progress_bar.update(dt)
@@ -2449,10 +2485,11 @@ class ScenarioProperties:
 
         return self._forward_euler(rhs, population_flat, times, step_size)
 
-    def _propagate_euler_elliptical(self, population, times, launch_rate_functions, step_size):
+    def _propagate_euler_elliptical(self, population, times, launch_rate_functions, step_size, max_change_per_step=1e6):
         """
         Forward Euler propagation for the elliptical (sma/ecc) representation.
         Returns a mock solve_ivp object with the same interface.
+        max_change_per_step caps the max change of any state variable per step to avoid runaway (default 1e6); set to None to disable.
         """
         population_flat = np.asarray(population, dtype=float).flatten()
         launch_funcs = launch_rate_functions
@@ -2472,7 +2509,7 @@ class ScenarioProperties:
         
         try:
             # Get the full time series from Euler integration
-            states = self._forward_euler(rhs, population_flat, times, step_size, progress_bar=progress_bar)
+            states = self._forward_euler(rhs, population_flat, times, step_size, progress_bar=progress_bar, max_change_per_step=max_change_per_step)
         finally:
             # Ensure progress bar is closed
             progress_bar.close()
