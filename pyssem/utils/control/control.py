@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import re
 import json
+import math
+import pandas as pd
 
 #==========================================================================
 # Functions used to create symbolic variables for the controller
@@ -78,7 +80,7 @@ def pmd_f1(t,const, active_species_indices, N_shell):
 # 2. Increasing over time, constant for each shell
 def pmd_f2(t,lower_bound,upper_bound, active_species_indices, N_shell, tspan):
     out = []
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell    
         out[start_idx:end_idx] = ( lower_bound[species_index] + ( t / tspan[-1] * (upper_bound[species_index] - lower_bound[species_index])) ) * np.ones(N_shell)
@@ -90,10 +92,23 @@ def pmd_f3(t,lower_bound,upper_bound, active_species_indices, N_shell):
     random_variations = (np.random.rand(active_species_indices) - 0.5) * 0.5
     final_sequence = t / 100 + random_variations
     final_sequence = np.clip(final_sequence, 0, upper_bound) # Keep values within [0, upper_bound]
-    for species_index in range(active_species_indices):
+    for species_index in range(len(active_species_indices)):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell    
         out[start_idx:end_idx] = ( lower_bound[species_index] + ( final_sequence[species_index] * (upper_bound[species_index] - lower_bound[species_index])) ) * np.ones(N_shell)
+    return out
+
+def pmd_f4(t, const_target, const_other, active_species_indices, N_shell):
+    num_species = len(active_species_indices)
+    out = np.zeros(num_species * N_shell)
+    target_shells = {7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+    # 500 - 900 km
+    
+    for i, species_index in enumerate(active_species_indices):
+        for shell in range(N_shell):
+            idx = i * N_shell + shell
+            val = const_target[species_index] if shell in target_shells else const_other[species_index]
+            out[idx] = val  # Single value, no time dimension
     return out
 
 #==========================================================================
@@ -107,6 +122,29 @@ def deltat_f1(t,const, active_species_indices, N_shell):
         start_idx = species_index * N_shell
         end_idx = start_idx + N_shell
         out[start_idx:end_idx] = const[active_species_indices[species_index]] * np.ones(N_shell)
+    return out
+
+# 2. Time and shell constant before and after switch time
+def deltat_f2(t, const_before, const_after, active_species_indices, N_shell, switch_time):
+    out = []
+    for species_index in range(len(active_species_indices)):
+        start_idx = species_index * N_shell
+        end_idx = start_idx + N_shell
+        val = const_before[species_index] if t < switch_time else const_after[species_index]
+        out[start_idx:end_idx] = val  * np.ones(N_shell) # Fill shell values for that species
+    return out
+
+# 3. Time constant, shell varying
+def deltat_f3(t, const_target, const_other, active_species_indices, N_shell, tspan):
+    num_species = len(active_species_indices)
+    out = np.zeros(num_species * N_shell)
+    target_shells = {5, 6, 7, 8, 9, 10, 11}
+    
+    for i, species_index in enumerate(active_species_indices):
+        for shell in range(N_shell):
+            idx = i * N_shell + shell
+            val = const_target[species_index] if shell in target_shells else const_other[species_index]
+            out[idx] = val  # Single value, no time dimension
     return out
 
 #==========================================================================
@@ -578,6 +616,45 @@ def cum_umpy(obj, baseline, PMD_no_noise):
 
 #     return oar
 
+def net_cost(obj, baseline):
+    # pseudo code
+    # 
+
+    # From pyssem code
+
+    base_species_names = baseline.species_names
+    n_species = baseline.species_length
+    num_shells = baseline.n_shells
+    
+    species_mass = []
+    orbital_lifetimes = []
+    for species_index, (species_name, species_list) in enumerate(baseline.species_cells.items()):
+        for species_properties in species_list:
+            species_mass.append(species_properties.mass)
+            orbital_lifetimes.append(species_properties.orbital_lifetimes)
+    obj = obj.reshape((n_species, num_shells))
+
+    X = 4
+
+    # One aggregated vector eqs (n_shells x 1) summing across species
+    # umpy_eqs = np.zeros((num_shells, 1))
+    umpy_eqs = np.zeros((n_species,num_shells))
+    for species_index in range(n_species):
+        for shell_idx in range(num_shells):
+            if not base_species_names[species_index].startswith('S'):
+                mass_i = species_mass[species_index]
+                pop_ij  = obj[species_index][shell_idx]            # population in shell i
+                life_ij = orbital_lifetimes[species_index][shell_idx]
+                umpy_factor = ((np.exp(X * (life_ij / baseline.simulation_duration)) - 1) / (np.exp(X) - 1))
+                # umpy_eqs[shell_idx] += (mass_i * pop_ij * umpy_factor) / baseline.simulation_duration
+                umpy_eqs[species_index,shell_idx] = (mass_i * pop_ij * umpy_factor) / baseline.simulation_duration
+            else:
+                # If active, just add zero
+                # umpy_eqs[shell_idx]+= 0
+                umpy_eqs[species_index,shell_idx] = 0
+
+    return umpy_eqs.flatten()
+
 #==========================================================================
 # NMPC - cost function options
 #==========================================================================
@@ -659,7 +736,51 @@ def myCostFunction_CSI(m, x, baseline):
             csi_list.append(csi_var)
 
     return csi_list
-    
+
+## version to fix max equation length error in debris spreading version
+## chatgpt version
+# def myCostFunction_UMPY(m, x, baseline):
+#     """
+#     Calculates the risk index safely without long symbolic equations.
+#     Uses numeric constants and avoids excessive Intermediate() calls.
+#     """
+#     n_species = baseline.species_length
+#     num_shells = baseline.n_shells
+
+#     X = 4.0
+#     denom_val = math.exp(X) - 1  # numeric constant
+
+#     species_mass = []
+#     orbital_lifetimes = []
+#     for species_list in baseline.species_cells.values():
+#         for props in species_list:
+#             species_mass.append(props.mass)
+#             orbital_lifetimes.append(props.orbital_lifetimes)
+
+#     risk_idx_list = []
+
+#     for i in range(n_species):
+#         for j in range(num_shells):
+#             if baseline.species_names[i].startswith('S'):
+#                 # skip non-risk species
+#                 risk_idx_list.append(0)
+#                 continue
+
+#             mass_i = species_mass[i]
+#             pop_ij = x[i * num_shells + j]
+#             life_ij = orbital_lifetimes[i][j]
+
+#             # precompute numerically
+#             life_ratio = life_ij / baseline.simulation_duration
+#             umpy_factor_val = (math.exp(X * life_ratio) - 1) / denom_val
+
+#             # short symbolic expression (no Intermediate)
+#             risk_expr = (mass_i * pop_ij * umpy_factor_val) / baseline.simulation_duration
+#             risk_idx_list.append(risk_expr)
+
+#     return risk_idx_list
+
+# version that works without debris spreading    
 def myCostFunction_UMPY(m, x, baseline):
     """
     Calculates the risk index symbolically using Gekko functions.
@@ -871,6 +992,86 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
     plt.gca().tick_params(width=sel_LineWidthAxis)
     plt.show()
 
+    # Plot by species group
+    def get_group(name):
+        if name.startswith("Sns"):
+            return "Sns"
+        elif name.startswith("Su"):
+            return "Su"
+        elif name.startswith("S"):
+            return "S"
+        elif name.startswith("N"):
+            return "N"
+        elif name.startswith("B"):
+            return "B"
+        else:
+            return "Other"
+
+    species_groups = {name: get_group(name) for name in species_names}
+    group_names = sorted(set(species_groups.values()))
+
+    # Assign a unique color per group
+    color_map = plt.cm.get_cmap('tab10', len(group_names))
+    group_colors = {group: color_map(i) for i, group in enumerate(group_names)}
+
+    # Initialize totals for each group
+    group_totals_C = {group: np.zeros_like(output.t) for group in group_names}
+    group_totals_REF = {group: np.zeros_like(output.t) for group in group_names}
+    group_totals_NC = {group: np.zeros_like(output.t) for group in group_names}
+    total_objects_all_species = np.zeros_like(output.t)
+
+    # Step 2: Accumulate species into group totals
+    for species_index in range(n_species):
+        group = species_groups[species_names[species_index]]
+        start_idx = species_index * num_shells
+        end_idx = start_idx + num_shells
+
+        group_totals_C[group] += np.sum(output.y[start_idx:end_idx, :], axis=0)
+        group_totals_REF[group] += np.sum(output.y_ref[start_idx:end_idx, :], axis=0)
+        group_totals_NC[group] += np.sum(output.y_nc[start_idx:end_idx, :], axis=0)
+        total_objects_all_species += np.sum(output.y[start_idx:end_idx, :], axis=0)
+
+    # Step 3: Plot the grouped results
+    plt.figure(facecolor='white', figsize=(12, 8))
+    plt.grid(True)
+
+    handles = []
+    labels = []
+
+    for group in group_names:
+        color = group_colors[group]
+        plt.plot(output.t, group_totals_C[group], linewidth=sel_LineWidth, label=f"{group}$^C$", color=color, linestyle='-')
+        #plt.plot(output.t, group_totals_REF[group], linewidth=sel_LineWidth, label=f"{group}$^{{REF}}$", color=color, linestyle='--')
+        #plt.plot(output.t, group_totals_NC[group], linewidth=sel_LineWidth, label=f"{group}$^{{NC}}$", color=color, linestyle=':')
+        handles.append(Line2D([], [], color=color, linewidth=sel_LineWidth, label=group))
+        labels.append(group)
+
+    print(group_totals_C)
+
+    # Plot total line
+    plt.plot(output.t, total_objects_all_species, label='Total', color='k', linewidth=sel_LineWidth, linestyle='-')
+    handles.append(Line2D([], [], color='k', linewidth=sel_LineWidth, label='Total'))
+
+    # Add legend markers for line styles
+    #handles.append(Line2D([], [], color='k', linestyle='-', linewidth=sel_LineWidth, label='Controlled'))
+    #handles.append(Line2D([], [], color='k', linestyle='--', linewidth=sel_LineWidth, label='Reference'))
+    #handles.append(Line2D([], [], color='k', linestyle=':', linewidth=sel_LineWidth, label='No Control'))
+
+    sel_FontSize = 14
+    plt.rcParams.update({'font.size': sel_FontSize})
+    plt.xlabel('Time (years)', fontsize=sel_FontSize)
+    plt.ylabel('Population Count', fontsize=sel_FontSize)
+    plt.title('Grouped SOs vs Time')
+    plt.xlim(0, max(output.t))
+    #plt.legend(handles=handles, loc="best", fontsize=sel_FontSize)
+    plt.legend(loc="best", fontsize=sel_FontSize)
+    plt.tight_layout()
+    plt.xticks(fontsize=sel_FontSize)
+    plt.yticks(fontsize=sel_FontSize)
+    plt.gca().tick_params(width=sel_LineWidthAxis)
+    #plt.savefig("/Users/mayaharris/Documents/Github/pyssem/pyssem/figures/grouped_no_control.pdf", dpi=300)
+    plt.show()
+
     if sel_pmd_control == 1:
         # Figure: PMD with and without noise
         for species_index in range(len(active_species_indices)):
@@ -882,12 +1083,14 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             plot_PMD_orig = output.PMD_orig[start_idx:end_idx,:]
             plot_PMD_no_noise_orig = output.PMD_no_noise_orig[start_idx:end_idx,:]
 
+
             plt.figure(facecolor='white', figsize=(10,6), layout="constrained")
             n_sub_plot = int(np.ceil(np.sqrt(num_shells)))
             for i in range(num_shells):
                 ax = plt.subplot(n_sub_plot, n_sub_plot, i+1)
                 ax.grid(True)
                 ax.plot(plot_PMD[i], linewidth=sel_LineWidth, linestyle='-', label='w/ noise')
+                print(plot_PMD[i])
                 ax.plot(plot_PMD_no_noise[i], linewidth=sel_LineWidth, linestyle='--', label='w/o noise')
                 ax.plot(plot_PMD_orig[i], linewidth=sel_LineWidth, linestyle='-', label='w/ noise (orig)')
                 ax.plot(plot_PMD_no_noise_orig[i], linewidth=sel_LineWidth, linestyle='--', label='w/o noise (orig)')
@@ -915,8 +1118,8 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             # marker = markers[species_index % len(markers)]
             start_idx = species_index * num_shells
             end_idx = start_idx + num_shells
-            risk_idx_per_species = np.sum(output.risk_idx_per_species_per_shell[start_idx:end_idx, :], axis=0)
-            risk_idx_per_species_nc = np.sum(output.risk_idx_per_species_per_shell_nc[start_idx:end_idx, :], axis=0)
+            risk_idx_per_species = np.sum(output.risk_idx_per_species_per_shell_csi[start_idx:end_idx, :], axis=0)
+            risk_idx_per_species_nc = np.sum(output.risk_idx_per_species_per_shell_nc_csi[start_idx:end_idx, :], axis=0)
             plt.plot(output.t, risk_idx_per_species, linewidth=sel_LineWidth, label=species_names[species_index]+"$^{C}$", color=color, linestyle='-') #, marker=marker, markersize=sel_MarkerWidth)
             plt.plot(output.t, risk_idx_per_species_nc, linewidth=sel_LineWidth, label=species_names[species_index]+"$^{NC}$", color=color, linestyle=':')
             risk_idx_total += risk_idx_per_species
@@ -961,7 +1164,7 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             ax.set_title('Surface Plot of CSI for All Species', fontsize=sel_FontSize)
         elif sel_risk_index == 2:
             ax.set_title('Surface Plot of UMPY for All Species', fontsize=sel_FontSize)
-        risk_idx_per_species = output.risk_idx_per_species_per_shell.T
+        risk_idx_per_species = output.risk_idx_per_species_per_shell_csi.T
         risk_idx_per_species = risk_idx_per_species.reshape(len(output.t), n_species, num_shells).sum(axis=1)
         risk_idx_per_species = risk_idx_per_species.T  # Shape: [num_shells, num_times]
         X, Y = np.meshgrid(output.t, np.arange(num_shells))
@@ -973,6 +1176,7 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
         # plt.tight_layout()
         plt.show()
 
+
     # ADR Total vs Time
     for species_index in range(n_species):
         if not base_species_names[species_index].startswith('S'):
@@ -983,6 +1187,9 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             end_idx = start_idx + num_shells
             plt.plot(output.t, -output.satur[species_index](output.t), linewidth=sel_LineWidth, label='Max', color='k', linestyle='--') 
             plt.plot(output.t, -np.sum(output.y_u[start_idx:end_idx, :], axis=0), linewidth=sel_LineWidth, label=species_names[species_index], color=color, linestyle='-')
+            
+            print(output.satur[species_index](output.t))
+            
             plt.title('ADR Total vs Time')
             plt.xlabel('Time (years)', fontsize=sel_FontSize)
             plt.ylabel('Count', fontsize=sel_FontSize)
@@ -994,12 +1201,27 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             plt.legend(loc='best')
             plt.show()
 
+    records = []
+    time_years = output.t
 
     # Each species over time for each shell
     for species_index in range(n_species):
         color = color_map(unique_base_species.index(base_species_names[species_index]))
         start_idx = species_index * num_shells
         end_idx = start_idx + num_shells
+
+        y_C = output.y[start_idx:end_idx, :]
+
+        for shell_idx in range(num_shells):
+            for t_idx, t_year in enumerate(time_years):
+
+                records.append({
+                    "time_year": float(t_year),
+                    "species": species_names[species_index],
+                    "shell": shell_idx + 1,
+                    "count": float(y_C[shell_idx, t_idx]),
+                    "scenario": "SEP6H"
+                })
 
         plot_y = output.y[start_idx:end_idx,:]
         plot_y_nc = output.y_nc[start_idx:end_idx,:]
@@ -1026,6 +1248,14 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
             ax.set_ylim(ymin, ymax)  # Set the new y-axis limits
         plt.legend(loc='best', bbox_to_anchor=(1, 1))
         plt.show()
+    
+    df = pd.DataFrame.from_records(records)
+
+    csv_path = "sep6h_manchester_results.csv"
+    df.to_csv(csv_path, index=False)
+
+    print(f"Saved population data to {csv_path}")
+
 
     # Each species over time for all shells
     cols = 5  # Define the number of columns you want
@@ -1044,57 +1274,6 @@ def cumulative_plot(baseline, output, active_species_indices, sel_pmd_control, s
     for i in range(n_species, rows * cols):
         fig.delaxes(axes.flatten()[i])
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-
-
-    # --- HEATMAPS FOR EACH SPECIES OVER TIME AND ORBITAL SHELLS ---
-    cols = 3  # Define the number of columns for the subplot grid
-    rows = (n_species + cols - 1) // cols  # Calculate rows needed
-
-    fig, axs = plt.subplots(nrows=rows, ncols=cols, figsize=(5 * cols, 4 * rows), facecolor='white', constrained_layout=True)
-    axs = np.atleast_2d(axs)  # Ensure axs is always a 2D array for consistent indexing
-
-    for i, species_name in enumerate(species_names):
-        row_idx = i // cols
-        col_idx = i % cols
-        ax = axs[row_idx, col_idx]
-
-        # Extract the data for the current species across all shells
-        start_idx = i * num_shells
-        end_idx = start_idx + num_shells
-        data_per_species = output.y[start_idx:end_idx, :]
-
-        # Create the heatmap using imshow
-        # extent=[left, right, bottom, top] defines the data coordinates of the image
-        im = ax.imshow(data_per_species, 
-                       aspect='auto', 
-                       origin='lower',
-                       extent=[output.t[0], output.t[-1], 0, num_shells],
-                       interpolation='nearest',
-                       cmap='viridis')
-        
-        # Add a colorbar for the heatmap
-        fig.colorbar(im, ax=ax, label='Count')
-
-        # Set labels and title
-        ax.set_xlabel('Time (years)', fontsize=sel_FontSize)
-        ax.set_ylabel('Altitude (km)', fontsize=sel_FontSize)
-        ax.set_title(species_name, fontsize=sel_FontSize)
-
-        # Configure ticks for better readability
-        ax.set_xticks(np.linspace(output.t[0], output.t[-1], num=5, dtype=int))
-        
-        # Set y-axis ticks to show shell indices and label them with actual altitudes
-        # This makes the plot much more informative
-        tick_step = max(1, num_shells // 5) # Show about 5-6 ticks
-        ax.set_yticks(np.arange(0.5, num_shells, tick_step)) # Center ticks in the cells
-        ax.set_yticklabels([f'{alt:.0f}' for alt in orbital_shell_labels[::tick_step]])
-        
-        ax.tick_params(axis='both', which='major', labelsize=sel_FontSize)
-
-    # Hide any unused subplots if the number of species doesn't perfectly fill the grid
-    for i in range(n_species, rows * cols):
-        fig.delaxes(axs.flatten()[i])
-    plt.show()
 
     return 1
 
@@ -1281,6 +1460,24 @@ def assign_saturations(species_names, saturation_values):
     for species_name in species_names:
         if species_name.lower().startswith("s"):
             saturations.append(0)
+        elif species_name.lower().startswith("n_0"):
+            # Delay ADR until 50 years
+            if saturation_values:
+                base_func = saturation_values[non_s_index % len(saturation_values)]
+                delayed_func = lambda t, f=base_func: np.where(t < 50, 0, f(t))
+                saturations.append(delayed_func)
+                non_s_index += 1
+            else:
+                saturations.append(lambda t: 0)
+        elif species_name.lower().startswith("n_1.88") or species_name.lower().startswith("n_1820") or species_name.lower().startswith("n_4028"):
+            # Delay ADR until 25 years
+            if saturation_values:
+                base_func = saturation_values[non_s_index % len(saturation_values)]
+                delayed_func = lambda t, f=base_func: np.where(t < 25, 0, f(t))
+                saturations.append(delayed_func)
+                non_s_index += 1
+            else:
+                saturations.append(lambda t: 0)
         else:
             if saturation_values:  # Check if saturation_values is not empty
                 saturations.append(saturation_values[non_s_index % len(saturation_values)])
