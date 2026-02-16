@@ -1826,6 +1826,35 @@ class Plots:
             plt.tight_layout()
             plt.savefig(f'{out_dir}/iadc_study_thesis.png', dpi=300, bbox_inches='tight')
             plt.close()
+
+            # Export JSON series for this run (for indigo-thesis combined plot: figures/<simulation_name>/iadc_mocat_series.json)
+            try:
+                end_year = int(t_sim_years[-1]) if len(t_sim_years) else start_year + 200
+                export_data = {
+                    'pop_time': [[float(t), float(y)] for t, y in zip(t_sim_years, y_sim)],
+                    'cumulative_collisions_time': [[float(t), float(y)] for t, y in zip(t_sim_years, y_sim_collisions)],
+                    'collisions_altitude': [[float(a), float(c)] for a, c in zip(alt_sim, collisions_sim)],
+                    'pop_initial_altitude': [[float(a), float(p)] for a, p in zip(alt_init, pop_init)],
+                    'pop_final_altitude': [[float(a), float(p)] for a, p in zip(alt_final, pop_final)],
+                    'start_year': start_year,
+                    'end_year': end_year,
+                }
+                # Write to current output dir (main_path/simulation_name)
+                export_path = os.path.join(out_dir, 'iadc_mocat_series.json')
+                with open(export_path, 'w') as f:
+                    json.dump(export_data, f, indent=2)
+                print(f"Exported IADC MOCAT series to {export_path}")
+                # Also write to figures/<simulation_name>/ so iadc_study_thesis_combined.py finds it
+                _plotting_dir = os.path.dirname(os.path.abspath(__file__))
+                _repo_root = os.path.abspath(os.path.join(_plotting_dir, '..', '..', '..'))
+                _figures_sim_dir = os.path.join(_repo_root, 'figures', self.simulation_name)
+                os.makedirs(_figures_sim_dir, exist_ok=True)
+                _figures_json_path = os.path.join(_figures_sim_dir, 'iadc_mocat_series.json')
+                with open(_figures_json_path, 'w') as f:
+                    json.dump(export_data, f, indent=2)
+                print(f"Exported IADC MOCAT series to {_figures_json_path}")
+            except Exception as ex:
+                print(f"Could not export IADC MOCAT series: {ex}")
         except Exception as e:
             import traceback
             print(f"Error creating IADC thesis plot: {e}")

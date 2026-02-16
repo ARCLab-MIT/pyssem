@@ -172,3 +172,4 @@ pyssem/utils/launch/data/
 /test_results/
 /indigo-thesis/
 /indigo-thesis/*
+/grid_search_upload/
