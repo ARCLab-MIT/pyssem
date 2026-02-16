@@ -173,3 +173,16 @@ pyssem/utils/plotting/data/
 /test_results/
 /indigo-thesis/
 /indigo-thesis/*
+
+# Results folder
+/results/
+/grid_search_upload/
+/monte_carlo_results/
+/figures/
+/figures/*
+/figures/mocat-mc-elliptical-test/
+/figures/mocat-mc-elliptical-test/*
+/figures/mocat-mc-elliptical-test/mocat-mc-elliptical-test/
+/figures/mocat-mc-elliptical-test/mocat-mc-elliptical-test/*
+/figures/mocat-mc-elliptical-test/mocat-mc-elliptical-test/mocat-mc-elliptical-test/
+/figures/mocat-mc-elliptical-test/mocat-mc-elliptical-test/mocat-mc-elliptical-test/
