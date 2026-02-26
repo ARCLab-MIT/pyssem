@@ -1,0 +1,123 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{AVONA II (Type-II ANOVA) Calculation Summary}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview}
+
+AVONA II refers to Type-II Analysis of Variance (ANOVA) performed using the \texttt{statsmodels} library in Python. This analysis is used to assess the relative importance of different factors (model type, number of shells, number of species) in explaining variance in the composite scenario score and CPU time.
+
+\section{Model Specification}
+
+The Type-II ANOVA is performed on two separate linear models:
+
+\subsection{Score Model}
+The dependent variable is the composite scenario score (\texttt{Score\_scenario}), and the model includes:
+\begin{itemize}
+    \item \texttt{C(model\_type)}: Categorical factor for model type (e.g., circular, frag\_spread, elliptical)
+    \item \texttt{n\_shells}: Continuous factor for number of shells
+    \item \texttt{n\_species}: Continuous factor for number of species
+    \item All two-way interactions: \texttt{C(model\_type):n\_shells}, \texttt{C(model\_type):n\_species}, \texttt{n\_shells:n\_species}
+\end{itemize}
+
+The model formula is:
+\begin{equation}
+\text{Score\_scenario} \sim \text{C(model\_type)} + \text{n\_shells} + \text{n\_species} + \text{C(model\_type):n\_shells} + \text{C(model\_type):n\_species} + \text{n\_shells:n\_species}
+\end{equation}
+
+\subsection{CPU Time Model}
+The dependent variable is the logarithm of CPU seconds (\texttt{log\_cpu}), with the same predictor structure:
+\begin{equation}
+\log(\text{CPU}) \sim \text{C(model\_type)} + \text{n\_shells} + \text{n\_species} + \text{C(model\_type):n\_shells} + \text{C(model\_type):n\_species} + \text{n\_shells:n\_species}
+\end{equation}
+
+\section{Type-II ANOVA Calculation}
+
+Type-II ANOVA (specified by \texttt{typ=2} in \texttt{anova\_lm}) uses the following approach:
+
+\begin{enumerate}
+    \item \textbf{Model Fitting}: An ordinary least squares (OLS) model is fitted using \texttt{statsmodels.formula.api.ols()}.
+    
+    \item \textbf{Sum of Squares Calculation}: For each factor and interaction term, Type-II ANOVA calculates the sum of squares (\texttt{sum\_sq}) by comparing models with and without that specific term, while keeping all other terms in the model. This provides a measure of the unique contribution of each factor.
+    
+    \item \textbf{Residual Sum of Squares}: The residual sum of squares (\texttt{ss\_res}) is extracted from the ANOVA table, representing the unexplained variance.
+    
+    \item \textbf{Partial Eta-Squared}: For each factor/interaction, partial eta-squared ($\eta_p^2$) is calculated as:
+    \begin{equation}
+    \eta_p^2 = \frac{\text{SS}_{\text{factor}}}{\text{SS}_{\text{factor}} + \text{SS}_{\text{residual}}}
+    \end{equation}
+    where $\text{SS}_{\text{factor}}$ is the sum of squares for the factor and $\text{SS}_{\text{residual}}$ is the residual sum of squares.
+    
+    \item \textbf{Interpretation}: Partial eta-squared represents the proportion of variance in the dependent variable that is uniquely explained by each factor, controlling for all other factors in the model. Values range from 0 to 1, with higher values indicating greater importance.
+\end{enumerate}
+
+\section{Normalized Shares (Alternative Calculation)}
+
+For visualization purposes, a simplified version computes normalized shares that sum to 1.0 across the three main factors (model\_type, n\_shells, n\_species):
+
+\begin{enumerate}
+    \item Compute partial eta-squared for each of the three main factors (excluding interactions).
+    
+    \item Normalize by dividing each value by the sum of all three values:
+    \begin{equation}
+    \text{Share}_i = \frac{\eta_{p,i}^2}{\sum_{j=1}^{3} \eta_{p,j}^2}
+    \end{equation}
+    
+    \item This normalization allows for easy comparison of relative importance across factors, with values representing the percentage of explained variance attributable to each factor.
+\end{enumerate}
+
+\section{Implementation Details}
+
+The calculation is implemented in Python as follows:
+
+\begin{verbatim}
+from statsmodels.formula.api import ols
+from statsmodels.stats.anova import anova_lm
+
+# Fit the model
+model = ols("Score_scenario ~ C(model_type) + n_shells + n_species + 
+            C(model_type):n_shells + C(model_type):n_species + 
+            n_shells:n_species", data=df).fit()
+
+# Perform Type-II ANOVA
+anova_result = anova_lm(model, typ=2)
+
+# Extract residual sum of squares
+ss_res = anova_result.loc["Residual", "sum_sq"]
+
+# Calculate partial eta-squared
+anova_result["partial_eta_sq"] = anova_result["sum_sq"] / 
+                                  (anova_result["sum_sq"] + ss_res)
+\end{verbatim}
+
+\section{Output}
+
+The AVONA II analysis produces:
+\begin{itemize}
+    \item ANOVA table with sum of squares, degrees of freedom, F-statistics, and p-values for each factor and interaction
+    \item Partial eta-squared values for each term, indicating the proportion of variance uniquely explained
+    \item Bar plots visualizing the partial eta-squared values (excluding residuals)
+    \item CSV files containing the full ANOVA tables for both Score and CPU time models
+\end{itemize}
+
+\section{Key Differences: Type-II vs Type-I ANOVA}
+
+Type-II ANOVA differs from Type-I (sequential) ANOVA in that:
+\begin{itemize}
+    \item \textbf{Type-I}: Tests each factor sequentially, with order mattering. Each factor's contribution is assessed after accounting for all previously entered factors.
+    \item \textbf{Type-II}: Tests each factor's unique contribution while controlling for all other factors simultaneously. Order does not matter, making it more appropriate for assessing the independent importance of each factor.
+\end{itemize}
+
+Type-II ANOVA is preferred when factors are not orthogonal and when the goal is to assess the unique contribution of each factor to the model.
+
+\end{document}

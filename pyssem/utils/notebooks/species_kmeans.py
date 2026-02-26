@@ -411,21 +411,7 @@ try:
         # save per-species score vs k plot
         if sp_rows:
             df_sp = pd.DataFrame(sp_rows)
-            for scheme in schemes:
-                df_s = df_sp[df_sp["scheme"] == scheme]
-                if not df_s.empty:
-                    plt.plot(df_s["k"], df_s["emd_l1"], marker="o", label=scheme.capitalize())
-            plt.xlabel("Number of bins k")
-            plt.ylabel("EMD (L1) between ECDF and histogram CDF")
-            plt.title(f"Eccentricity bin score vs k — {sp}")
-            plt.grid(alpha=0.3)
-            plt.legend()
-            plt.tight_layout()
-            out_png = OUT_DIR / f"ecc_score_vs_k_{sp}.png"
-            plt.savefig(out_png, dpi=180)
-            plt.close()
-            print(f"  ⬇️ saved ecc score plot → {out_png}")
-
+            
             # choose best (lowest emd)
             best = df_sp.loc[df_sp["emd_l1"].idxmin()].to_dict()
             results_rows.extend(df_sp.to_dict("records"))
@@ -445,23 +431,84 @@ try:
             # normalized for plotting
             p_best = counts_best / max(counts_best.sum(), 1)
 
-            plt.figure(figsize=(7,5))
-            plt.hist(x, bins=50, density=True, alpha=0.35, label="Empirical (50 bins)")
-            # plot best histogram as step
-            centers = 0.5*(edges_best[:-1] + edges_best[1:])
-            width = np.diff(edges_best)
-            # convert probabilities to density for step plotting: p / width
-            dens = np.where(width > 0, p_best / width, 0.0)
-            plt.step(centers, dens, where="mid", label=f"Best {best_scheme} k={best_k}")
-            plt.xlabel("Eccentricity e")
-            plt.ylabel("Density")
-            plt.title(f"Best ecc bins — {sp} (scheme={best_scheme}, k={best_k}, EMD={best['emd_l1']:.4f})")
-            plt.grid(alpha=0.3)
-            plt.tight_layout()
-            out_png2 = OUT_DIR / f"ecc_hist_best_{sp}.png"
-            plt.savefig(out_png2, dpi=180)
-            plt.close()
-            print(f"  ⬇️ saved best ecc hist → {out_png2}")
+            if sp == "B":
+                # Create side-by-side plot for species B
+                fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+                
+                # Set larger font sizes for LaTeX text-width display
+                title_fontsize = 16
+                label_fontsize = 14
+                tick_fontsize = 12
+                legend_fontsize = 12
+                
+                # Left: score vs k plot (only log, no linear)
+                for scheme in schemes:
+                    if scheme == "log":  # Only show log, skip linear
+                        df_s = df_sp[df_sp["scheme"] == scheme]
+                        if not df_s.empty:
+                            axes[0].plot(df_s["k"], df_s["emd_l1"], marker="o", markersize=8, label=scheme.capitalize(), linewidth=2)
+                axes[0].set_xlabel("Number of bins k", fontsize=label_fontsize)
+                axes[0].set_ylabel("EMD (L1) between ECDF and histogram CDF", fontsize=label_fontsize)
+                axes[0].set_title("Clustering of B", fontsize=title_fontsize)
+                axes[0].tick_params(labelsize=tick_fontsize)
+                axes[0].grid(alpha=0.3)
+                axes[0].legend(fontsize=legend_fontsize)
+                
+                # Right: histogram with step line (bins) overlay
+                axes[1].hist(x, bins=50, density=True, alpha=0.35, label="Empirical (50 bins)")
+                # plot best histogram as step
+                centers = 0.5*(edges_best[:-1] + edges_best[1:])
+                width = np.diff(edges_best)
+                # convert probabilities to density for step plotting: p / width
+                dens = np.where(width > 0, p_best / width, 0.0)
+                axes[1].step(centers, dens, where="mid", label=f"Best {best_scheme} k={best_k}", linewidth=2)
+                axes[1].set_xlabel("Eccentricity e", fontsize=label_fontsize)
+                axes[1].set_ylabel("RB density", fontsize=label_fontsize)
+                axes[1].set_title(f"k = {best_k}", fontsize=title_fontsize)
+                axes[1].set_xlim(0, 0.2)
+                axes[1].tick_params(labelsize=tick_fontsize)
+                axes[1].grid(alpha=0.3)
+                axes[1].legend(fontsize=legend_fontsize)
+                
+                plt.tight_layout()
+                out_png_combined = OUT_DIR / f"ecc_combined_{sp}.png"
+                plt.savefig(out_png_combined, dpi=180)
+                plt.close()
+                print(f"  ⬇️ saved combined ecc plot → {out_png_combined}")
+            else:
+                # Original separate plots for other species
+                for scheme in schemes:
+                    df_s = df_sp[df_sp["scheme"] == scheme]
+                    if not df_s.empty:
+                        plt.plot(df_s["k"], df_s["emd_l1"], marker="o", label=scheme.capitalize())
+                plt.xlabel("Number of bins k")
+                plt.ylabel("EMD (L1) between ECDF and histogram CDF")
+                plt.title(f"Eccentricity bin score vs k — {sp}")
+                plt.grid(alpha=0.3)
+                plt.legend()
+                plt.tight_layout()
+                out_png = OUT_DIR / f"ecc_score_vs_k_{sp}.png"
+                plt.savefig(out_png, dpi=180)
+                plt.close()
+                print(f"  ⬇️ saved ecc score plot → {out_png}")
+
+                plt.figure(figsize=(7,5))
+                plt.hist(x, bins=50, density=True, alpha=0.35, label="Empirical (50 bins)")
+                # plot best histogram as step
+                centers = 0.5*(edges_best[:-1] + edges_best[1:])
+                width = np.diff(edges_best)
+                # convert probabilities to density for step plotting: p / width
+                dens = np.where(width > 0, p_best / width, 0.0)
+                plt.step(centers, dens, where="mid", label=f"Best {best_scheme} k={best_k}")
+                plt.xlabel("Eccentricity e")
+                plt.ylabel("Density")
+                plt.title(f"Best ecc bins — {sp} (scheme={best_scheme}, k={best_k}, EMD={best['emd_l1']:.4f})")
+                plt.grid(alpha=0.3)
+                plt.tight_layout()
+                out_png2 = OUT_DIR / f"ecc_hist_best_{sp}.png"
+                plt.savefig(out_png2, dpi=180)
+                plt.close()
+                print(f"  ⬇️ saved best ecc hist → {out_png2}")
 
             print(f"Best for {sp}: scheme={best_scheme}, k={best_k}, EMD={best['emd_l1']:.4f}")
         else:

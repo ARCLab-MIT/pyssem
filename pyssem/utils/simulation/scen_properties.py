@@ -1979,8 +1979,7 @@ class ScenarioProperties:
                             args=(launch_rate_functions, self.equations, self.scen_times),
                             t_eval=self.scen_times, method=self.integrator)
             
-            self.drag_upper_lamd = None
-            self.drag_cur_lamd = None
+
 
         else:
             self.progress_bar = tqdm(total=self.scen_times[-1] - self.scen_times[0], desc="Integrating Equations", unit="year")
@@ -2146,129 +2145,89 @@ class ScenarioProperties:
         return dN_dt
     
 
-    def population_shell_time_varying_density(self, t, N, launch_funcs, eq_funcs, progress_bar=True):
+    def population_shell_time_varying_density(self, t, N, launch_funcs, equations, times):
         """
         Seperate function to ScenarioProperties, this will be used in the solve_ivp function.
 
         :param t: Timestep
         :param N: Population Count
-        :param launch_funcs: Launch rate functions
-        :param eq_funcs: Equation functions
-        :param progress_bar: Whether to update progress bar
+        :param full_lambda: Launch rates
+        :param equations: Equations
+        :param times: Times
+        :param density_model: Density Model
+        :param R0_km: Altitude of the shells
 
         :return: Rate of change of population
         """
         # Update the progress bar
-        if self.progress_bar is not None and progress_bar:
+        if self.progress_bar is not None:
             self.progress_bar.update(t - self.progress_bar.n)
 
-        # print(f"Time: {t}")
+        # Clean the derivative array
         dN_dt = np.zeros_like(N)
 
-        if self.time_dep_density:
-            # Cache management logic for rho
-            # For the first year (t <= 1), use a consistent density value
-            # For later years, update more frequently to capture time variations
-            
-            # Update density yearly instead of at each timestep to reduce integration instability
-            current_year = int(t)
-            
-            # Only update density if we've moved to a new year
-            if not hasattr(self, 'last_density_year') or self.last_density_year != current_year:
-                self.last_density_year = current_year
-                
-                # Calculate density for this year - cycle through available data
-                simulation_duration = self.scen_times[-1] - self.scen_times[0]
-                t_percentage = (t - self.scen_times[0]) / simulation_duration * 100
-                
-                # For simulations longer than available data, cycle through the available months
-                # Available data covers 5 months (0-100%), so cycle every 5 months
-                cycle_period = 100  # 5 months = 100% of available data
-                t_percentage = t_percentage % cycle_period
-                
-                t_percentage = max(0, min(100, t_percentage))  # Clamp to 0-100
-                
-                # Calculate density for all shells at this time
-                rho = JB2008_dens_func(t_percentage, self.R0_km.tolist(), self.density_data, self.date_mapping, self.nearest_altitude_mapping)
-                
-                if rho is None or len(rho) == 0:
-                    raise ValueError(f"Failed to get density at t={t}, t_percentage={t_percentage}")
-                
-                # Store the density for this year
-                self.cached_rho = rho
-                print(f"Updated density for year {current_year} (t={t:.2f})")
-            
-            # Use the cached density for this year
-            rho = self.cached_rho
-            
-            # Ensure we got valid density values - no fallbacks
-            if rho is None or len(rho) == 0:
-                raise ValueError(f"JB2008 density data not available at time {t} (t_percentage={t_percentage:.2f})")
+        # # fetch time-varying density with cache management logic for rho
+        # current_t_step = int(t)
+        # if current_t_step > self.prev_t:
+        #     rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+        #     self.prev_rho = rho
+        #     self.prev_t = current_t_step
+        # else:
+        #     rho = self.prev_rho  # Use cached rho
 
-            # Essential safety checks only
-            if rho is None or len(rho) == 0:
-                raise ValueError(f"Could not obtain density values at time {t}")
-            
-            # Ensure rho is a numpy array and handle any NaN/inf values
-            rho = np.array(rho)
-            if np.any(np.isnan(rho)) or np.any(np.isinf(rho)):
-                raise ValueError(f"Invalid density values (NaN/inf) at time {t}")
-            
-            
-            # No artificial clamping - use raw JB2008 data to preserve natural variations
-            rho_full = np.repeat(rho, self.species_length)
-            species_per_shell = self.species_length
+        # # Apply drag computations
+        # for i in range(len(N)):
+        #     # get appropriate shell index, as the flattened functions iterate over every shell
+        #     # within a species first (rather than each species in a shell)
+        #     shell_index = i % self.n_shells
 
-            # Apply drag computations with time-varying density
-            for i in range(len(N)):
-                shell_index = i // species_per_shell
-                
-                # Safety check for shell_index
-                if shell_index >= len(rho):
-                    shell_index = len(rho) - 1
-                if shell_index < 0:
-                    shell_index = 0
+        #     # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
+        #     if i < len(N) - 1:
+        #         current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
+        #         upper_drag = self.drag_upper_lamd[i](*N) * rho[shell_index + 1]
+        #         dN_dt[i] += current_drag + upper_drag
+        #     else:
+        #         current_drag = self.drag_cur_lamd[i](*N) * rho[shell_index]
+        #         dN_dt[i] += current_drag
 
-                # Ensure drag_cur_lamd and drag_upper_lamd functions are correctly accessed and used
-                try:
-                    # Safety check for drag function availability
-                    if (hasattr(self, 'drag_cur_lamd') and hasattr(self, 'drag_upper_lamd') and 
-                        i < len(self.drag_cur_lamd) and i < len(self.drag_upper_lamd)):
-                        
-                        if i < len(N) - 1 and shell_index + 1 < len(rho):
-                            # For time-dependent density, multiply by ballistic coefficient and density
-                            species_index = i % self.species_length
-                            species_list = [species for group in self.species.values() for species in group]
-                            species = species_list[species_index]
-                            
-                            current_drag = self.drag_cur_lamd[i](*N) * species.beta * rho_full[shell_index]
-                            upper_drag = self.drag_upper_lamd[i](*N) * species.beta * rho_full[shell_index + 1]
-                            dN_dt[i] += current_drag + upper_drag
-                        else:
-                            # For time-dependent density, multiply by ballistic coefficient and density
-                            species_index = i % self.species_length
-                            species_list = [species for group in self.species.values() for species in group]
-                            species = species_list[species_index]
-                            
-                            current_drag = self.drag_cur_lamd[i](*N) * species.beta * rho_full[shell_index]
-                            dN_dt[i] += current_drag
-                except (IndexError, TypeError):
-                    # Skip drag calculation for this index
-                    pass
+        #     # Handle incoming new species
+        #     # if full_lambda[i] is not None:
+        #         # Calculate the launch rates at the current time 't' by calling the functions
+        #     # increase = np.array([func(t) for func in full_lambda])
+        #     # dN_dt[i] += 0 if np.isnan(increase) else increase
 
-                # Apply general equation dynamics
-                dN_dt[i] += eq_funcs[i](*N)
-
-            if self.baseline:
-                return dN_dt
+        #     # Apply general equation dynamics
+        #     dN_dt[i] += equations[i](*N)
         
-            # Calculate the launch rates at the current time 't' by calling the functions
-            launch_rates = np.array([func(t) for func in launch_funcs])
+        # # Calculate the launch rates at the current time 't' by calling the functions
+        # launch_rates = np.array([func(t) for func in launch_funcs])
+        # dN_dt += launch_rates
+        current_t_step = int(np.floor(t))
+        if current_t_step != self.prev_t:
+            rho = JB2008_dens_func(t, self.R0_km, self.density_data, self.date_mapping, self.nearest_altitude_mapping)
+            self.prev_rho = rho
+            self.prev_t = current_t_step
+        else:
+            rho = self.prev_rho
 
-            # The total rate of change is the sum
-            dN_dt = dN_dt + launch_rates        
+        dN_dt = np.zeros_like(N)
 
-            return dN_dt
+        for i in range(len(N)):
+            shell_index = i % self.n_shells
+
+            # time-varying drag contributions
+            dN_dt[i] += self.drag_cur_lamd[i](*N) * rho[shell_index]
+            if shell_index < self.n_shells - 1:
+                dN_dt[i] += self.drag_upper_lamd[i](*N) * rho[shell_index + 1]
+
+            # WARNING: ensure equations[i] excludes drag, otherwise you double-count
+            dN_dt[i] += equations[i](*N)
+
+        # launches
+        dN_dt += np.array([func(t) for func in launch_funcs])
+        return dN_dt
+
+        # return dN_dt
     
     def population_shell_for_OPUS(self, t, N, equations, times, launch):
         dN_dt = np.zeros_like(N)

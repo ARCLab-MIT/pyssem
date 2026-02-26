@@ -11,9 +11,9 @@
       "steps":  100,
       "min_altitude": 200,
       "max_altitude": 2000,
-      "n_shells": 30,
+      "n_shells": 10,
       "launch_function": "Constant",
-      "integrator": "BDF",
+      "integrator": "Euler",
       "density_model": "JB2008_dens_func",
       "LC": 0.1,
       "v_imp": 10.0,
@@ -27,7 +27,7 @@
         "active_loss_per_species",
         "active_loss_per_species_percentage"
       ],
-      "elliptical": false,
+      "elliptical": true,
       "eccentricity_bins":  [0.0, 0.00023269181687763618, 0.001259921049894874, 0.006821903207721965, 0.08595059451754268, 0.1, 1]
     },
     "plots": [
